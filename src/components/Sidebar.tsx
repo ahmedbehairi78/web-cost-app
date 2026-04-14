@@ -1,16 +1,17 @@
 import React from 'react';
-import { 
-  LayoutDashboard, 
-  Briefcase, 
-  FileText, 
-  Receipt, 
-  TrendingUp, 
-  Settings, 
+import {
+  LayoutDashboard,
+  Briefcase,
+  FileText,
+  Receipt,
+  TrendingUp,
+  Settings,
   AlertCircle,
   Users,
   BarChart3,
   FolderTree,
-  BookOpen
+  BookOpen,
+  Database
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
@@ -33,6 +34,7 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     { id: 'suppliers', label: t('suppliers'), icon: Users },
     { id: 'reports', label: t('reports'), icon: BarChart3 },
     { id: 'settings', label: t('settings'), icon: Settings },
+    { id: 'migrate', label: 'النسخ الاحتياطي', icon: Database },
   ];
 
   return (

@@ -15,11 +15,18 @@ import { Purchases } from './components/Purchases';
 import { Reports } from './components/Reports';
 import { Settings } from './components/Settings';
 import { Login } from './components/Login';
+import { DatabaseMigration } from './components/DatabaseMigration';
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
+
+// =============================================
+// DEV MODE: Login bypass enabled
+// To reset: Change this to false
+// =============================================
+const DEV_BYPASS_LOGIN = true;
 
 export default function App() {
   const { dir, t, language } = useLanguage();
@@ -28,13 +35,20 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // DEV MODE: Skip authentication entirely
+    if (DEV_BYPASS_LOGIN) {
+      setUser({ uid: 'dev-user', email: 'dev@localhost', displayName: 'Dev User' });
+      setLoading(false);
+      return;
+    }
+
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       try {
         if (user) {
           // Ensure user document exists
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
-          
+
           if (!userSnap.exists()) {
             // Default role is 'user' unless it's the admin email
             const isAdminEmail = user.email === "myline78@gmail.com";
@@ -82,7 +96,8 @@ export default function App() {
         {activeTab === 'suppliers' && <Purchases />}
         {activeTab === 'reports' && <Reports />}
         {activeTab === 'settings' && <Settings />}
-        {!['dashboard', 'ledger', 'projects', 'boq', 'billing', 'costs', 'suppliers', 'reports', 'settings'].includes(activeTab) && (
+        {activeTab === 'migrate' && <DatabaseMigration />}
+        {!['dashboard', 'ledger', 'projects', 'boq', 'billing', 'costs', 'suppliers', 'reports', 'settings', 'migrate'].includes(activeTab) && (
           <div className="h-full flex flex-col items-center justify-center text-gray-500 p-8 text-center">
             <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-4">
               <Loader2 size={32} />
