@@ -1,0 +1,198 @@
+{
+  "entities": {
+    "CostCenter": {
+      "title": "Cost Center",
+      "description": "Department or unit for cost tracking",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "isDeleted": { "type": "boolean", "default": false }
+      },
+      "required": ["code", "name"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Master project registry",
+      "type": "object",
+      "properties": {
+        "projectCode": { "type": "string", "description": "Unique project code" },
+        "projectName": { "type": "string", "description": "Name of the project" },
+        "clientName": { "type": "string", "description": "Client name" },
+        "status": { "type": "string", "enum": ["active", "completed", "suspended", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" },
+        "tenantId": { "type": "string" },
+        "isDeleted": { "type": "boolean", "default": false }
+      },
+      "required": ["projectCode", "projectName", "clientName"]
+    },
+    "Contract": {
+      "title": "Contract",
+      "description": "Contract definitions with Egyptian deduction rates",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string", "description": "Reference to project" },
+        "contractNumber": { "type": "string" },
+        "contractType": { "type": "string", "enum": ["lump_sum", "unit_rate", "cost_plus", "target_cost"] },
+        "originalValue": { "type": "number" },
+        "vatRate": { "type": "number", "default": 0.14 },
+        "executionGuaranteePct": { "type": "number", "default": 0.10 },
+        "labourInsurancePct": { "type": "number", "default": 0.05 },
+        "manpowerLevyPct": { "type": "number", "default": 0.0003 }
+      },
+      "required": ["projectId", "contractNumber", "originalValue"]
+    },
+    "BOQItem": {
+      "title": "BOQ Item",
+      "description": "Tender line items with rate breakdown",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "itemCode": { "type": "string" },
+        "description": { "type": "string" },
+        "unit": { "type": "string" },
+        "tenderQty": { "type": "number" },
+        "rateMaterials": { "type": "number" },
+        "rateLabour": { "type": "number" },
+        "rateEquipment": { "type": "number" },
+        "rateOverheadPct": { "type": "number" },
+        "rateProfitPct": { "type": "number" }
+      },
+      "required": ["projectId", "itemCode", "description", "tenderQty"]
+    },
+    "ActualCost": {
+      "title": "Actual Cost",
+      "description": "Actual costs per BOQ item",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "costElement": { "type": "string", "enum": ["materials", "labour", "equipment", "overhead", "other"] },
+        "period": { "type": "string", "description": "YYYY-MM" },
+        "amount": { "type": "number" }
+      },
+      "required": ["projectId", "itemId", "costElement", "period", "amount"]
+    },
+    "Collection": {
+      "title": "Collection",
+      "description": "Actual cash received from clients",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "contractId": { "type": "string" },
+        "billingId": { "type": "string", "description": "Optional link to billing" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "reference": { "type": "string", "description": "Check number or bank transfer ref" }
+      },
+      "required": ["projectId", "contractId", "amount", "date"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Suppliers and subcontractors",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["material", "labour", "equipment", "subcontractor"] },
+        "contact": { "type": "string" }
+      },
+      "required": ["name", "type"]
+    },
+    "AdminExpense": {
+      "title": "Administrative Expense",
+      "description": "Indirect costs not linked to specific projects",
+      "type": "object",
+      "properties": {
+        "description": { "type": "string" },
+        "amount": { "type": "number" },
+        "period": { "type": "string" },
+        "category": { "type": "string" }
+      },
+      "required": ["description", "amount", "period"]
+    },
+    "Billing": {
+      "title": "Billing (IPC)",
+      "description": "Interim Payment Certificates with Egyptian deductions",
+      "type": "object",
+      "properties": {
+        "projectId": { "type": "string" },
+        "contractId": { "type": "string" },
+        "billingNumber": { "type": "string" },
+        "period": { "type": "string", "description": "YYYY-MM" },
+        "date": { "type": "string", "format": "date" },
+        "worksValueExVat": { "type": "number" },
+        "vatAmount": { "type": "number" },
+        "execGuaranteeAmount": { "type": "number" },
+        "labourInsuranceAmount": { "type": "number" },
+        "manpowerLevyAmount": { "type": "number" },
+        "netPayable": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "submitted", "approved", "paid"] }
+      },
+      "required": ["projectId", "billingNumber", "worksValueExVat", "netPayable"]
+    },
+    "IPCProgress": {
+      "title": "IPC Progress",
+      "description": "Per-item progress for a specific IPC",
+      "type": "object",
+      "properties": {
+        "billingId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "cumulativeQty": { "type": "number" },
+        "previousQty": { "type": "number" },
+        "currentQty": { "type": "number" }
+      },
+      "required": ["billingId", "itemId", "cumulativeQty"]
+    },
+    "ChartOfAccount": {
+      "title": "Chart of Account",
+      "description": "Financial accounts hierarchy",
+      "type": "object",
+      "properties": {
+        "accountCode": { "type": "string" },
+        "accountName": { "type": "string" },
+        "parentCode": { "type": "string", "description": "Parent account code for hierarchy" },
+        "type": { "type": "string", "enum": ["asset", "liability", "equity", "revenue", "expense"] },
+        "isGroup": { "type": "boolean", "description": "True if it's a category, false if it's a posting account" }
+      },
+      "required": ["accountCode", "accountName", "type", "isGroup"]
+    },
+    "Transaction": {
+      "title": "Financial Transaction",
+      "description": "Journal entries for financial tracking",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "format": "date" },
+        "description": { "type": "string" },
+        "projectId": { "type": "string", "description": "Optional project link" },
+        "entries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "accountCode": { "type": "string" },
+              "debit": { "type": "number" },
+              "credit": { "type": "number" }
+            }
+          }
+        }
+      },
+      "required": ["date", "description", "entries"]
+    }
+  },
+  "firestore": {
+    "/projects/{projectId}": { "schema": "Project", "description": "Project documents" },
+    "/contracts/{contractId}": { "schema": "Contract", "description": "Contract documents" },
+    "/boq_items/{itemId}": { "schema": "BOQItem", "description": "BOQ line items" },
+    "/actual_costs/{costId}": { "schema": "ActualCost", "description": "Actual cost entries" },
+    "/collections/{collectionId}": { "schema": "Collection", "description": "Cash collection entries" },
+    "/suppliers/{supplierId}": { "schema": "Supplier", "description": "Supplier registry" },
+    "/admin_expenses/{expenseId}": { "schema": "AdminExpense", "description": "Administrative expenses" },
+    "/chart_of_accounts/{accountId}": { "schema": "ChartOfAccount", "description": "Chart of accounts" },
+    "/transactions/{transactionId}": { "schema": "Transaction", "description": "Journal entries" },
+    "/billing/{billingId}": { "schema": "Billing", "description": "Interim Payment Certificates" },
+    "/ipc_progress/{progressId}": { "schema": "IPCProgress", "description": "Item progress per IPC" },
+    "/settings/{settingId}": { "schema": "object", "description": "System and company settings" }
+  }
+}

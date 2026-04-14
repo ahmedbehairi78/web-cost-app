@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: projects
+    // Fields: projectCode (string), projectName (string), clientName (string), status (string), createdAt (timestamp)
+    //
+    // Collection: contracts
+    // Fields: projectId (string), contractNumber (string), contractType (string), originalValue (number), vatRate (number)
+    //
+    // Collection: boq_items
+    // Fields: projectId (string), itemCode (string), description (string), unit (string), tenderQty (number)
+    //
+    // Collection: collections
+    // Fields: projectId (string), contractId (string), amount (number), date (string), reference (string)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && 
+        (
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin') ||
+          (request.auth.token.email == "myline78@gmail.com" && request.auth.token.email_verified == true)
+        );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.role in ['admin', 'user', 'guest'] &&
+             data.email is string && data.email.size() < 100;
+    }
+
+    function isValidProject(data) {
+      return data.projectCode is string && data.projectCode.size() > 0 &&
+             data.projectName is string && data.projectName.size() > 0 &&
+             data.status in ['active', 'completed', 'suspended', 'cancelled'];
+    }
+
+    function isValidContract(data) {
+      return data.projectId is string && 
+             data.contractName is string && data.contractName.size() > 0 &&
+             data.contractNumber is string && data.contractNumber.size() > 0;
+    }
+
+    function isValidCollection(data) {
+      return data.projectId is string && data.projectId.size() < 100 &&
+             data.contractId is string && data.contractId.size() < 100 &&
+             data.amount is number && data.amount > 0 &&
+             data.date is string && data.date.size() < 50;
+    }
+
+    function isValidBilling(data) {
+      return data.projectId is string && data.projectId.size() < 100 &&
+             data.netPayable is number && data.netPayable >= 0;
+    }
+
+    function isValidActualCost(data) {
+      return data.projectId is string && data.projectId.size() < 100 &&
+             data.amount is number && data.amount >= 0;
+    }
+
+    function isValidPurchaseTransaction(data) {
+      return data.projectId is string && data.projectId.size() < 100 &&
+             data.amount is number && data.amount >= 0 &&
+             data.type in ['invoice', 'ipc'];
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && 
+                      (request.resource.data.role == 'user' || 
+                       (request.auth.token.email == "myline78@gmail.com" && request.auth.token.email_verified == true));
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+    }
+
+    match /projects/{projectId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidProject(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidContract(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /boq_items/{itemId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /actual_costs/{costId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidActualCost(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /collections/{collectionId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidCollection(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /purchase_transactions/{txId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidPurchaseTransaction(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /admin_expenses/{expenseId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /chart_of_accounts/{accountId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /billing/{billingId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidBilling(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /ipc_progress/{progressId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}
