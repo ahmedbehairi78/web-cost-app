@@ -33,6 +33,8 @@ import { useLanguage } from '../context/LanguageContext';
 export function Dashboard() {
   const { t, language, theme } = useLanguage();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
   const [stats, setStats] = useState({
     totalBudget: 0,
     totalSpent: 0,
@@ -44,8 +46,19 @@ export function Dashboard() {
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
 
   useEffect(() => {
-    setLoading(true);
     const unsubs: (() => void)[] = [];
+    const ready = {
+      projects: false,
+      transactions: false,
+      boq: false,
+    };
+
+    const finishRefresh = () => {
+      if (ready.projects && ready.transactions && ready.boq) {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    };
 
     const handleStatsUpdate = (projectsData: any[], transData: any[], boqItems: any[]) => {
       setRecentTransactions(transData.slice(0, 5));
@@ -78,7 +91,6 @@ export function Dashboard() {
         totalCollected,
         pendingBilling
       });
-      setLoading(false);
     };
 
     let projectsData: any[] = [];
@@ -86,10 +98,17 @@ export function Dashboard() {
     let boqItems: any[] = [];
 
     const unsubProjects = onSnapshot(collection(db, 'projects'), (snapshot) => {
-      projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      projectsData = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter((project: any) => project.isDeleted !== true);
+      ready.projects = true;
       handleStatsUpdate(projectsData, transData, boqItems);
+      finishRefresh();
     }, (err) => {
       console.error("Dashboard projects listener error:", err);
+      ready.projects = true;
+      setLoading(false);
+      setRefreshing(false);
     });
 
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
@@ -99,16 +118,28 @@ export function Dashboard() {
           .filter((transaction: any) => transaction.isDeleted !== true),
         'date'
       );
+      ready.transactions = true;
       handleStatsUpdate(projectsData, transData, boqItems);
+      finishRefresh();
     }, (err) => {
       console.error("Dashboard transactions listener error:", err);
+      ready.transactions = true;
+      setLoading(false);
+      setRefreshing(false);
     });
 
     const unsubBOQ = onSnapshot(collection(db, 'boq_items'), (snapshot) => {
-      boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      boqItems = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter((item: any) => item.isDeleted !== true);
+      ready.boq = true;
       handleStatsUpdate(projectsData, transData, boqItems);
+      finishRefresh();
     }, (err) => {
       console.error("Dashboard boq_items listener error:", err);
+      ready.boq = true;
+      setLoading(false);
+      setRefreshing(false);
     });
 
     unsubs.push(unsubProjects, unsubTransactions, unsubBOQ);
@@ -125,7 +156,13 @@ export function Dashboard() {
     return () => {
       unsubs.forEach(unsub => unsub());
     }; 
-  }, [language]);
+  }, [language, refreshKey]);
+
+  const handleRefreshData = () => {
+    if (refreshing) return;
+    setRefreshing(true);
+    setRefreshKey((current) => current + 1);
+  };
 
   const statCards = [
     { label: t('total_contracts'), value: stats.totalBudget, icon: DollarSign, color: 'text-blue-500', trend: '+0%' },
@@ -152,7 +189,14 @@ export function Dashboard() {
         </div>
         <div className="flex gap-3">
           <button className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors", theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : "bg-white border border-gray-200 hover:bg-gray-50")}>{language === 'ar' ? 'تصدير تقرير PDF' : 'Export PDF'}</button>
-          <button className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-sm font-medium transition-colors text-white">{language === 'ar' ? 'تحديث البيانات' : 'Refresh Data'}</button>
+          <button
+            onClick={handleRefreshData}
+            disabled={refreshing}
+            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium transition-colors text-white flex items-center gap-2"
+          >
+            {refreshing && <Loader2 size={16} className="animate-spin" />}
+            {language === 'ar' ? 'تحديث البيانات' : 'Refresh Data'}
+          </button>
         </div>
       </header>
 
