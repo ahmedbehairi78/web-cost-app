@@ -19,9 +19,10 @@ import {
   FileSpreadsheet,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
+import { sortByTextField } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
@@ -106,9 +107,12 @@ export function BOQ() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), where('isDeleted', '==', false), orderBy('projectCode'));
+    const q = query(collection(db, 'projects'), where('isDeleted', '==', false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      const data = sortByTextField(
+        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)),
+        'projectCode'
+      );
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id);
@@ -149,11 +153,13 @@ export function BOQ() {
     setLoading(true);
     const q = query(
       collection(db, 'boq_items'), 
-      where('contractId', '==', selectedContractId),
-      orderBy('itemCode')
+      where('contractId', '==', selectedContractId)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
+      const data = sortByTextField(
+        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)),
+        'itemCode'
+      );
       setItems(data);
       setLoading(false);
     }, (error) => {

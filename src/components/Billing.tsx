@@ -20,10 +20,11 @@ import {
   TrendingDown,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
+import { sortByDateFieldDesc, sortByTextField } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
@@ -87,6 +88,7 @@ interface BillingIPC {
   projectId: string;
   contractId: string;
   billingNumber: string;
+  journalSourceKey?: string;
   date: any;
   items: BillingItem[];
   worksValueExVat: number;
@@ -137,9 +139,12 @@ export function Billing() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), where('isDeleted', '==', false), orderBy('projectCode'));
+    const q = query(collection(db, 'projects'), where('isDeleted', '==', false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      const data = sortByTextField(
+        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)),
+        'projectCode'
+      );
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id);
@@ -183,11 +188,13 @@ export function Billing() {
     const qBilling = query(
       collection(db, 'billing'), 
       where('contractId', '==', selectedContractId),
-      where('isDeleted', '==', false),
-      orderBy('date', 'desc')
+      where('isDeleted', '==', false)
     );
     const unsubBilling = onSnapshot(qBilling, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BillingIPC));
+      const data = sortByDateFieldDesc(
+        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BillingIPC)),
+        'date'
+      );
       setBillings(data);
       setLoading(false);
     }, (error) => {
@@ -197,12 +204,16 @@ export function Billing() {
     // Fetch BOQ Items
     const qBoq = query(
       collection(db, 'boq_items'),
-      where('contractId', '==', selectedContractId),
-      orderBy('itemCode')
+      where('contractId', '==', selectedContractId)
     );
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
+      const data = sortByTextField(
+        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)),
+        'itemCode'
+      );
       setBoqItems(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'boq_items');
     });
 
     return () => {
@@ -437,9 +448,35 @@ export function Billing() {
       if (editingIPC) {
         const { updateDoc, doc } = await import('firebase/firestore');
         await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
+        await accountingService.recordIPC({
+          worksValue: worksValueExVat,
+          vatAmount: vat,
+          netPayable: net,
+          execGuarantee: exec,
+          whtAmount: wht,
+          labourInsurance: insurance,
+          manpowerLevy: levy,
+          advancePaymentRecovery: advance,
+          description: `${language === 'ar' ? 'مستخلص رقم' : 'IPC No'} ${formData.billingNumber}`,
+          projectId: selectedProjectId,
+          contractId: selectedContractId,
+          billingId: editingIPC.id,
+          billingNumber: formData.billingNumber,
+          date: new Date().toISOString().split('T')[0],
+          vatPct: formData.vatPct,
+          execGuaranteePct: formData.execGuaranteePct,
+          whtPct: formData.whtPct,
+          labourInsurancePct: formData.labourInsurancePct,
+          manpowerLevyPct: formData.manpowerLevyPct,
+          createIfMissing: Boolean(editingIPC.journalSourceKey)
+        });
       } else {
         // 1. Record the billing in billing collection
-        await addDoc(collection(db, 'billing'), billingData);
+        const billingRef = await addDoc(collection(db, 'billing'), billingData);
+        const { updateDoc, doc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'billing', billingRef.id), {
+          journalSourceKey: `billing:${billingRef.id}`
+        });
 
         // 2. Generate automatic journal entry via accounting service
         await accountingService.recordIPC({
@@ -454,8 +491,14 @@ export function Billing() {
           description: `${language === 'ar' ? 'مستخلص رقم' : 'IPC No'} ${formData.billingNumber}`,
           projectId: selectedProjectId,
           contractId: selectedContractId,
+          billingId: billingRef.id,
+          billingNumber: formData.billingNumber,
           date: new Date().toISOString().split('T')[0],
-          contractName: contract?.contractName || 'N/A'
+          vatPct: formData.vatPct,
+          execGuaranteePct: formData.execGuaranteePct,
+          whtPct: formData.whtPct,
+          labourInsurancePct: formData.labourInsurancePct,
+          manpowerLevyPct: formData.manpowerLevyPct
         });
       }
 
@@ -651,6 +694,9 @@ export function Billing() {
           
           const deletePromises = snapshot.docs.map(d => updateDoc(doc(db, 'billing', d.id), { isDeleted: true }));
           await Promise.all(deletePromises);
+          await accountingService.softDeleteTransactionsBySourceKeys(
+            snapshot.docs.map((billingDoc) => `billing:${billingDoc.id}`)
+          );
           
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         } catch (error) {

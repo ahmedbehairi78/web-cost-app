@@ -11,11 +11,12 @@ import {
   Users,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, serverTimestamp, orderBy, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { sortByDateFieldDesc } from '../lib/firestoreSorts';
 import { useLanguage } from '../context/LanguageContext';
 
 export function ActualCosts() {
@@ -50,11 +51,13 @@ export function ActualCosts() {
     const unsubCosts = onSnapshot(
       query(
         collection(db, 'actual_costs'), 
-        where('isDeleted', '==', false),
-        orderBy('date', 'desc')
+        where('isDeleted', '==', false)
       ), 
       (snap) => {
-        setCosts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        setCosts(sortByDateFieldDesc(
+          snap.docs.map(doc => ({ id: doc.id, ...doc.data() })),
+          'date'
+        ));
         setLoading(false);
       },
       (err) => {

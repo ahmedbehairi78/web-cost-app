@@ -27,6 +27,7 @@ import { collection, onSnapshot, query } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
+import { sortByDateFieldDesc } from '../lib/firestoreSorts';
 import { useLanguage } from '../context/LanguageContext';
 
 export function Dashboard() {
@@ -92,7 +93,12 @@ export function Dashboard() {
     });
 
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
-      transData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      transData = sortByDateFieldDesc(
+        snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter((transaction: any) => transaction.isDeleted !== true),
+        'date'
+      );
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
       console.error("Dashboard transactions listener error:", err);

@@ -12,10 +12,11 @@ import {
   X,
   Briefcase
 } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy, addDoc, serverTimestamp, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp, where } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
+import { sortByTextField } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -49,11 +50,10 @@ export function Projects() {
   useEffect(() => {
     const q = query(
       collection(db, 'projects'), 
-      where('isDeleted', '==', false),
-      orderBy('projectCode')
+      where('isDeleted', '==', false)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => {
+      const data = sortByTextField(snapshot.docs.map(doc => {
         const docData = doc.data();
         return { 
           id: doc.id, 
@@ -63,7 +63,7 @@ export function Projects() {
           spent: docData.spent || Math.random() * 3000000 + 500000,
           collected: docData.collected || Math.random() * 2000000 + 100000,
         } as Project;
-      });
+      }), 'projectCode');
       setProjects(data);
       setLoading(false);
     }, (error) => {

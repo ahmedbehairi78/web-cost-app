@@ -98,19 +98,31 @@ export function Reports() {
     });
 
     const unsubCosts = onSnapshot(collection(db, 'actual_costs'), (snap) => {
-      setCosts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cost)));
+      setCosts(
+        snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Cost))
+          .filter((cost: any) => cost.isDeleted !== true)
+      );
     }, (err) => {
       console.error("Costs listener error:", err);
     });
 
     const unsubBillings = onSnapshot(collection(db, 'billing'), (snap) => {
-      setBillings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Billing)));
+      setBillings(
+        snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Billing))
+          .filter((billing: any) => billing.isDeleted !== true)
+      );
     }, (err) => {
       console.error("Billings listener error:", err);
     });
 
     const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snap) => {
-      setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      setTransactions(
+        snap.docs
+          .map(doc => ({ id: doc.id, ...doc.data() }))
+          .filter((transaction: any) => transaction.isDeleted !== true)
+      );
     }, (err) => {
       console.error("Reports transactions listener error:", err);
     });

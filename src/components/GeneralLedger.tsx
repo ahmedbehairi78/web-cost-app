@@ -20,6 +20,7 @@ import {
 import { collection, onSnapshot, query, orderBy, addDoc, where, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
+import { sortByDateFieldDesc } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { accountingService } from '../services/accountingService';
@@ -57,6 +58,7 @@ interface Transaction {
     accountName: string;
     debit: number;
     credit: number;
+    note?: string;
   }[];
   createdBy: string;
 }
@@ -104,6 +106,8 @@ export function GeneralLedger() {
 
   useEffect(() => {
     setLoading(true);
+    void accountingService.ensureDefaultChartAccounts();
+
     const unsubAccounts = onSnapshot(
       query(collection(db, 'chart_of_accounts'), orderBy('accountCode')),
       (snapshot) => {
@@ -129,9 +133,12 @@ export function GeneralLedger() {
     );
 
     const unsubTransactions = onSnapshot(
-      query(collection(db, 'transactions'), orderBy('date', 'desc')),
+      collection(db, 'transactions'),
       (snapshot) => {
-        setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+        const activeTransactions = snapshot.docs
+          .map(doc => ({ id: doc.id, ...doc.data() } as Transaction))
+          .filter((transaction) => (transaction as any).isDeleted !== true);
+        setTransactions(sortByDateFieldDesc(activeTransactions, 'date'));
         setLoading(false);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'transactions')
@@ -332,6 +339,9 @@ export function GeneralLedger() {
   };
 
   const seedAccounts = async () => {
+    await accountingService.ensureDefaultChartAccounts();
+    return;
+
     const initialAccounts = [
       { accountCode: '1', accountName: 'الأصول', parentCode: '', type: 'asset', isGroup: true },
       { accountCode: '11', accountName: 'الأصول المتداولة', parentCode: '1', type: 'asset', isGroup: true },
@@ -855,9 +865,14 @@ export function GeneralLedger() {
                           })() : ''}
                         </td>
                         <td className="px-6 py-4 text-sm">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-[10px] text-gray-500">{entry.accountCode}</span>
-                            <span>{entry.accountName}</span>
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] text-gray-500">{entry.accountCode}</span>
+                              <span>{entry.accountName}</span>
+                            </div>
+                            {entry.note && (
+                              <span className="text-[10px] text-gray-500">{entry.note}</span>
+                            )}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm font-mono text-blue-400">
@@ -947,6 +962,9 @@ export function GeneralLedger() {
                             <div className="flex flex-col">
                               <span className="text-sm font-medium">{entry.accountName}</span>
                               <span className="text-[10px] text-gray-500 font-mono">{entry.accountCode}</span>
+                              {entry.note && (
+                                <span className="text-[10px] text-gray-500 mt-1">{entry.note}</span>
+                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-sm font-mono text-blue-400">
