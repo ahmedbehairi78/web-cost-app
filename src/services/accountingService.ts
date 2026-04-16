@@ -166,7 +166,11 @@ export const accountingService = {
   },
 
   async createTransaction(transaction: Omit<Transaction, 'createdAt' | 'createdBy' | 'isDeleted'>) {
-    await this.ensureDefaultChartAccounts();
+    try {
+      await this.ensureDefaultChartAccounts();
+    } catch (error) {
+      console.warn('Unable to ensure default chart accounts before transaction creation.', error);
+    }
 
     const entries = cleanJournalEntries(transaction.entries);
     const totalDebit = entries.reduce((sum, entry) => sum + entry.debit, 0);
@@ -350,9 +354,19 @@ export const accountingService = {
       entries,
     };
 
-    const existingTransaction = await this.getTransactionBySourceKey(sourceKey);
+    let existingTransaction: Awaited<ReturnType<typeof this.getTransactionBySourceKey>> = null;
+    try {
+      existingTransaction = await this.getTransactionBySourceKey(sourceKey);
+    } catch (error) {
+      console.warn(`Unable to query existing transaction for ${sourceKey}. A new transaction will be created if needed.`, error);
+    }
+
     if (existingTransaction) {
-      await this.ensureDefaultChartAccounts();
+      try {
+        await this.ensureDefaultChartAccounts();
+      } catch (error) {
+        console.warn('Unable to ensure default chart accounts before transaction update.', error);
+      }
       await updateDoc(doc(db, 'transactions', existingTransaction.id), {
         ...payload,
         entries: cleanJournalEntries(entries),

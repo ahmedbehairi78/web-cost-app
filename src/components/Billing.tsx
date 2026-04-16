@@ -20,7 +20,7 @@ import {
   TrendingDown,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
@@ -447,7 +447,10 @@ export function Billing() {
 
       if (editingIPC) {
         const { updateDoc, doc } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
+        await updateDoc(doc(db, 'billing', editingIPC.id), {
+          ...billingData,
+          journalSourceKey: editingIPC.journalSourceKey || `billing:${editingIPC.id}`
+        });
         await accountingService.recordIPC({
           worksValue: worksValueExVat,
           vatAmount: vat,
@@ -468,13 +471,14 @@ export function Billing() {
           whtPct: formData.whtPct,
           labourInsurancePct: formData.labourInsurancePct,
           manpowerLevyPct: formData.manpowerLevyPct,
-          createIfMissing: Boolean(editingIPC.journalSourceKey)
+          createIfMissing: true
         });
       } else {
         // 1. Record the billing in billing collection
-        const billingRef = await addDoc(collection(db, 'billing'), billingData);
-        const { updateDoc, doc } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'billing', billingRef.id), {
+        const { doc, setDoc } = await import('firebase/firestore');
+        const billingRef = doc(collection(db, 'billing'));
+        await setDoc(billingRef, {
+          ...billingData,
           journalSourceKey: `billing:${billingRef.id}`
         });
 
