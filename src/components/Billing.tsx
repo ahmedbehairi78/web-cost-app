@@ -20,7 +20,7 @@ import {
   TrendingDown,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, updateDoc, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
@@ -204,8 +204,10 @@ export function Billing() {
       orderBy('itemCode')
     );
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as BOQItem));
       setBoqItems(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'boq_items');
     });
 
     return () => {
@@ -422,23 +424,47 @@ export function Billing() {
     setFormData({ ...formData, items: newItems });
   };
 
-  const handleSubmit = async (e?: React.FormEvent, forcedStatus?: 'draft' | 'submitted') => {
-    if (e) e.preventDefault();
+  const saveIPC = async (finalStatus: BillingIPC['status']) => {
     if (!selectedContractId) return;
     setIsSubmitting(true);
     const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
     const contract = contracts.find(c => c.id === selectedContractId);
-    
-    // Determine the status: if forcedStatus is provided (from Draft button), use it. 
-    // Otherwise use editingIPC.status or default to 'submitted'.
-    const finalStatus = forcedStatus || (editingIPC ? editingIPC.status : 'submitted');
 
     try {
-      let transactionId = editingIPC?.transactionId;
+      const billingData: Omit<BillingIPC, 'id'> = {
+        projectId: selectedProjectId,
+        contractId: selectedContractId,
+        billingNumber: formData.billingNumber,
+        items: formData.items,
+        worksValueExVat,
+        vatAmount: vat,
+        execGuaranteeAmount: exec,
+        whtAmount: wht,
+        labourInsuranceAmount: insurance,
+        manpowerLevyAmount: levy,
+        advancePaymentRecovery: advance,
+        netPayable: net,
+        status: finalStatus,
+        date: formData.date,
+        transactionId: editingIPC?.transactionId || "",
+        isDeleted: false
+      };
 
-      // Only record in GL if not a draft
-      if (finalStatus !== 'draft') {
-        transactionId = await accountingService.recordIPC({
+      if (finalStatus === 'draft' && editingIPC?.transactionId) {
+        // Atomically soft-delete the GL entry and clear transactionId on billing
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'transactions', editingIPC.transactionId), { isDeleted: true });
+        batch.update(doc(db, 'billing', editingIPC.id), { ...billingData, transactionId: "" });
+        await batch.commit();
+      } else if (finalStatus === 'draft') {
+        if (editingIPC) {
+          await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
+        } else {
+          await addDoc(collection(db, 'billing'), billingData);
+        }
+      } else {
+        // Non-draft: write GL entry first, then persist billing with returned transactionId
+        const transactionId = await accountingService.recordIPC({
           worksValue: worksValueExVat,
           vatAmount: vat,
           netPayable: net,
@@ -454,36 +480,13 @@ export function Billing() {
           contractName: contract?.contractName || 'N/A',
           transactionId: editingIPC?.transactionId
         });
-      } else if (editingIPC?.transactionId) {
-        // If it was already in GL and we are reverting to draft, we should ideally mark it as deleted in GL
-        await accountingService.deleteTransaction(editingIPC.transactionId);
-        transactionId = "";
-      }
 
-      const billingData: any = {
-        projectId: selectedProjectId,
-        contractId: selectedContractId,
-        billingNumber: formData.billingNumber,
-        items: formData.items,
-        worksValueExVat: worksValueExVat,
-        vatAmount: vat,
-        execGuaranteeAmount: exec,
-        whtAmount: wht,
-        labourInsuranceAmount: insurance,
-        manpowerLevyAmount: levy,
-        advancePaymentRecovery: advance,
-        netPayable: net,
-        status: finalStatus,
-        date: formData.date,
-        transactionId: transactionId || "",
-        isDeleted: false
-      };
-
-      if (editingIPC) {
-        const { updateDoc, doc } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
-      } else {
-        await addDoc(collection(db, 'billing'), billingData);
+        const finalBillingData = { ...billingData, transactionId: transactionId || "" };
+        if (editingIPC) {
+          await updateDoc(doc(db, 'billing', editingIPC.id), finalBillingData);
+        } else {
+          await addDoc(collection(db, 'billing'), finalBillingData);
+        }
       }
 
       setIsModalOpen(false);
@@ -493,6 +496,13 @@ export function Billing() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSaveDraft = () => saveIPC('draft');
+
+  const handleSubmitIPC = (e: React.FormEvent) => {
+    e.preventDefault();
+    saveIPC('submitted');
   };
 
   const { vat, exec, insurance, levy, net } = calculateDeductions();
@@ -987,7 +997,7 @@ export function Billing() {
                 </div>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              <form onSubmit={handleSubmitIPC} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم المستخلص' : 'IPC Number'}</label>
@@ -1232,9 +1242,9 @@ export function Billing() {
                       {language === 'ar' ? 'طباعة' : 'Print'}
                     </button>
                   )}
-                  <button 
+                  <button
                     type="button"
-                    onClick={() => handleSubmit(undefined, 'draft')}
+                    onClick={handleSaveDraft}
                     disabled={isSubmitting}
                     className={cn(
                       "flex-1 py-3 rounded-xl font-bold transition-all border", 
@@ -1245,9 +1255,9 @@ export function Billing() {
                   >
                     {isSubmitting ? '...' : (language === 'ar' ? 'حفظ كمسودة' : 'Save as Draft')}
                   </button>
-                  <button 
+                  <button
                     type="button"
-                    onClick={() => handleSubmit(undefined, 'submitted')}
+                    onClick={() => saveIPC('submitted')}
                     disabled={isSubmitting}
                     className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
                   >
