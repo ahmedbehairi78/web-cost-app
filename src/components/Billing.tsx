@@ -368,7 +368,7 @@ export function Billing() {
       const initialItems: BillingItem[] = boqItems.map(boq => {
         // Calculate previous quantity from existing billings (excluding drafts)
         const previousQty = billings.reduce((sum, b) => {
-          if (b.status === 'draft') return sum;
+          if (!(['submitted', 'approved', 'paid'] as BillingIPC['status'][]).includes(b.status)) return sum;
           const item = b.items?.find(i => i.boqItemId === boq.id);
           return sum + (item?.currentQty || 0);
         }, 0);

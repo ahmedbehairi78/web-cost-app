@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   Search, 
@@ -122,7 +122,7 @@ export function BOQ() {
   useEffect(() => {
     const q = query(collection(db, 'projects'), where('isDeleted', '==', false), orderBy('projectCode'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Project));
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id);
@@ -141,7 +141,7 @@ export function BOQ() {
     }
     const q = query(collection(db, 'contracts'), where('projectId', '==', selectedProjectId), where('isDeleted', '==', false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Contract));
       setContracts(data);
       if (data.length > 0) {
         setSelectedContractId(data[0].id);
@@ -167,7 +167,7 @@ export function BOQ() {
       orderBy('itemCode')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
+      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as BOQItem));
       setItems(data);
       setLoading(false);
     }, (error) => {
@@ -191,22 +191,21 @@ export function BOQ() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const progress: Record<string, number> = {};
-      
-      snapshot.docs.forEach(doc => {
-        const ipc = doc.data();
-        if (ipc.items && Array.isArray(ipc.items)) {
+
+      snapshot.docs.forEach(ipcDoc => {
+        const ipc = ipcDoc.data();
+        if (Array.isArray(ipc.items)) {
           ipc.items.forEach((item: any) => {
             if (item.boqItemId) {
-              const currentTotal = progress[item.boqItemId] || 0;
-              progress[item.boqItemId] = currentTotal + (item.currentQty || 0);
+              progress[item.boqItemId] = (progress[item.boqItemId] || 0) + (item.currentQty || 0);
             }
           });
         }
       });
-      
+
       setProgressMap(progress);
     }, (error) => {
-      console.error("Error fetching progress for BOQ items:", error);
+      handleFirestoreError(error, OperationType.LIST, 'billing');
     });
 
     return () => unsubscribe();
@@ -356,6 +355,13 @@ export function BOQ() {
       }
     });
   };
+
+  const filteredProgressMap = useMemo(() => {
+    const validIds = new Set(items.map(i => i.id));
+    return Object.fromEntries(
+      Object.entries(progressMap).filter(([id]) => validIds.has(id))
+    );
+  }, [progressMap, items]);
 
   const totalBOQAmount = items.reduce((sum, item) => sum + (item.tenderAmount || 0), 0);
 
@@ -737,7 +743,7 @@ export function BOQ() {
                       if (!item.startDate || !item.expectedDuration) return "text-gray-500";
                       const start = new Date(item.startDate);
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
-                      const totalExecuted = progressMap[item.id] || 0;
+                      const totalExecuted = filteredProgressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
                       const isDelayed = end < new Date() && progressPct < 99.9;
                       return isDelayed ? "text-red-500" : "text-blue-500";
@@ -752,7 +758,7 @@ export function BOQ() {
                   </td>
                   <td className="p-4">
                     {(() => {
-                      const totalExecuted = progressMap[item.id] || 0;
+                      const totalExecuted = filteredProgressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
                       return (
                         <div className="space-y-1">
@@ -777,7 +783,7 @@ export function BOQ() {
                       if (!item.startDate || !item.expectedDuration) return null;
                       const start = new Date(item.startDate);
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
-                      const totalExecuted = progressMap[item.id] || 0;
+                      const totalExecuted = filteredProgressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
                       
                       const isCompleted = progressPct >= 99.9;
