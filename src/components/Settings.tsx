@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot, query, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
+import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
@@ -29,6 +30,8 @@ export function Settings() {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('user');
+  const [seedingAccounts, setSeedingAccounts] = useState(false);
+  const [seedResult, setSeedResult] = useState<{ created: number } | null>(null);
 
   // Print Settings State
   const [printSettings, setPrintSettings] = useState({
@@ -67,6 +70,20 @@ export function Settings() {
     };
     fetchUserRole();
   }, []);
+
+  const handleSeedAccounts = async () => {
+    setSeedingAccounts(true);
+    setSeedResult(null);
+    try {
+      const created = await accountingService.seedChartOfAccounts();
+      setSeedResult({ created });
+      setTimeout(() => setSeedResult(null), 5000);
+    } catch (error) {
+      console.error('Seed error:', error);
+    } finally {
+      setSeedingAccounts(false);
+    }
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -163,6 +180,48 @@ export function Settings() {
                   <div className={cn("p-4 border rounded-xl", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
                     <p className="text-xs text-gray-500 font-bold uppercase mb-2">Database ID</p>
                     <code className="text-green-400 font-mono">{firebaseConfig.firestoreDatabaseId || '(default)'}</code>
+                  </div>
+
+                  <div className={cn("p-6 border rounded-xl space-y-4", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 bg-yellow-900/20 rounded-lg text-yellow-500 shrink-0">
+                        <FileText size={20} />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-sm">{language === 'ar' ? 'دليل الحسابات الافتراضي' : 'Default Chart of Accounts'}</h4>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {language === 'ar'
+                            ? 'يقوم بإضافة الحسابات المحاسبية الافتراضية للمشروع (أصول، خصوم، إيرادات، مصروفات). لن يؤثر على الحسابات الموجودة.'
+                            : 'Seeds the default chart of accounts (assets, liabilities, revenue, expenses). Will not overwrite existing accounts.'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={handleSeedAccounts}
+                        disabled={seedingAccounts}
+                        className="bg-yellow-600 hover:bg-yellow-500 disabled:bg-yellow-900 disabled:text-yellow-700 text-white px-4 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+                      >
+                        {seedingAccounts
+                          ? <><Loader2 className="animate-spin" size={16} />{language === 'ar' ? 'جاري الإضافة...' : 'Seeding...'}</>
+                          : <><Database size={16} />{language === 'ar' ? 'إضافة الحسابات الافتراضية' : 'Seed Default Accounts'}</>
+                        }
+                      </button>
+
+                      {seedResult !== null && (
+                        <span className={cn(
+                          "flex items-center gap-1.5 text-sm font-medium",
+                          seedResult.created > 0 ? "text-green-500" : "text-gray-400"
+                        )}>
+                          <CheckCircle2 size={16} />
+                          {seedResult.created > 0
+                            ? (language === 'ar' ? `تمت إضافة ${seedResult.created} حساباً` : `${seedResult.created} accounts added`)
+                            : (language === 'ar' ? 'جميع الحسابات موجودة بالفعل' : 'All accounts already exist')
+                          }
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
               </motion.div>

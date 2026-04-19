@@ -838,11 +838,11 @@ export function Billing() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={cn(
-                    "text-[10px] font-bold px-2 py-1 rounded uppercase",
-                    ipc.status === 'paid' ? "bg-green-900/20 text-green-500" : 
-                    ipc.status === 'draft' ? "bg-gray-800 border border-gray-700 text-gray-400" :
-                    ipc.status === 'review' ? "bg-blue-900/20 text-blue-500" :
-                    "bg-yellow-900/20 text-yellow-500"
+                    "text-[10px] font-bold px-2 py-1 rounded uppercase border",
+                    ipc.status === 'paid'   ? "bg-green-500/10 border-green-500/30 text-green-500" :
+                    ipc.status === 'draft'  ? (theme === 'dark' ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-100 border-gray-300 text-gray-500") :
+                    ipc.status === 'review' ? "bg-blue-500/10 border-blue-500/30 text-blue-500" :
+                    "bg-yellow-500/10 border-yellow-500/30 text-yellow-600"
                   )}>
                     {ipc.status === 'paid' ? (language === 'ar' ? 'تم التحصيل' : 'Paid') : 
                      ipc.status === 'draft' ? (language === 'ar' ? 'مسودة' : 'Draft') :

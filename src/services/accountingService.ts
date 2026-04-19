@@ -12,6 +12,37 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
+export interface ChartAccountDefinition {
+  accountCode: string;
+  accountName: string;
+  parentCode: string;
+  type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
+  isGroup: boolean;
+}
+
+export const DEFAULT_CHART_OF_ACCOUNTS: ChartAccountDefinition[] = [
+  { accountCode: '1',    accountName: 'الأصول',                                          parentCode: '',     type: 'asset',     isGroup: true  },
+  { accountCode: '11',   accountName: 'الأصول المتداولة',                                parentCode: '1',    type: 'asset',     isGroup: true  },
+  { accountCode: '1101', accountName: 'البنك',                                           parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '1102', accountName: 'عملاء عقود المقاولات',                            parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '1103', accountName: 'محتجز ضمان الأعمال',                              parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '1104', accountName: 'مصلحة الضرائب - خصم وإضافة',                     parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '1105', accountName: 'التأمينات الاجتماعية - عمالة غير منتظمة',         parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '1106', accountName: 'القوى العاملة',                                   parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '1107', accountName: 'العملاء - دفعة مقدمة',                            parentCode: '11',   type: 'asset',     isGroup: false },
+  { accountCode: '2',    accountName: 'الخصوم',                                          parentCode: '',     type: 'liability', isGroup: true  },
+  { accountCode: '21',   accountName: 'الموردين ومقاولي الباطن',                         parentCode: '2',    type: 'liability', isGroup: false },
+  { accountCode: '22',   accountName: 'الضرائب والالتزامات الحكومية',                    parentCode: '2',    type: 'liability', isGroup: true  },
+  { accountCode: '2201', accountName: 'مصلحة الضرائب - ضريبة القيمة المضافة',           parentCode: '22',   type: 'liability', isGroup: false },
+  { accountCode: '3',    accountName: 'حقوق الملكية',                                   parentCode: '',     type: 'equity',    isGroup: true  },
+  { accountCode: '4',    accountName: 'الإيرادات',                                      parentCode: '',     type: 'revenue',   isGroup: true  },
+  { accountCode: '41',   accountName: 'إيرادات عقود المقاولات',                          parentCode: '4',    type: 'revenue',   isGroup: false },
+  { accountCode: '5',    accountName: 'المصروفات',                                      parentCode: '',     type: 'expense',   isGroup: true  },
+  { accountCode: '51',   accountName: 'تكاليف مباشرة - مواد',                            parentCode: '5',    type: 'expense',   isGroup: false },
+  { accountCode: '52',   accountName: 'تكاليف مباشرة - عمالة',                           parentCode: '5',    type: 'expense',   isGroup: false },
+  { accountCode: '53',   accountName: 'مصروفات إدارية',                                 parentCode: '5',    type: 'expense',   isGroup: false },
+];
+
 export enum AccountCodes {
   BANK = '1101',
   RECEIVABLES = '1102',
@@ -343,6 +374,26 @@ export const accountingService = {
     if (!transactionId) return;
     const docRef = doc(db, 'transactions', transactionId);
     return await updateDoc(docRef, { isDeleted: true });
+  },
+
+  /**
+   * Seeds missing default chart of accounts entries. Safe to call multiple times.
+   * Returns the number of accounts that were newly created.
+   */
+  async seedChartOfAccounts(): Promise<number> {
+    const snapshot = await getDocs(collection(db, 'chart_of_accounts'));
+    const existingCodes = new Set(
+      snapshot.docs.map(d => String(d.data().accountCode ?? ''))
+    );
+
+    let created = 0;
+    for (const account of DEFAULT_CHART_OF_ACCOUNTS) {
+      if (!existingCodes.has(account.accountCode)) {
+        await addDoc(collection(db, 'chart_of_accounts'), { ...account, status: 'active' });
+        created++;
+      }
+    }
+    return created;
   },
 
   /**
