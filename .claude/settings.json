@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git status)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(git branch*)",
+      "Bash(git checkout*)",
+      "Bash(git stash*)",
+      "Bash(git rm*)",
+      "Bash(npm run dev*)",
+      "Bash(npm run build*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run preview*)",
+      "Bash(npm install*)",
+      "Bash(npx tsc --noEmit*)",
+      "Bash(npx tsc*)",
+      "Bash(firebase deploy --only firestore*)",
+      "Bash(firebase emulators:start*)",
+      "Bash(ls*)",
+      "Bash(cat package.json)",
+      "Bash(where gh*)",
+      "Bash(gh pr list*)",
+      "Bash(gh pr view*)",
+      "Bash(gh pr diff*)"
+    ],
+    "deny": []
+  }
+}
