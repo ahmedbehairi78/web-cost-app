@@ -16,7 +16,8 @@ import {
   Filter,
   ArrowRight,
   Download,
-  Upload
+  Upload,
+  Trash2
 } from 'lucide-react';
 import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -42,6 +43,8 @@ interface PurchaseTransaction {
   description: string;
   status: 'pending' | 'approved' | 'paid';
   createdAt: any;
+  transactionId?: string;
+  isDeleted?: boolean;
 }
 
 interface BillingItem {
@@ -95,6 +98,18 @@ export function Purchases() {
     parentCode: '5', // Default to Expenses
   });
 
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+
   const [newSupplierData, setNewSupplierData] = useState({
     name: '',
     taxNumber: '',
@@ -107,7 +122,7 @@ export function Purchases() {
     setLoading(true);
     
     // Listen to transactions
-    const qTx = query(collection(db, 'purchase_transactions'), orderBy('createdAt', 'desc'));
+    const qTx = query(collection(db, 'purchase_transactions'), where('isDeleted', '==', false), orderBy('createdAt', 'desc'));
     const unsubTx = onSnapshot(qTx, (snapshot) => {
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseTransaction)));
       setLoading(false);
@@ -329,6 +344,42 @@ export function Purchases() {
         : calculateIPCDeductions();
 
     try {
+      let transactionId = '';
+      
+      // 1. Record in accounting service first to get transactionId
+      if (modalType === 'invoice' && expenseAccount) {
+        transactionId = await accountingService.recordPurchaseInvoice({
+          baseAmount: formData.amount,
+          vatAmount: vat,
+          whtAmount: wht,
+          totalAmount: net,
+          supplierName: supplier?.name || '',
+          expenseAccountCode: expenseAccount.accountCode,
+          expenseAccountName: expenseAccount.accountName,
+          description: formData.description || `${t('invoice_entry')} - ${supplier?.name}`,
+          projectId: formData.projectId,
+          contractId: formData.contractId,
+          date: formData.date
+        });
+      } else if (modalType === 'ipc') {
+        transactionId = await accountingService.recordSubcontractorIPC({
+          worksValue,
+          vatAmount: vat,
+          netPayable: net,
+          execGuarantee: exec,
+          whtAmount: wht,
+          labourInsurance: insurance,
+          manpowerLevy: levy,
+          advancePaymentRecovery: advance,
+          supplierName: supplier?.name || '',
+          description: formData.description || `${t('ipc_entry')} - ${supplier?.name}`,
+          projectId: formData.projectId,
+          contractId: formData.contractId,
+          date: formData.date
+        });
+      }
+
+      // 2. Add to purchase_transactions collection
       await addDoc(collection(db, 'purchase_transactions'), {
         type: modalType,
         supplierId: formData.supplierId,
@@ -351,40 +402,9 @@ export function Purchases() {
         items: modalType === 'ipc' ? formData.items : null,
         status: 'pending',
         createdAt: serverTimestamp(),
+        transactionId,
+        isDeleted: false
       });
-
-      // Record in accounting service
-      if (modalType === 'invoice' && expenseAccount) {
-        await accountingService.recordPurchaseInvoice({
-          baseAmount: formData.amount,
-          vatAmount: vat,
-          whtAmount: wht,
-          totalAmount: net,
-          supplierName: supplier?.name || '',
-          expenseAccountCode: expenseAccount.accountCode,
-          expenseAccountName: expenseAccount.accountName,
-          description: formData.description || `${t('invoice_entry')} - ${supplier?.name}`,
-          projectId: formData.projectId,
-          contractId: formData.contractId,
-          date: formData.date
-        });
-      } else if (modalType === 'ipc') {
-        await accountingService.recordSubcontractorIPC({
-          worksValue,
-          vatAmount: vat,
-          netPayable: net,
-          execGuarantee: exec,
-          whtAmount: wht,
-          labourInsurance: insurance,
-          manpowerLevy: levy,
-          advancePaymentRecovery: advance,
-          supplierName: supplier?.name || '',
-          description: formData.description || `${t('ipc_entry')} - ${supplier?.name}`,
-          projectId: formData.projectId,
-          contractId: formData.contractId,
-          date: formData.date
-        });
-      }
       
       setShowModal(false);
       resetForm();
@@ -410,6 +430,31 @@ export function Purchases() {
       advancePaymentRecovery: 0,
       description: '',
       items: [],
+    });
+  };
+
+  const handleDeleteTransaction = (tx: PurchaseTransaction) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
+      message: language === 'ar' ? 'هل أنت متأكد من حذف هذه المعاملة؟ سيتم حذف القيد المحاسبي المرتبط به أيضاً.' : 'Are you sure you want to delete this transaction? The associated journal entry will also be deleted.',
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          // 1. Delete the purchase transaction document
+          await accountingService.softDelete('purchase_transactions', tx.id);
+          
+          // 2. Delete the associated transaction if it exists
+          if (tx.transactionId) {
+            await accountingService.deleteTransaction(tx.transactionId);
+          }
+          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, 'purchase_transactions');
+        } finally {
+          setLoading(false);
+        }
+      }
     });
   };
 
@@ -527,13 +572,22 @@ export function Purchases() {
                   <td className="px-6 py-4 text-sm font-mono text-red-400">{tx.whtAmount?.toLocaleString() || 0}</td>
                   <td className="px-6 py-4 text-sm font-black">{tx.totalAmount.toLocaleString()}</td>
                   <td className="px-6 py-4 text-sm">
-                    <span className={cn(
-                      "flex items-center gap-1 text-[10px] font-bold",
-                      tx.status === 'paid' ? "text-green-500" : "text-yellow-500"
-                    )}>
-                      {tx.status === 'paid' ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                      {tx.status === 'paid' ? (language === 'ar' ? 'تم السداد' : 'Paid') : (language === 'ar' ? 'معلق' : 'Pending')}
-                    </span>
+                    <div className="flex items-center gap-3">
+                      <span className={cn(
+                        "flex items-center gap-1 text-[10px] font-bold",
+                        tx.status === 'paid' ? "text-green-500" : "text-yellow-500"
+                      )}>
+                        {tx.status === 'paid' ? <CheckCircle2 size={12} /> : <Clock size={12} />}
+                        {tx.status === 'paid' ? (language === 'ar' ? 'تم السداد' : 'Paid') : (language === 'ar' ? 'معلق' : 'Pending')}
+                      </span>
+                      <button 
+                        onClick={() => handleDeleteTransaction(tx)}
+                        className="text-gray-500 hover:text-red-500 transition-colors"
+                        title={language === 'ar' ? 'حذف' : 'Delete'}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -688,7 +742,7 @@ export function Purchases() {
                         </thead>
                         <tbody className="divide-y divide-gray-800">
                           {formData.items.map((item, idx) => (
-                            <tr key={idx}>
+                            <tr key={item.boqItemId}>
                               <td className="p-2 font-mono">{item.itemCode}</td>
                               <td className="p-2 max-w-[150px] truncate">{item.description}</td>
                               <td className="p-2">{item.unit}</td>
@@ -990,6 +1044,46 @@ export function Purchases() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmConfig.isOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={cn("border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}
+            >
+              <div className={cn("p-6 border-b flex justify-between items-center", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                <h3 className="text-lg font-bold text-red-500">{confirmConfig.title}</h3>
+                <button onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} className="text-gray-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className={cn("text-sm", theme === 'dark' ? "text-gray-300" : "text-gray-600")}>{confirmConfig.message}</p>
+              </div>
+              <div className={cn("p-6 border-t flex justify-end gap-3", theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                <button 
+                  onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={confirmConfig.onConfirm}
+                  disabled={loading}
+                  className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2"
+                >
+                  {loading && <Loader2 className="animate-spin" size={16} />}
+                  {language === 'ar' ? 'تأكيد' : 'Confirm'}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

@@ -123,7 +123,12 @@ export function Settings() {
                 language === 'ar' ? "text-right" : "text-left",
                 activeSection === section.id 
                   ? "bg-blue-600/10 text-blue-500 border border-blue-600/20 shadow-inner" 
-                  : "text-gray-400 hover:bg-gray-900 hover:text-gray-200"
+                  : cn(
+                      "text-gray-400",
+                      theme === 'dark' ? "hover:bg-gray-900 hover:text-gray-200" : 
+                      theme === 'soft' ? "hover:bg-[#cfd8dc] hover:text-[#37474f]" : 
+                      "hover:bg-gray-200 hover:text-gray-900"
+                    )
               )}
             >
               <section.icon size={20} />
@@ -210,23 +215,30 @@ export function Settings() {
                 </div>
 
                 <div className="space-y-6">
-                  <div className={cn("flex items-center justify-between p-4 border rounded-xl", theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-gray-50 border-gray-200")}>
-                    <div>
-                      <h4 className="font-bold text-sm">{theme === 'dark' ? t('dark_mode') : t('light_mode')}</h4>
-                      <p className="text-xs text-gray-500">{language === 'ar' ? 'تبديل مظهر النظام' : 'Switch system theme'}</p>
-                    </div>
-                    <div 
-                      onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
-                      className={cn(
-                        "w-12 h-6 rounded-full relative cursor-pointer transition-colors",
-                        theme === 'dark' ? "bg-blue-600" : "bg-gray-300"
-                      )}
-                    >
-                      <div className={cn(
-                        "absolute top-1 w-4 h-4 bg-white rounded-full shadow-sm transition-all",
-                        theme === 'dark' ? (dir === 'rtl' ? "left-1" : "right-1") : (dir === 'rtl' ? "right-1" : "left-1")
-                      )} />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {[
+                      { id: 'light', label: t('light_mode'), icon: Monitor, color: 'bg-white text-gray-900 border-gray-200' },
+                      { id: 'soft', label: t('soft_mode'), icon: Palette, color: 'bg-[#eceff1] text-[#37474f] border-[#cfd8dc]' },
+                      { id: 'dark', label: t('dark_mode'), icon: Loader2, color: 'bg-[#0a0a0a] text-gray-100 border-gray-800' }
+                    ].map((mode) => (
+                      <button
+                        key={mode.id}
+                        onClick={() => setTheme(mode.id as any)}
+                        className={cn(
+                          "relative p-6 rounded-2xl border-2 transition-all flex flex-col items-center gap-3",
+                          mode.color,
+                          theme === mode.id ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-[#151619] border-transparent" : "opacity-60 grayscale hover:grayscale-0 hover:opacity-100"
+                        )}
+                      >
+                        {theme === mode.id && (
+                          <div className="absolute top-2 right-2 text-blue-500">
+                            <CheckCircle2 size={16} />
+                          </div>
+                        )}
+                        <mode.icon size={32} />
+                        <span className="font-bold text-sm">{mode.label}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               </motion.div>
@@ -253,7 +265,12 @@ export function Settings() {
                     <select 
                       value={language}
                       onChange={(e) => setLanguage(e.target.value as any)}
-                      className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors appearance-none", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      className={cn(
+                        "w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors appearance-none", 
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200"
+                      )}
                     >
                       <option value="ar">العربية (Arabic)</option>
                       <option value="en">English</option>
@@ -283,7 +300,12 @@ export function Settings() {
                     <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم الشركة' : 'Company Name'}</label>
                     <input 
                       type="text" 
-                      className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      className={cn(
+                        "w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", 
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200"
+                      )}
                       value={printSettings.companyName}
                       onChange={(e) => setPrintSettings({...printSettings, companyName: e.target.value})}
                     />
@@ -292,7 +314,12 @@ export function Settings() {
                     <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'الرقم الضريبي' : 'Tax ID'}</label>
                     <input 
                       type="text" 
-                      className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      className={cn(
+                        "w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", 
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200"
+                      )}
                       value={printSettings.taxId}
                       onChange={(e) => setPrintSettings({...printSettings, taxId: e.target.value})}
                     />

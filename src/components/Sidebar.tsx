@@ -1,17 +1,16 @@
 import React from 'react';
-import {
-  LayoutDashboard,
-  Briefcase,
-  FileText,
-  Receipt,
-  TrendingUp,
-  Settings,
+import { 
+  LayoutDashboard, 
+  Briefcase, 
+  FileText, 
+  Receipt, 
+  TrendingUp, 
+  Settings, 
   AlertCircle,
   Users,
   BarChart3,
   FolderTree,
-  BookOpen,
-  Database
+  BookOpen
 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
@@ -22,7 +21,7 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
-  const { t, language, dir } = useLanguage();
+  const { t, language, dir, theme } = useLanguage();
 
   const menuItems = [
     { id: 'dashboard', label: t('dashboard'), icon: LayoutDashboard },
@@ -34,16 +33,21 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
     { id: 'suppliers', label: t('suppliers'), icon: Users },
     { id: 'reports', label: t('reports'), icon: BarChart3 },
     { id: 'settings', label: t('settings'), icon: Settings },
-    { id: 'migrate', label: 'النسخ الاحتياطي', icon: Database },
   ];
 
   return (
     <div className={cn(
-      "w-64 bg-[#151619] text-white h-screen flex flex-col border-gray-800",
+      "w-64 h-screen flex flex-col transition-colors",
+      theme === 'dark' ? "bg-[#151619] text-white border-gray-800" : 
+      theme === 'soft' ? "bg-white text-[#37474f] border-[#cfd8dc]" :
+      "bg-white text-gray-900 border-gray-200",
       dir === 'rtl' ? "border-l" : "border-r"
     )} dir={dir}>
-      <div className="p-6 border-b border-gray-800">
-        <h1 className="text-xl font-bold text-white flex items-center gap-2">
+      <div className={cn("p-6 border-b", theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-200")}>
+        <h1 className={cn(
+          "text-xl font-bold flex items-center gap-2",
+          theme === 'dark' ? "text-white" : "text-gray-900"
+        )}>
           <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center">
             <Briefcase size={20} />
           </div>
@@ -61,7 +65,11 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
               language === 'ar' ? "text-right" : "text-left",
               activeTab === item.id 
                 ? "bg-blue-600 text-white shadow-lg shadow-blue-900/20" 
-                : "text-gray-400 hover:bg-gray-800 hover:text-white"
+                : theme === 'dark' 
+                  ? "text-gray-400 hover:bg-gray-800 hover:text-white"
+                  : theme === 'soft'
+                    ? "text-[#546e7a] hover:bg-[#eceff1] hover:text-[#37474f]"
+                    : "text-gray-500 hover:bg-gray-100 hover:text-gray-900"
             )}
           >
             <item.icon size={20} />
@@ -70,7 +78,10 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
         ))}
       </nav>
       
-      <div className="p-4 border-t border-gray-800">
+      <div className={cn(
+        "p-4 border-t",
+        theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-200"
+      )}>
         <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-3 flex items-start gap-3">
           <AlertCircle className="text-red-500 shrink-0" size={18} />
           <div>

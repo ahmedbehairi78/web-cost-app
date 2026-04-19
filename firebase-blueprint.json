@@ -58,7 +58,9 @@
         "rateLabour": { "type": "number" },
         "rateEquipment": { "type": "number" },
         "rateOverheadPct": { "type": "number" },
-        "rateProfitPct": { "type": "number" }
+        "rateProfitPct": { "type": "number" },
+        "startDate": { "type": "string", "format": "date" },
+        "expectedDuration": { "type": "number", "description": "Expected duration in days" }
       },
       "required": ["projectId", "itemCode", "description", "tenderQty"]
     },

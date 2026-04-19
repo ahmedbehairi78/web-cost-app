@@ -20,11 +20,10 @@ import {
   TrendingDown,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
-import { sortByDateFieldDesc, sortByTextField } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
@@ -88,7 +87,6 @@ interface BillingIPC {
   projectId: string;
   contractId: string;
   billingNumber: string;
-  journalSourceKey?: string;
   date: any;
   items: BillingItem[];
   worksValueExVat: number;
@@ -100,6 +98,8 @@ interface BillingIPC {
   advancePaymentRecovery: number;
   netPayable: number;
   status: 'draft' | 'review' | 'submitted' | 'approved' | 'paid';
+  transactionId?: string;
+  isDeleted?: boolean;
 }
 
 export function Billing() {
@@ -129,6 +129,7 @@ export function Billing() {
   // Form State
   const [formData, setFormData] = useState({
     billingNumber: '',
+    date: new Date().toISOString().split('T')[0],
     items: [] as BillingItem[],
     vatPct: 14,
     execGuaranteePct: 10,
@@ -139,12 +140,9 @@ export function Billing() {
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), where('isDeleted', '==', false));
+    const q = query(collection(db, 'projects'), where('isDeleted', '==', false), orderBy('projectCode'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = sortByTextField(
-        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)),
-        'projectCode'
-      );
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id);
@@ -188,13 +186,11 @@ export function Billing() {
     const qBilling = query(
       collection(db, 'billing'), 
       where('contractId', '==', selectedContractId),
-      where('isDeleted', '==', false)
+      where('isDeleted', '==', false),
+      orderBy('date', 'desc')
     );
     const unsubBilling = onSnapshot(qBilling, (snapshot) => {
-      const data = sortByDateFieldDesc(
-        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BillingIPC)),
-        'date'
-      );
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BillingIPC));
       setBillings(data);
       setLoading(false);
     }, (error) => {
@@ -204,16 +200,12 @@ export function Billing() {
     // Fetch BOQ Items
     const qBoq = query(
       collection(db, 'boq_items'),
-      where('contractId', '==', selectedContractId)
+      where('contractId', '==', selectedContractId),
+      orderBy('itemCode')
     );
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
-      const data = sortByTextField(
-        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)),
-        'itemCode'
-      );
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       setBoqItems(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'boq_items');
     });
 
     return () => {
@@ -359,6 +351,7 @@ export function Billing() {
       setEditingIPC(ipc);
       setFormData({
         billingNumber: ipc.billingNumber,
+        date: typeof ipc.date === 'string' ? ipc.date : (ipc.date?.seconds ? new Date(ipc.date.seconds * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
         items: ipc.items,
         vatPct: (ipc.vatAmount / ipc.worksValueExVat) * 100 || 14,
         execGuaranteePct: (ipc.execGuaranteeAmount / ipc.worksValueExVat) * 100 || 10,
@@ -371,8 +364,9 @@ export function Billing() {
       setEditingIPC(null);
       // Initialize form with BOQ items
       const initialItems: BillingItem[] = boqItems.map(boq => {
-        // Calculate previous quantity from existing billings
+        // Calculate previous quantity from existing billings (excluding drafts)
         const previousQty = billings.reduce((sum, b) => {
+          if (b.status === 'draft') return sum;
           const item = b.items?.find(i => i.boqItemId === boq.id);
           return sum + (item?.currentQty || 0);
         }, 0);
@@ -398,6 +392,7 @@ export function Billing() {
 
       setFormData({
         billingNumber: `IPC-${billings.length + 1}`,
+        date: new Date().toISOString().split('T')[0],
         items: initialItems,
         vatPct: 14,
         execGuaranteePct: 10,
@@ -419,15 +414,53 @@ export function Billing() {
     setFormData({ ...formData, items: newItems });
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleItemRateChange = (idx: number, rate: number) => {
+    const newItems = [...formData.items];
+    const item = newItems[idx];
+    item.rate = rate;
+    item.amount = item.currentQty * rate;
+    setFormData({ ...formData, items: newItems });
+  };
+
+  const handleSubmit = async (e?: React.FormEvent, forcedStatus?: 'draft' | 'submitted') => {
+    if (e) e.preventDefault();
     if (!selectedContractId) return;
     setIsSubmitting(true);
     const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
     const contract = contracts.find(c => c.id === selectedContractId);
     
+    // Determine the status: if forcedStatus is provided (from Draft button), use it. 
+    // Otherwise use editingIPC.status or default to 'submitted'.
+    const finalStatus = forcedStatus || (editingIPC ? editingIPC.status : 'submitted');
+
     try {
-      const billingData = {
+      let transactionId = editingIPC?.transactionId;
+
+      // Only record in GL if not a draft
+      if (finalStatus !== 'draft') {
+        transactionId = await accountingService.recordIPC({
+          worksValue: worksValueExVat,
+          vatAmount: vat,
+          netPayable: net,
+          execGuarantee: exec,
+          whtAmount: wht,
+          labourInsurance: insurance,
+          manpowerLevy: levy,
+          advancePaymentRecovery: advance,
+          description: `${language === 'ar' ? 'مستخلص رقم' : 'IPC No'} ${formData.billingNumber}`,
+          projectId: selectedProjectId,
+          contractId: selectedContractId,
+          date: formData.date,
+          contractName: contract?.contractName || 'N/A',
+          transactionId: editingIPC?.transactionId
+        });
+      } else if (editingIPC?.transactionId) {
+        // If it was already in GL and we are reverting to draft, we should ideally mark it as deleted in GL
+        await accountingService.deleteTransaction(editingIPC.transactionId);
+        transactionId = "";
+      }
+
+      const billingData: any = {
         projectId: selectedProjectId,
         contractId: selectedContractId,
         billingNumber: formData.billingNumber,
@@ -440,70 +473,17 @@ export function Billing() {
         manpowerLevyAmount: levy,
         advancePaymentRecovery: advance,
         netPayable: net,
-        status: editingIPC ? editingIPC.status : 'submitted',
-        date: editingIPC ? editingIPC.date : serverTimestamp(),
+        status: finalStatus,
+        date: formData.date,
+        transactionId: transactionId || "",
         isDeleted: false
       };
 
       if (editingIPC) {
         const { updateDoc, doc } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'billing', editingIPC.id), {
-          ...billingData,
-          journalSourceKey: editingIPC.journalSourceKey || `billing:${editingIPC.id}`
-        });
-        await accountingService.recordIPC({
-          worksValue: worksValueExVat,
-          vatAmount: vat,
-          netPayable: net,
-          execGuarantee: exec,
-          whtAmount: wht,
-          labourInsurance: insurance,
-          manpowerLevy: levy,
-          advancePaymentRecovery: advance,
-          description: `${language === 'ar' ? 'مستخلص رقم' : 'IPC No'} ${formData.billingNumber}`,
-          projectId: selectedProjectId,
-          contractId: selectedContractId,
-          billingId: editingIPC.id,
-          billingNumber: formData.billingNumber,
-          date: new Date().toISOString().split('T')[0],
-          vatPct: formData.vatPct,
-          execGuaranteePct: formData.execGuaranteePct,
-          whtPct: formData.whtPct,
-          labourInsurancePct: formData.labourInsurancePct,
-          manpowerLevyPct: formData.manpowerLevyPct,
-          createIfMissing: true
-        });
+        await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
       } else {
-        // 1. Record the billing in billing collection
-        const { doc, setDoc } = await import('firebase/firestore');
-        const billingRef = doc(collection(db, 'billing'));
-        await setDoc(billingRef, {
-          ...billingData,
-          journalSourceKey: `billing:${billingRef.id}`
-        });
-
-        // 2. Generate automatic journal entry via accounting service
-        await accountingService.recordIPC({
-          worksValue: worksValueExVat,
-          vatAmount: vat,
-          netPayable: net,
-          execGuarantee: exec,
-          whtAmount: wht,
-          labourInsurance: insurance,
-          manpowerLevy: levy,
-          advancePaymentRecovery: advance,
-          description: `${language === 'ar' ? 'مستخلص رقم' : 'IPC No'} ${formData.billingNumber}`,
-          projectId: selectedProjectId,
-          contractId: selectedContractId,
-          billingId: billingRef.id,
-          billingNumber: formData.billingNumber,
-          date: new Date().toISOString().split('T')[0],
-          vatPct: formData.vatPct,
-          execGuaranteePct: formData.execGuaranteePct,
-          whtPct: formData.whtPct,
-          labourInsurancePct: formData.labourInsurancePct,
-          manpowerLevyPct: formData.manpowerLevyPct
-        });
+        await addDoc(collection(db, 'billing'), billingData);
       }
 
       setIsModalOpen(false);
@@ -520,10 +500,11 @@ export function Billing() {
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
     try {
-      if (typeof date.toDate === 'function') return date.toDate().toLocaleDateString();
-      if (date instanceof Date) return date.toLocaleDateString();
+      if (typeof date === 'string') return new Date(date).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
+      if (typeof date.toDate === 'function') return date.toDate().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
+      if (date instanceof Date) return date.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
       const d = new Date(date);
-      return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString();
+      return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
     } catch (e) {
       return 'N/A';
     }
@@ -628,19 +609,19 @@ export function Billing() {
         <div style="margin: 15px 0; padding: 10px; background-color: #f9fafb; border-radius: 4px;">
           <h3 style="font-size: 14px; margin-bottom: 10px; border-bottom: 1px solid #ddd; padding-bottom: 5px;">${isAr ? 'الاستقطاعات بالتفصيل' : 'Deductions Detail'}</h3>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span>${isAr ? 'حجز ضمان أعمال (10%):' : 'Execution Guarantee (10%):'}</span>
+            <span>${isAr ? `حجز ضمان أعمال (${((ipc.execGuaranteeAmount / ipc.worksValueExVat) * 100).toFixed(1)}%):` : `Execution Guarantee (${((ipc.execGuaranteeAmount / ipc.worksValueExVat) * 100).toFixed(1)}%):`}</span>
             <span>${ipc.execGuaranteeAmount.toLocaleString()} EGP</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span>${isAr ? 'مصلحة الضرائب - خصم وإضافة (1%):' : 'WHT (1%):'}</span>
+            <span>${isAr ? `مصلحة الضرائب - خصم وإضافة (${((ipc.whtAmount / ipc.worksValueExVat) * 100).toFixed(1)}%):` : `WHT (${((ipc.whtAmount / ipc.worksValueExVat) * 100).toFixed(1)}%):`}</span>
             <span>${(ipc.whtAmount || 0).toLocaleString()} EGP</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span>${isAr ? 'حجز تحت حساب التأمينات:' : 'Labour Insurance:'}</span>
+            <span>${isAr ? `حجز تحت حساب التأمينات (${((ipc.labourInsuranceAmount / ipc.worksValueExVat) * 100).toFixed(1)}%):` : `Labour Insurance (${((ipc.labourInsuranceAmount / ipc.worksValueExVat) * 100).toFixed(1)}%):`}</span>
             <span>${ipc.labourInsuranceAmount.toLocaleString()} EGP</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-            <span>${isAr ? 'حجز تحت حساب القوى العاملة:' : 'Manpower Levy:'}</span>
+            <span>${isAr ? `حجز تحت حساب القوى العاملة (${((ipc.manpowerLevyAmount / ipc.worksValueExVat) * 100).toFixed(3)}%):` : `Manpower Levy (${((ipc.manpowerLevyAmount / ipc.worksValueExVat) * 100).toFixed(3)}%):`}</span>
             <span>${ipc.manpowerLevyAmount.toLocaleString()} EGP</span>
           </div>
           ${(ipc.advancePaymentRecovery || 0) > 0 ? `
@@ -682,6 +663,31 @@ export function Billing() {
     }
   };
 
+  const handleDeleteIPC = (ipc: BillingIPC) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
+      message: language === 'ar' ? 'هل أنت متأكد من حذف هذا المستخلص؟ سيتم حذف القيد المحاسبي المرتبط به أيضاً.' : 'Are you sure you want to delete this IPC? The associated journal entry will also be deleted.',
+      onConfirm: async () => {
+        setIsSubmitting(true);
+        try {
+          // 1. Delete the billing document
+          await accountingService.softDelete('billing', ipc.id);
+          
+          // 2. Delete the associated transaction if it exists
+          if (ipc.transactionId) {
+            await accountingService.deleteTransaction(ipc.transactionId);
+          }
+          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, 'billing');
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    });
+  };
+
   const handleClearIPCs = async () => {
     if (!selectedContractId) return;
     
@@ -698,9 +704,6 @@ export function Billing() {
           
           const deletePromises = snapshot.docs.map(d => updateDoc(doc(db, 'billing', d.id), { isDeleted: true }));
           await Promise.all(deletePromises);
-          await accountingService.softDeleteTransactionsBySourceKeys(
-            snapshot.docs.map((billingDoc) => `billing:${billingDoc.id}`)
-          );
           
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         } catch (error) {
@@ -713,7 +716,12 @@ export function Billing() {
   };
 
   return (
-    <div className={cn("p-8 min-h-screen transition-colors", theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : "bg-gray-50 text-gray-900")} dir={dir}>
+    <div className={cn(
+      "p-8 min-h-screen transition-colors", 
+      theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : 
+      theme === 'soft' ? "bg-[#eceff1] text-[#37474f]" : 
+      "bg-gray-50 text-gray-900"
+    )} dir={dir}>
       <header className="flex justify-between items-center mb-8">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">{t('billing')}</h2>
@@ -796,28 +804,40 @@ export function Billing() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               key={ipc.id} 
-              className={cn("border rounded-xl p-6 transition-all group", theme === 'dark' ? "bg-[#151619] border-gray-800 hover:border-gray-700" : "bg-white border-gray-200 hover:border-blue-200 shadow-sm")}
+              className={cn(
+                "border rounded-xl p-6 transition-all group", 
+                theme === 'dark' ? "bg-[#151619] border-gray-800 hover:border-gray-700" : 
+                theme === 'soft' ? "bg-white border-[#cfd8dc] hover:border-[#546e7a]" : 
+                "bg-white border-gray-200 hover:border-blue-200 shadow-sm"
+              )}
             >
               <div className="flex justify-between items-start mb-4">
                 <div className="flex gap-4">
-                  <div className={cn("w-10 h-10 rounded-lg flex items-center justify-center border", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                  <div className={cn(
+                    "w-10 h-10 rounded-lg flex items-center justify-center border", 
+                    theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                    theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                    "bg-gray-50 border-gray-200"
+                  )}>
                     <FileText className="text-blue-500" size={20} />
                   </div>
                   <div>
                     <h3 className="font-bold">{language === 'ar' ? 'مستخلص رقم:' : 'IPC No:'} {ipc.billingNumber}</h3>
-                    <p className="text-xs text-gray-500 mt-1">{language === 'ar' ? 'بتاريخ:' : 'Date:'} {ipc.date?.toDate().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</p>
+                    <p className="text-xs text-gray-500 mt-1">{language === 'ar' ? 'بتاريخ:' : 'Date:'} {formatDate(ipc.date)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={cn(
                     "text-[10px] font-bold px-2 py-1 rounded uppercase",
                     ipc.status === 'paid' ? "bg-green-900/20 text-green-500" : 
+                    ipc.status === 'draft' ? "bg-gray-800 border border-gray-700 text-gray-400" :
                     ipc.status === 'review' ? "bg-blue-900/20 text-blue-500" :
                     "bg-yellow-900/20 text-yellow-500"
                   )}>
                     {ipc.status === 'paid' ? (language === 'ar' ? 'تم التحصيل' : 'Paid') : 
+                     ipc.status === 'draft' ? (language === 'ar' ? 'مسودة' : 'Draft') :
                      ipc.status === 'review' ? (language === 'ar' ? 'قيد المراجعة' : 'Under Review') :
-                     (language === 'ar' ? 'تم التقديم' : 'Submitted')}
+                     (language === 'ar' ? 'تم الاعتماد' : 'Approved')}
                   </span>
                   <div className="flex gap-2">
                     <button 
@@ -826,6 +846,13 @@ export function Billing() {
                       title={language === 'ar' ? 'تعديل' : 'Edit'}
                     >
                       <Edit2 size={16} />
+                    </button>
+                    <button 
+                      onClick={() => handleDeleteIPC(ipc)}
+                      className="text-gray-500 hover:text-red-500 transition-colors"
+                      title={language === 'ar' ? 'حذف' : 'Delete'}
+                    >
+                      <Trash2 size={16} />
                     </button>
                     {ipc.status === 'submitted' && (
                       <button 
@@ -961,24 +988,44 @@ export function Billing() {
               </div>
 
               <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم المستخلص' : 'IPC Number'}</label>
-                  <input 
-                    required
-                    type="text" 
-                    placeholder="مثال: IPC-05"
-                    className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                    value={formData.billingNumber}
-                    onChange={(e) => setFormData({...formData, billingNumber: e.target.value})}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم المستخلص' : 'IPC Number'}</label>
+                    <input 
+                      required
+                      type="text" 
+                      placeholder="مثال: IPC-05"
+                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      value={formData.billingNumber}
+                      onChange={(e) => setFormData({...formData, billingNumber: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'التاريخ' : 'Date'}</label>
+                    <input 
+                      required
+                      type="date" 
+                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      value={formData.date}
+                      onChange={(e) => setFormData({...formData, date: e.target.value})}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-4">
                   <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider">{language === 'ar' ? 'بنود الأعمال' : 'Work Items'}</h4>
                   <div className="overflow-x-auto border border-gray-800 rounded-xl">
-                    <table className="w-full text-right text-[10px]">
+                    <table className={cn(
+                      "w-full text-right text-[10px] transition-colors",
+                      theme === 'dark' ? "bg-transparent" : "bg-white"
+                    )}>
                       <thead>
-                        <tr className="bg-gray-900/50 border-b border-gray-800 text-gray-500">
+                        <tr className={cn(
+                          "transition-colors",
+                          theme === 'dark' ? "border-b border-gray-800 bg-gray-900/50 text-gray-500" : 
+                          theme === 'soft' ? "border-b border-[#cfd8dc] bg-[#eceff1] text-[#546e7a]" : 
+                          "border-b border-gray-200 bg-gray-50 text-gray-600"
+                        )}>
                           <th className="p-2">{language === 'ar' ? 'الفصل' : 'Chapter'}</th>
                           <th className="p-2">{language === 'ar' ? 'القسم' : 'Section'}</th>
                           <th className="p-2">{language === 'ar' ? 'البند' : 'Item'}</th>
@@ -1022,14 +1069,33 @@ export function Billing() {
                                   </td>
                                   <td className="p-2 text-center text-gray-400">{item.unit}</td>
                                   <td className="p-2 font-mono text-gray-400">{item.tenderQty?.toLocaleString()}</td>
-                                  <td className="p-2 font-mono text-green-400">{item.rate.toLocaleString()}</td>
+                                  <td className="p-2">
+                                    <input 
+                                      type="number" 
+                                      step="0.01"
+                                      inputMode="decimal"
+                                      className={cn(
+                                        "w-24 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono",
+                                        theme === 'dark' ? "bg-gray-900 border-gray-800 text-green-400" : 
+                                        theme === 'soft' ? "bg-white border-[#cfd8dc] text-green-600" : 
+                                        "bg-white border-gray-300 text-green-700"
+                                      )}
+                                      value={item.rate}
+                                      onChange={(e) => handleItemRateChange(idx, Number(e.target.value))}
+                                    />
+                                  </td>
                                   <td className="p-2 font-mono text-gray-500">{item.previousQty}</td>
                                   <td className="p-2">
                                     <input 
                                       type="number" 
                                       step="0.01"
                                       inputMode="decimal"
-                                      className="w-24 bg-gray-900 border border-gray-800 rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono"
+                                      className={cn(
+                                        "w-24 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono",
+                                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                                        "bg-white border-gray-300 text-gray-900"
+                                      )}
                                       value={item.currentQty}
                                       onChange={(e) => handleItemQtyChange(idx, Number(e.target.value))}
                                     />
@@ -1167,7 +1233,21 @@ export function Billing() {
                     </button>
                   )}
                   <button 
-                    type="submit"
+                    type="button"
+                    onClick={() => handleSubmit(undefined, 'draft')}
+                    disabled={isSubmitting}
+                    className={cn(
+                      "flex-1 py-3 rounded-xl font-bold transition-all border", 
+                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white border-gray-700" : 
+                      theme === 'soft' ? "bg-white hover:bg-[#eceff1] text-[#37474f] border-[#cfd8dc]" : 
+                      "bg-white hover:bg-gray-50 text-gray-700 border-gray-200"
+                    )}
+                  >
+                    {isSubmitting ? '...' : (language === 'ar' ? 'حفظ كمسودة' : 'Save as Draft')}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => handleSubmit(undefined, 'submitted')}
                     disabled={isSubmitting}
                     className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
                   >
@@ -1176,7 +1256,12 @@ export function Billing() {
                   <button 
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className={cn("flex-1 py-3 rounded-xl font-bold transition-all", theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : "bg-gray-200 hover:bg-gray-300 text-gray-700")}
+                    className={cn(
+                      "flex-1 py-3 rounded-xl font-bold transition-all", 
+                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
+                      theme === 'soft' ? "bg-[#cfd8dc] hover:bg-[#b0bec5] text-[#37474f]" : 
+                      "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                    )}
                   >
                     {t('cancel')}
                   </button>

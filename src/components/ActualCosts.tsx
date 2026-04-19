@@ -9,14 +9,14 @@ import {
   DollarSign, 
   Briefcase, 
   Users,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, serverTimestamp, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp, orderBy, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
-import { sortByDateFieldDesc } from '../lib/firestoreSorts';
 import { useLanguage } from '../context/LanguageContext';
 
 export function ActualCosts() {
@@ -26,6 +26,18 @@ export function ActualCosts() {
   const [costs, setCosts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
+
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
 
   const [formData, setFormData] = useState({
     projectId: '',
@@ -51,13 +63,11 @@ export function ActualCosts() {
     const unsubCosts = onSnapshot(
       query(
         collection(db, 'actual_costs'), 
-        where('isDeleted', '==', false)
+        where('isDeleted', '==', false),
+        orderBy('date', 'desc')
       ), 
       (snap) => {
-        setCosts(sortByDateFieldDesc(
-          snap.docs.map(doc => ({ id: doc.id, ...doc.data() })),
-          'date'
-        ));
+        setCosts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         setLoading(false);
       },
       (err) => {
@@ -72,22 +82,23 @@ export function ActualCosts() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // 1. Record the cost in actual_costs collection
-      await addDoc(collection(db, 'actual_costs'), {
-        ...formData,
-        projectName: projects.find(p => p.id === formData.projectId)?.projectName,
-        supplierName: suppliers.find(s => s.id === formData.supplierId)?.name,
-        createdAt: serverTimestamp(),
-        isDeleted: false
-      });
-
-      // 2. Generate automatic journal entry via accounting service
-      await accountingService.recordExpense({
+      // 1. Generate automatic journal entry via accounting service first
+      const transactionId = await accountingService.recordExpense({
         amount: formData.amount,
         description: formData.description,
         projectId: formData.projectId,
         category: formData.category as any,
         date: formData.date
+      });
+
+      // 2. Record the cost in actual_costs collection
+      await addDoc(collection(db, 'actual_costs'), {
+        ...formData,
+        projectName: projects.find(p => p.id === formData.projectId)?.projectName,
+        supplierName: suppliers.find(s => s.id === formData.supplierId)?.name,
+        createdAt: serverTimestamp(),
+        isDeleted: false,
+        transactionId
       });
 
       setShowAddModal(false);
@@ -102,8 +113,32 @@ export function ActualCosts() {
       });
     } catch (error) {
       console.error("Error saving cost:", error);
-      alert(language === 'ar' ? 'حدث خطأ أثناء الحفظ' : 'Error saving cost');
     }
+  };
+
+  const handleDeleteCost = (cost: any) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
+      message: language === 'ar' ? 'هل أنت متأكد من حذف هذه التكلفة؟ سيتم حذف القيد المحاسبي المرتبط بها أيضاً.' : 'Are you sure you want to delete this cost? The associated journal entry will also be deleted.',
+      onConfirm: async () => {
+        setLoading(true);
+        try {
+          // 1. Delete the actual cost document
+          await accountingService.softDelete('actual_costs', cost.id);
+          
+          // 2. Delete the associated transaction if it exists
+          if (cost.transactionId) {
+            await accountingService.deleteTransaction(cost.transactionId);
+          }
+          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          console.error("Error deleting actual cost:", error);
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
   };
 
   return (
@@ -132,12 +167,13 @@ export function ActualCosts() {
               <th className={cn("px-6 py-4 text-sm font-bold text-gray-400", language === 'ar' ? "text-right" : "text-left")}>{t('suppliers')}</th>
               <th className={cn("px-6 py-4 text-sm font-bold text-gray-400", language === 'ar' ? "text-right" : "text-left")}>{language === 'ar' ? 'المبلغ' : 'Amount'}</th>
               <th className={cn("px-6 py-4 text-sm font-bold text-gray-400", language === 'ar' ? "text-right" : "text-left")}>{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+              <th className={cn("px-6 py-4 text-sm font-bold text-gray-400", language === 'ar' ? "text-right" : "text-left")}>{language === 'ar' ? 'إجراءات' : 'Actions'}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">
             {loading ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                   <div className="flex flex-col items-center gap-4">
                     <Loader2 className="animate-spin text-blue-500" size={32} />
                     {language === 'ar' ? 'جاري تحميل المصروفات...' : 'Loading expenses...'}
@@ -146,7 +182,7 @@ export function ActualCosts() {
               </tr>
             ) : costs.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                   {language === 'ar' ? 'لا توجد مصروفات مسجلة.' : 'No expenses recorded.'}
                 </td>
               </tr>
@@ -157,6 +193,15 @@ export function ActualCosts() {
                 <td className="px-6 py-4 text-blue-400">{cost.supplierName || '-'}</td>
                 <td className="px-6 py-4 font-mono font-bold text-red-400">{cost.amount.toLocaleString()}</td>
                 <td className="px-6 py-4 text-gray-500">{cost.date}</td>
+                <td className="px-6 py-4">
+                  <button 
+                    onClick={() => handleDeleteCost(cost)}
+                    className="text-gray-500 hover:text-red-500 transition-colors"
+                    title={language === 'ar' ? 'حذف' : 'Delete'}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -263,6 +308,46 @@ export function ActualCosts() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmConfig.isOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={cn("border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}
+            >
+              <div className={cn("p-6 border-b flex justify-between items-center", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                <h3 className="text-lg font-bold text-red-500">{confirmConfig.title}</h3>
+                <button onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} className="text-gray-500 hover:text-white transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6">
+                <p className={cn("text-sm", theme === 'dark' ? "text-gray-300" : "text-gray-600")}>{confirmConfig.message}</p>
+              </div>
+              <div className={cn("p-6 border-t flex justify-end gap-3", theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                <button 
+                  onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                  className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button 
+                  onClick={confirmConfig.onConfirm}
+                  disabled={loading}
+                  className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2"
+                >
+                  {loading && <Loader2 className="animate-spin" size={16} />}
+                  {language === 'ar' ? 'تأكيد' : 'Confirm'}
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

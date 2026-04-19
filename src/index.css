@@ -5,6 +5,13 @@
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
 
+  /* Theme variables - Using soft tones */
+  --soft-bg: #eceff1;
+  --soft-surface: #ffffff;
+  --soft-border: #cfd8dc;
+  --soft-text: #37474f;
+  --soft-accent: #546e7a;
+
   /* Override oklch colors with hex for html2canvas compatibility */
   --color-blue-50: #eff6ff;
   --color-blue-100: #dbeafe;
@@ -106,6 +113,16 @@
 body {
   @apply bg-[#0a0a0a] text-gray-100 antialiased;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body:has(.soft) {
+  background-color: var(--soft-bg);
+  color: var(--soft-text);
+}
+
+.soft {
+  background-color: var(--soft-bg);
+  color: var(--soft-text);
 }
 
 ::-webkit-scrollbar {

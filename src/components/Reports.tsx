@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, doc, getDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -18,7 +18,8 @@ import {
   Calculator,
   Building2,
   ChevronRight,
-  ChevronLeft
+  ChevronLeft,
+  Clock
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -41,6 +42,8 @@ interface Project {
   projectName: string;
   projectCode: string;
   totalContractValue: number;
+  boqValue?: number;
+  voValue?: number;
 }
 
 interface Cost {
@@ -55,19 +58,34 @@ interface Billing {
   id: string;
   projectId: string;
   netPayable: number;
+  worksValueExVat?: number;
+  status: string;
   date: any;
+}
+
+interface BOQItem {
+  id: string;
+  projectId: string;
+  tenderAmount: number;
+  startDate?: string;
+  expectedDuration?: number;
+  itemCode: string;
+  description: string;
 }
 
 export function Reports() {
   const { t, language, theme, dir } = useLanguage();
   const [projects, setProjects] = useState<Project[]>([]);
   const [costs, setCosts] = useState<Cost[]>([]);
+  const [purchaseTransactions, setPurchaseTransactions] = useState<any[]>([]);
   const [billings, setBillings] = useState<Billing[]>([]);
+  const [boqItems, setBoqItems] = useState<BOQItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeReport, setActiveReport] = useState<'overview' | 'income' | 'budget' | 'balance'>('overview');
+  const [activeReport, setActiveReport] = useState<'overview' | 'income' | 'budget' | 'balance' | 'trial' | 'time'>('overview');
   const [transactions, setTransactions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
   const [showCharts, setShowCharts] = useState(true);
+  const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -91,38 +109,32 @@ export function Reports() {
 
   useEffect(() => {
     setLoading(true);
-    const unsubProjects = onSnapshot(collection(db, 'projects'), (snap) => {
+    const unsubProjects = onSnapshot(query(collection(db, 'projects'), where('isDeleted', '==', false)), (snap) => {
       setProjects(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
     }, (err) => {
       console.error("Projects listener error:", err);
     });
 
-    const unsubCosts = onSnapshot(collection(db, 'actual_costs'), (snap) => {
-      setCosts(
-        snap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as Cost))
-          .filter((cost: any) => cost.isDeleted !== true)
-      );
+    const unsubCosts = onSnapshot(query(collection(db, 'actual_costs'), where('isDeleted', '==', false)), (snap) => {
+      setCosts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cost)));
     }, (err) => {
       console.error("Costs listener error:", err);
     });
 
-    const unsubBillings = onSnapshot(collection(db, 'billing'), (snap) => {
-      setBillings(
-        snap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as Billing))
-          .filter((billing: any) => billing.isDeleted !== true)
-      );
+    const unsubBillings = onSnapshot(query(collection(db, 'billing'), where('isDeleted', '==', false)), (snap) => {
+      setBillings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Billing)));
     }, (err) => {
       console.error("Billings listener error:", err);
     });
 
-    const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snap) => {
-      setTransactions(
-        snap.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter((transaction: any) => transaction.isDeleted !== true)
-      );
+    const unsubPurchaseTransactions = onSnapshot(query(collection(db, 'purchase_transactions'), where('isDeleted', '==', false)), (snap) => {
+      setPurchaseTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (err) => {
+      console.error("Reports purchase transactions listener error:", err);
+    });
+
+    const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false)), (snap) => {
+      setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (err) => {
       console.error("Reports transactions listener error:", err);
     });
@@ -135,31 +147,66 @@ export function Reports() {
       setLoading(false);
     });
 
+    const unsubBoqItems = onSnapshot(collection(db, 'boq_items'), (snap) => {
+      setBoqItems(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)));
+    }, (err) => {
+      console.error("Reports boq_items listener error:", err);
+    });
+
     return () => { 
       unsubProjects(); 
       unsubCosts(); 
       unsubBillings(); 
+      unsubPurchaseTransactions();
       unsubTransactions();
       unsubAccounts();
+      unsubBoqItems();
     };
   }, []);
 
   // Data Processing
-  const projectStats = projects.map(p => {
-    const projectCosts = costs.filter(c => c.projectId === p.id).reduce((sum, c) => sum + c.amount, 0);
-    const projectBillings = billings.filter(b => b.projectId === p.id).reduce((sum, b) => sum + b.netPayable, 0);
-    const budget = p.totalContractValue || 0;
+  const filteredProjects = selectedProjectId === 'all' 
+    ? projects 
+    : projects.filter(p => p.id === selectedProjectId);
+
+  const projectStats = filteredProjects.map(p => {
+    // Costs from General Ledger (transactions) - includes ActualCosts, Purchases, and manual JVs
+    // We sum all accounts starting with '5' (Expenses) associated with this project
+    const ledgerCosts = transactions
+      .filter(t => t.projectId === p.id)
+      .reduce((sum, t) => {
+        const expenseEntries = (t.entries || []).filter((e: any) => 
+          e.accountCode.startsWith('5')
+        );
+        return sum + expenseEntries.reduce((s: number, e: any) => s + (e.debit - e.credit), 0);
+      }, 0);
+
+    // Billings/Revenues (Accrual Basis: using gross works value before deductions)
+    const projectRevenue = billings
+      .filter(b => b.projectId === p.id && b.status !== 'draft')
+      .reduce((sum, b) => sum + (b.worksValueExVat || 0), 0);
+    
+    // Automatically calculate BOQ Value from BOQ Items if they exist, otherwise fallback to project field
+    const calculatedBoqValue = boqItems
+      .filter(item => item.projectId === p.id)
+      .reduce((sum, item) => sum + (item.tenderAmount || 0), 0);
+
+    const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (p.boqValue || 0);
+    const voValue = p.voValue || 0;
+    const budget = (boqValue + voValue) || p.totalContractValue || 0;
     
     return {
       id: p.id,
       name: p.projectName,
       budget,
-      costs: projectCosts,
-      billings: projectBillings,
-      profit: projectBillings - projectCosts,
-      variance: budget - projectCosts,
-      variancePct: budget > 0 ? ((budget - projectCosts) / budget) * 100 : 0,
-      progress: budget > 0 ? (projectBillings / budget) * 100 : 0
+      boqValue,
+      voValue,
+      costs: ledgerCosts,
+      billings: projectRevenue,
+      profit: projectRevenue - ledgerCosts,
+      variance: budget - ledgerCosts,
+      variancePct: budget > 0 ? ((budget - ledgerCosts) / budget) * 100 : 0,
+      progress: budget > 0 ? (projectRevenue / budget) * 100 : 0
     };
   });
 
@@ -168,11 +215,82 @@ export function Reports() {
   const totalGrossProfit = totalRevenue - totalCosts;
   const totalBudget = projectStats.reduce((sum, s) => sum + s.budget, 0);
 
+  // Analytical Trial Balance Calculation
+  const trialBalance = React.useMemo(() => {
+    // 1. Get all unique account codes from COA and Transactions
+    const coaCodes = accounts.map(a => a.accountCode || a.code).filter(Boolean);
+    const txCodes = transactions
+      .filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId))
+      .flatMap(t => (t.entries || []))
+      .map(e => e.accountCode)
+      .filter(Boolean);
+    
+    const allUniqueCodes = Array.from(new Set([...coaCodes, ...txCodes]));
+
+    // 2. Map data for each code
+    const list = allUniqueCodes.map(code => {
+      const coaAcc = accounts.find(a => (a.accountCode || a.code) === code);
+      const name = coaAcc ? (coaAcc.accountName || (language === 'ar' ? coaAcc.nameAr : coaAcc.nameEn)) : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
+      
+      const accEntries = transactions
+        .filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId))
+        .flatMap(t => (t.entries || []))
+        .filter(e => e.accountCode === code);
+      
+      const debitMovements = accEntries.reduce((sum, e) => sum + (Number(e.debit) || 0), 0);
+      const creditMovements = accEntries.reduce((sum, e) => sum + (Number(e.credit) || 0), 0);
+
+      // In a full implementation, opening balances would be fetched from a dedicated collection or previous period
+      const openingDebit = 0; 
+      const openingCredit = 0;
+
+      const netBalance = (openingDebit + debitMovements) - (openingCredit + creditMovements);
+      
+      return {
+        code,
+        name,
+        openingDebit,
+        openingCredit,
+        debitMovements,
+        creditMovements,
+        closingDebit: netBalance > 0 ? netBalance : 0,
+        closingCredit: netBalance < 0 ? Math.abs(netBalance) : 0
+      };
+    })
+    // Filter out accounts with zero activity and zero opening as requested ("يتضمن كل الحسابات التي لها قيود")
+    .filter(item => item.openingDebit !== 0 || item.openingCredit !== 0 || item.debitMovements !== 0 || item.creditMovements !== 0)
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+    return list;
+  }, [accounts, transactions, language]);
+
+  const trialBalanceTotals = React.useMemo(() => {
+    return trialBalance.reduce((acc, item) => ({
+      opDebit: acc.opDebit + item.openingDebit,
+      opCredit: acc.opCredit + item.openingCredit,
+      movDebit: acc.movDebit + item.debitMovements,
+      movCredit: acc.movCredit + item.creditMovements,
+      clDebit: acc.clDebit + item.closingDebit,
+      clCredit: acc.clCredit + item.closingCredit
+    }), { opDebit: 0, opCredit: 0, movDebit: 0, movCredit: 0, clDebit: 0, clCredit: 0 });
+  }, [trialBalance]);
+
   const exportToExcel = () => {
     let data: any[] = [];
     let filename = 'report.xlsx';
 
-    if (activeReport === 'income') {
+    if (activeReport === 'overview') {
+      data = projectStats.map(s => ({
+        [language === 'ar' ? 'المشروع' : 'Project']: s.name,
+        [language === 'ar' ? 'قيمة جداول الكميات' : 'BOQ Value']: s.boqValue,
+        [language === 'ar' ? 'أوامر التغيير' : 'VO Value']: s.voValue,
+        [language === 'ar' ? 'الميزانية الإجمالية' : 'Total Budget']: s.budget,
+        [language === 'ar' ? 'المصروفات' : 'Expenses']: s.costs,
+        [language === 'ar' ? 'الإيرادات' : 'Revenue']: s.billings,
+        [language === 'ar' ? 'نسبة الإنجاز' : 'Progress']: s.progress.toFixed(2) + '%'
+      }));
+      filename = 'Project_Overview.xlsx';
+    } else if (activeReport === 'income') {
       data = projectStats.map(s => ({
         [language === 'ar' ? 'المشروع' : 'Project']: s.name,
         [language === 'ar' ? 'الإيرادات' : 'Revenue']: s.billings,
@@ -184,12 +302,48 @@ export function Reports() {
     } else if (activeReport === 'budget') {
       data = projectStats.map(s => ({
         [language === 'ar' ? 'المشروع' : 'Project']: s.name,
-        [language === 'ar' ? 'الميزانية المخططة' : 'Planned Budget']: s.budget,
+        [language === 'ar' ? 'قيمة جداول الكميات' : 'BOQ Value']: s.boqValue,
+        [language === 'ar' ? 'أوامر التغيير' : 'VO Value']: s.voValue,
+        [language === 'ar' ? 'الميزانية الإجمالية' : 'Total Budget']: s.budget,
         [language === 'ar' ? 'التكاليف الفعلية' : 'Actual Costs']: s.costs,
         [language === 'ar' ? 'الانحراف' : 'Variance']: s.variance,
         [language === 'ar' ? 'نسبة الانحراف %' : 'Variance %']: s.variancePct.toFixed(2) + '%'
       }));
       filename = 'Budget_vs_Actual.xlsx';
+    } else if (activeReport === 'trial') {
+      data = trialBalance.map(i => ({
+        [language === 'ar' ? 'كود الحساب' : 'Code']: i.code,
+        [language === 'ar' ? 'اسم الحساب' : 'Account Name']: i.name,
+        [language === 'ar' ? 'رصيد أول - مدين' : 'Opening Debit']: i.openingDebit,
+        [language === 'ar' ? 'رصيد أول - دائن' : 'Opening Credit']: i.openingCredit,
+        [language === 'ar' ? 'حركة - مدين' : 'Debit Movements']: i.debitMovements,
+        [language === 'ar' ? 'حركة - دائن' : 'Credit Movements']: i.creditMovements,
+        [language === 'ar' ? 'رصيد آخر - مدين' : 'Closing Debit']: i.closingDebit,
+        [language === 'ar' ? 'رصيد آخر - دائن' : 'Closing Credit']: i.closingCredit
+      }));
+      filename = 'Analytical_Trial_Balance.xlsx';
+    } else if (activeReport === 'time') {
+      data = boqItems
+        .filter(item => selectedProjectId === 'all' || item.projectId === selectedProjectId)
+        .map(item => {
+          const startDate = item.startDate ? new Date(item.startDate) : null;
+          const duration = item.expectedDuration || 0;
+          const finishDate = startDate ? new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000) : null;
+          const today = new Date();
+          const elapsedDays = startDate ? Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+          
+          return {
+            [language === 'ar' ? 'البند' : 'Item']: item.itemCode,
+            [language === 'ar' ? 'الوصف' : 'Description']: item.description,
+            [language === 'ar' ? 'تاريخ البدء' : 'Start Date']: item.startDate || '',
+            [language === 'ar' ? 'المدة المتوقعة (يوم)' : 'Expected Duration (Days)']: item.expectedDuration || 0,
+            [language === 'ar' ? 'النهاية المتوقعة' : 'Expected Finish']: finishDate ? finishDate.toLocaleDateString() : '',
+            [language === 'ar' ? 'الأيام المنقضية' : 'Elapsed Days']: elapsedDays,
+            [language === 'ar' ? 'الحالة' : 'Status']: !startDate ? (language === 'ar' ? 'غير مجدول' : 'Not Scheduled') : 
+                               (elapsedDays > duration ? (language === 'ar' ? 'متأخر' : 'Delayed') : (language === 'ar' ? 'منتظم' : 'On Track'))
+          };
+        });
+      filename = 'Project_Schedule.xlsx';
     } else {
       data = projectStats;
       filename = 'Project_Overview.xlsx';
@@ -232,6 +386,7 @@ export function Reports() {
           <h2 className="text-xl font-bold uppercase tracking-widest">
             {activeReport === 'income' ? (language === 'ar' ? 'قائمة الدخل' : 'Income Statement') : 
              activeReport === 'budget' ? (language === 'ar' ? 'مقارنة الميزانية بالتكاليف' : 'Budget vs Actual Report') :
+             activeReport === 'trial' ? (language === 'ar' ? 'ميزان المراجعة التحليلي' : 'Analytical Trial Balance') :
              (language === 'ar' ? 'نظرة عامة على المشاريع' : 'Project Overview')}
           </h2>
           <p className="text-sm text-gray-600">{new Date().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}</p>
@@ -240,12 +395,28 @@ export function Reports() {
 
       {/* Controls (Hidden in Print) */}
       <header className="mb-8 print:hidden">
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
           <div>
             <h2 className="text-3xl font-bold tracking-tight">{t('reports')}</h2>
             <p className="text-gray-400 mt-1">{language === 'ar' ? 'تحليلات مالية متقدمة وتقارير أداء المشاريع' : 'Advanced financial analytics and project performance reports'}</p>
           </div>
-          <div className="flex gap-3">
+          
+          <div className="flex flex-wrap items-center gap-3">
+            {/* Project Selector */}
+            <div className={cn("flex items-center gap-2 px-4 py-2 rounded-xl border", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}>
+              <Building2 className="text-blue-500" size={18} />
+              <select 
+                value={selectedProjectId}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="bg-transparent text-sm font-bold outline-none cursor-pointer"
+              >
+                <option value="all">{language === 'ar' ? 'جميع المشاريع' : 'All Projects'}</option>
+                {projects.map(p => (
+                  <option key={p.id} value={p.id}>{p.projectName}</option>
+                ))}
+              </select>
+            </div>
+
             <button 
               onClick={() => setShowCharts(!showCharts)}
               className={cn("px-4 py-2 rounded-xl font-bold transition-all flex items-center gap-2 border", 
@@ -297,6 +468,18 @@ export function Reports() {
           >
             {language === 'ar' ? 'الميزانية العمومية' : 'Balance Sheet'}
           </button>
+          <button 
+            onClick={() => setActiveReport('trial')}
+            className={cn("px-6 py-2 rounded-xl text-sm font-bold transition-all", activeReport === 'trial' ? "bg-blue-600 text-white shadow-lg" : "text-gray-500 hover:text-gray-300")}
+          >
+            {language === 'ar' ? 'ميزان المراجعة' : 'Trial Balance'}
+          </button>
+          <button 
+            onClick={() => setActiveReport('time')}
+            className={cn("px-6 py-2 rounded-xl text-sm font-bold transition-all", activeReport === 'time' ? "bg-blue-600 text-white shadow-lg" : "text-gray-500 hover:text-gray-300")}
+          >
+            {language === 'ar' ? 'الجدول الزمني' : 'Schedule'}
+          </button>
         </div>
       </header>
 
@@ -315,17 +498,17 @@ export function Reports() {
               <div className={cn("p-6 border rounded-2xl shadow-xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}>
                 <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
                   <TrendingUp className="text-green-500" size={20} />
-                  {activeReport === 'income' ? (language === 'ar' ? 'تحليل الربحية' : 'Profitability Analysis') : (language === 'ar' ? 'مقارنة المحصل والمصروف' : 'Collected vs Spent')}
+                  {activeReport === 'income' ? (language === 'ar' ? 'تحليل الربحية (استحقاق)' : 'Profitability Analysis (Accrual)') : (language === 'ar' ? 'مقارنة الإيرادات بالمصروفات' : 'Revenue vs Spent')}
                 </h3>
-                <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-[300px] w-full min-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
                     <BarChart data={projectStats}>
                       <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? "#333" : "#eee"} />
                       <XAxis dataKey="name" stroke="#888" fontSize={10} />
                       <YAxis stroke="#888" fontSize={10} />
                       <Tooltip contentStyle={{ backgroundColor: theme === 'dark' ? '#151619' : '#fff', border: 'none', borderRadius: '8px' }} />
                       <Legend />
-                      <Bar dataKey="billings" name={language === 'ar' ? 'الإيرادات' : 'Revenue'} fill="#10b981" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="billings" name={language === 'ar' ? 'إيرادات الاستحقاق' : 'Accrued Revenue'} fill="#10b981" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="costs" name={language === 'ar' ? 'التكاليف' : 'Costs'} fill="#ef4444" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -337,8 +520,8 @@ export function Reports() {
                   <PieChartIcon className="text-blue-500" size={20} />
                   {language === 'ar' ? 'توزيع التكاليف حسب المشروع' : 'Cost Distribution by Project'}
                 </h3>
-                <div className="h-[300px] w-full">
-                  <ResponsiveContainer width="100%" height="100%">
+                <div className="h-[300px] w-full min-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
                     <PieChart>
                       <Pie
                         data={projectStats}
@@ -377,7 +560,7 @@ export function Reports() {
               
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
                 <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-green-900/10 border-green-900/30" : "bg-green-50 border-green-200")}>
-                  <p className="text-sm text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي الإيرادات (المحصل)' : 'Total Revenue (Collected)'}</p>
+                  <p className="text-sm text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي الإيرادات (أساس الاستحقاق)' : 'Total Revenue (Accrual)'}</p>
                   <p className="text-3xl font-black text-green-500">{totalRevenue.toLocaleString()} <span className="text-sm font-normal">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
                 </div>
                 <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-red-900/10 border-red-900/30" : "bg-red-50 border-red-200")}>
@@ -401,8 +584,8 @@ export function Reports() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
-                  {projectStats.map((stat, idx) => (
-                    <tr key={idx} className="hover:bg-gray-900/20 transition-colors">
+                  {projectStats.map((stat) => (
+                    <tr key={stat.id} className="hover:bg-gray-900/20 transition-colors">
                       <td className="px-6 py-4 font-bold">{stat.name}</td>
                       <td className="px-6 py-4 font-mono">{stat.billings.toLocaleString()}</td>
                       <td className="px-6 py-4 font-mono text-red-400">{stat.costs.toLocaleString()}</td>
@@ -433,17 +616,21 @@ export function Reports() {
                 <thead>
                   <tr className={cn("border-b-2", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
                     <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'المشروع' : 'Project'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الميزانية المخططة' : 'Planned Budget'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'قيمة جداول الكميات' : 'BOQ Value'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'أوامر التغيير' : 'VO Value'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'إجمالي الميزانية' : 'Total Budget'}</th>
                     <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'التكاليف الفعلية' : 'Actual Costs'}</th>
                     <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الانحراف' : 'Variance'}</th>
                     <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الحالة' : 'Status'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
-                  {projectStats.map((stat, idx) => (
-                    <tr key={idx} className="hover:bg-gray-900/20 transition-colors">
-                      <td className="px-6 py-4 font-bold">{stat.name}</td>
-                      <td className="px-6 py-4 font-mono">{stat.budget.toLocaleString()}</td>
+                  {projectStats.map((stat) => (
+                    <tr key={`stat-budget-${stat.id}`} className="hover:bg-gray-900/20 transition-colors text-sm">
+                      <td className="px-6 py-4 font-bold whitespace-nowrap">{stat.name}</td>
+                      <td className="px-6 py-4 font-mono">{stat.boqValue.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-mono text-orange-400">{stat.voValue.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-mono font-bold">{stat.budget.toLocaleString()}</td>
                       <td className="px-6 py-4 font-mono text-blue-400">{stat.costs.toLocaleString()}</td>
                       <td className={cn("px-6 py-4 font-mono font-bold", stat.variance >= 0 ? "text-green-500" : "text-red-500")}>
                         {stat.variance.toLocaleString()}
@@ -467,6 +654,8 @@ export function Reports() {
                 <tfoot>
                   <tr className={cn("border-t-2 font-black", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
                     <td className="px-6 py-4">{language === 'ar' ? 'الإجمالي' : 'Total'}</td>
+                    <td className="px-6 py-4 font-mono">{projectStats.reduce((s, st) => s + st.boqValue, 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 font-mono">{projectStats.reduce((s, st) => s + st.voValue, 0).toLocaleString()}</td>
                     <td className="px-6 py-4 font-mono">{totalBudget.toLocaleString()}</td>
                     <td className="px-6 py-4 font-mono">{totalCosts.toLocaleString()}</td>
                     <td className={cn("px-6 py-4 font-mono", (totalBudget - totalCosts) >= 0 ? "text-green-500" : "text-red-500")}>
@@ -486,26 +675,44 @@ export function Reports() {
                 <Building2 className="text-blue-500" size={32} />
                 <h3 className="text-2xl font-black">{language === 'ar' ? 'نظرة عامة على الأداء المالي للمشاريع' : 'Project Financial Performance Overview'}</h3>
               </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-white border-gray-200")}>
+                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي قيمة المشروع (جداول الكميات)' : 'Total Project Value (BOQ)'}</p>
+                  <p className="text-2xl font-black text-blue-500">{projectStats.reduce((s, st) => s + st.boqValue, 0).toLocaleString()}</p>
+                </div>
+                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-white border-gray-200")}>
+                  <p className="text-xs text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي أوامر التغيير (VO)' : 'Total Variation Orders'}</p>
+                  <p className="text-2xl font-black text-orange-500">{projectStats.reduce((s, st) => s + st.voValue, 0).toLocaleString()}</p>
+                </div>
+                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-blue-600/10 border-blue-600/20" : "bg-blue-50 border-blue-200")}>
+                  <p className="text-xs text-blue-600 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي الميزانية العمومية' : 'Total Combined Budget'}</p>
+                  <p className="text-2xl font-black text-blue-600">{totalBudget.toLocaleString()}</p>
+                </div>
+              </div>
+
               <table className="w-full text-right border-collapse">
                 <thead>
                   <tr className={cn("border-b-2", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
                     <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{t('project')}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الميزانية' : 'Budget'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'المصروفات' : 'Expenses'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'المحصل' : 'Collected'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'قيمة جداول الكميات' : 'BOQ Value'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'أوامر التغيير' : 'VO Value'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'إجمالي الميزانية' : 'Total Budget'}</th>
+                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الإيرادات (استحقاق)' : 'Revenue (Accrual)'}</th>
                     <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'نسبة الإنجاز' : 'Progress'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-800/50">
-                  {projectStats.map((stat, idx) => (
-                    <tr key={idx} className="hover:bg-gray-900/20 transition-colors">
-                      <td className="px-6 py-4 font-bold">{stat.name}</td>
-                      <td className="px-6 py-4 font-mono">{stat.budget.toLocaleString()}</td>
-                      <td className="px-6 py-4 font-mono text-red-400">{stat.costs.toLocaleString()}</td>
+                  {projectStats.map((stat) => (
+                    <tr key={`stat-progress-${stat.id}`} className="hover:bg-gray-900/20 transition-colors text-sm">
+                      <td className="px-6 py-4 font-bold whitespace-nowrap">{stat.name}</td>
+                      <td className="px-6 py-4 font-mono">{stat.boqValue.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-mono text-orange-400">{stat.voValue.toLocaleString()}</td>
+                      <td className="px-6 py-4 font-mono font-bold">{stat.budget.toLocaleString()}</td>
                       <td className="px-6 py-4 font-mono text-green-400">{stat.billings.toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden">
+                          <div className="flex-1 h-2 bg-gray-800 rounded-full overflow-hidden min-w-[60px]">
                             <div 
                               className="h-full bg-blue-500 rounded-full" 
                               style={{ width: `${Math.min(stat.progress, 100)}%` }}
@@ -517,6 +724,16 @@ export function Reports() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className={cn("border-t-2 font-black", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
+                    <td className="px-6 py-4">{language === 'ar' ? 'الإجمالي' : 'Total'}</td>
+                    <td className="px-6 py-4 font-mono">{projectStats.reduce((s, st) => s + st.boqValue, 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 font-mono">{projectStats.reduce((s, st) => s + st.voValue, 0).toLocaleString()}</td>
+                    <td className="px-6 py-4 font-mono">{totalBudget.toLocaleString()}</td>
+                    <td className="px-6 py-4 font-mono">{totalRevenue.toLocaleString()}</td>
+                    <td className="px-6 py-4 font-mono text-blue-500">{(totalBudget > 0 ? (totalRevenue / totalBudget * 100) : 0).toFixed(1)}%</td>
+                  </tr>
+                </tfoot>
               </table>
             </div>
           )}
@@ -540,7 +757,7 @@ export function Reports() {
                         return sum + (entry ? entry.debit - entry.credit : 0);
                       }, 0);
                       return (
-                        <div key={acc.id} className="flex justify-between items-center">
+                        <div key={`asset-${acc.id}`} className="flex justify-between items-center">
                           <span className="text-gray-400">{acc.accountName}</span>
                           <span className="font-mono font-bold">{balance.toLocaleString()}</span>
                         </div>
@@ -571,7 +788,7 @@ export function Reports() {
                           return sum + (entry ? entry.credit - entry.debit : 0);
                         }, 0);
                         return (
-                          <div key={acc.id} className="flex justify-between items-center">
+                          <div key={`liab-${acc.id}`} className="flex justify-between items-center">
                             <span className="text-gray-400">{acc.accountName}</span>
                             <span className="font-mono font-bold">{balance.toLocaleString()}</span>
                           </div>
@@ -589,7 +806,7 @@ export function Reports() {
                           return sum + (entry ? entry.credit - entry.debit : 0);
                         }, 0);
                         return (
-                          <div key={acc.id} className="flex justify-between items-center">
+                          <div key={`equity-${acc.id}`} className="flex justify-between items-center">
                             <span className="text-gray-400">{acc.accountName}</span>
                             <span className="font-mono font-bold">{balance.toLocaleString()}</span>
                           </div>
@@ -616,6 +833,208 @@ export function Reports() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* Analytical Trial Balance View */}
+          {activeReport === 'trial' && (
+            <div className="p-8">
+              <div className="flex items-center gap-3 mb-8">
+                <BarChart3 className="text-blue-500" size={32} />
+                <h3 className="text-2xl font-black">{language === 'ar' ? 'ميزان المراجعة التحليلي' : 'Analytical Trial Balance'}</h3>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse border border-gray-800">
+                  <thead>
+                    <tr className={cn("border-b-2 bg-gray-900/10", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
+                      <th rowSpan={2} className="px-4 py-3 text-sm font-black text-gray-400 uppercase border border-gray-800">{language === 'ar' ? 'كود الحساب' : 'Code'}</th>
+                      <th rowSpan={2} className="px-4 py-3 text-sm font-black text-gray-400 uppercase border border-gray-800">{language === 'ar' ? 'اسم الحساب' : 'Account Name'}</th>
+                      <th colSpan={2} className="px-4 py-3 text-sm font-black text-gray-400 uppercase border border-gray-800 text-center">{language === 'ar' ? 'الأرصدة الافتتاحية' : 'Opening Balances'}</th>
+                      <th colSpan={2} className="px-4 py-3 text-sm font-black text-gray-400 uppercase border border-gray-800 text-center">{language === 'ar' ? 'الحركة خلال الفترة' : 'Movements'}</th>
+                      <th colSpan={2} className="px-4 py-3 text-sm font-black text-gray-400 uppercase border border-gray-800 text-center">{language === 'ar' ? 'الأرصدة الختامية' : 'Closing Balances'}</th>
+                    </tr>
+                    <tr className={cn("border-b-2", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
+                      <th className="px-4 py-2 text-xs font-bold text-gray-500 border border-gray-800">{language === 'ar' ? 'مدين' : 'Debit'}</th>
+                      <th className="px-4 py-2 text-xs font-bold text-gray-500 border border-gray-800">{language === 'ar' ? 'دائن' : 'Credit'}</th>
+                      <th className="px-4 py-2 text-xs font-bold text-gray-500 border border-gray-800">{language === 'ar' ? 'مدين' : 'Debit'}</th>
+                      <th className="px-4 py-2 text-xs font-bold text-gray-500 border border-gray-800">{language === 'ar' ? 'دائن' : 'Credit'}</th>
+                      <th className="px-4 py-2 text-xs font-bold text-gray-500 border border-gray-800">{language === 'ar' ? 'مدين' : 'Debit'}</th>
+                      <th className="px-4 py-2 text-xs font-bold text-gray-500 border border-gray-800">{language === 'ar' ? 'دائن' : 'Credit'}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trialBalance.map((item) => (
+                      <tr key={item.code} className={cn("border-b transition-colors", theme === 'dark' ? "border-gray-800 hover:bg-white/5" : "border-gray-100 hover:bg-gray-50")}>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800">{item.code}</td>
+                        <td className="px-4 py-3 font-bold border border-gray-800">{item.name}</td>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800 text-center">{item.openingDebit > 0 ? item.openingDebit.toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800 text-center">{item.openingCredit > 0 ? item.openingCredit.toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800 text-center text-blue-400">{item.debitMovements > 0 ? item.debitMovements.toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800 text-center text-red-400">{item.creditMovements > 0 ? item.creditMovements.toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800 text-center font-bold text-blue-500">{item.closingDebit > 0 ? item.closingDebit.toLocaleString() : '-'}</td>
+                        <td className="px-4 py-3 font-mono text-sm border border-gray-800 text-center font-bold text-red-500">{item.closingCredit > 0 ? item.closingCredit.toLocaleString() : '-'}</td>
+                      </tr>
+                    ))}
+                    <tr className="bg-blue-600/5 font-black">
+                      <td colSpan={2} className="px-4 py-4 text-center border border-gray-800 uppercase tracking-wider">{language === 'ar' ? 'الإجمالي العام' : 'GRAND TOTAL'}</td>
+                      <td className="px-4 py-4 font-mono border border-gray-800 text-center">{trialBalanceTotals.opDebit.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-mono border border-gray-800 text-center">{trialBalanceTotals.opCredit.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-mono border border-gray-800 text-center text-blue-500">{trialBalanceTotals.movDebit.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-mono border border-gray-800 text-center text-red-500">{trialBalanceTotals.movCredit.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-mono border border-gray-800 text-center text-blue-500">{trialBalanceTotals.clDebit.toLocaleString()}</td>
+                      <td className="px-4 py-4 font-mono border border-gray-800 text-center text-red-500">{trialBalanceTotals.clCredit.toLocaleString()}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Balance Check Analysis */}
+                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-white border-gray-200")}>
+                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <Calculator className="text-blue-500" size={20} />
+                    {language === 'ar' ? 'التحليل المحاسبي للاتزان' : 'Accounting Balance Analysis'}
+                  </h4>
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-400">{language === 'ar' ? 'إجمالي الحركات المدينة' : 'Total Debit Movements'}</span>
+                      <span className="font-mono font-bold text-blue-500">{trialBalanceTotals.movDebit.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-sm">
+                      <span className="text-gray-400">{language === 'ar' ? 'إجمالي الحركات الدائنة' : 'Total Credit Movements'}</span>
+                      <span className="font-mono font-bold text-red-500">{trialBalanceTotals.movCredit.toLocaleString()}</span>
+                    </div>
+                    <div className={cn("pt-4 border-t flex justify-between items-center font-black", 
+                      Math.abs(trialBalanceTotals.movDebit - trialBalanceTotals.movCredit) < 0.1 ? "text-green-500" : "text-red-500"
+                    )}>
+                      <span>{language === 'ar' ? 'الفرق (يجب أن يكون صفراً)' : 'Difference (Must be Zero)'}</span>
+                      <span className="font-mono">{(trialBalanceTotals.movDebit - trialBalanceTotals.movCredit).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Account Type Summary */}
+                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-white border-gray-200")}>
+                  <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                    <TrendingUp className="text-green-500" size={20} />
+                    {language === 'ar' ? 'تحليل طبيعة الحسابات' : 'Account Type Analysis'}
+                  </h4>
+                  <div className="space-y-3">
+                    {['asset', 'liability', 'equity', 'revenue', 'expense'].map(type => {
+                      const typeAccounts = accounts.filter(a => a.type === type);
+                      const typeTotal = trialBalance
+                        .filter(i => typeAccounts.some(ta => (ta.accountCode || ta.code) === i.code))
+                        .reduce((sum, i) => sum + (i.closingDebit - i.closingCredit), 0);
+                      
+                      const labelAr = type === 'asset' ? 'الأصول' : type === 'liability' ? 'الخصوم' : type === 'equity' ? 'حقوق الملكية' : type === 'revenue' ? 'الإيرادات' : 'المصروفات';
+                      const labelEn = type.charAt(0).toUpperCase() + type.slice(1) + 's';
+
+                      return (
+                        <div key={type} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-400">{language === 'ar' ? labelAr : labelEn}</span>
+                          <span className={cn("font-mono font-bold", typeTotal >= 0 ? "text-blue-500" : "text-red-500")}>
+                            {Math.abs(typeTotal).toLocaleString()} 
+                            <span className="text-[10px] ml-1 opacity-50 uppercase tracking-tighter">
+                              {typeTotal >= 0 ? (language === 'ar' ? 'مدين' : 'DR') : (language === 'ar' ? 'دائن' : 'CR')}
+                            </span>
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8 flex justify-end items-center gap-4">
+                <div className={cn("px-6 py-3 rounded-xl border flex items-center gap-3", 
+                  Math.abs(trialBalanceTotals.movDebit - trialBalanceTotals.movCredit) < 0.1 ? "bg-green-900/10 border-green-900/30 text-green-500" : "bg-red-900/10 border-red-900/30 text-red-500"
+                )}>
+                  <div className={cn("w-3 h-3 rounded-full animate-pulse", Math.abs(trialBalanceTotals.movDebit - trialBalanceTotals.movCredit) < 0.1 ? "bg-green-500" : "bg-red-500")}></div>
+                  <span className="font-bold uppercase tracking-widest text-sm">
+                    {Math.abs(trialBalanceTotals.movDebit - trialBalanceTotals.movCredit) < 0.1 ? 
+                      (language === 'ar' ? 'الميزان متزن تماماً' : 'Ledger is Perfectly Balanced') : 
+                      (language === 'ar' ? 'يوجد فرق في الاتزان' : 'Ledger Out of Balance')}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Time & Schedule View */}
+          {activeReport === 'time' && (
+            <div className="p-8">
+              <div className="flex items-center gap-3 mb-8">
+                <Clock className="text-purple-500" size={32} />
+                <h3 className="text-2xl font-black">{language === 'ar' ? 'تقرير الانحراف الزمني والجدول الزمني' : 'Schedule & Time Variance Report'}</h3>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className={cn("border-b-2", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
+                      <th className="px-4 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'البند' : 'Item'}</th>
+                      <th className="px-4 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'البدء' : 'Start'}</th>
+                      <th className="px-4 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'المدة (يوم)' : 'Duration'}</th>
+                      <th className="px-4 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'نهاية متوقعة' : 'Exp. Finish'}</th>
+                      <th className="px-4 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الوقت المنقضي' : 'Elapsed'}</th>
+                      <th className="px-4 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الحالة الزمنية' : 'Schedule Status'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/50">
+                    {boqItems
+                      .filter(item => selectedProjectId === 'all' || item.projectId === selectedProjectId)
+                      .map((item) => {
+                        const startDate = item.startDate ? new Date(item.startDate) : null;
+                        const duration = item.expectedDuration || 0;
+                        const finishDate = startDate ? new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000) : null;
+                        
+                        const today = new Date();
+                        const elapsedDays = startDate ? Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+                        const timeProgress = duration > 0 ? (elapsedDays / duration) * 100 : 0;
+                        
+                        return (
+                          <tr key={item.id} className="hover:bg-gray-900/20 transition-colors text-sm">
+                            <td className="px-4 py-4">
+                              <span className="font-bold block">{item.itemCode}</span>
+                              <span className="text-xs text-gray-500 line-clamp-1">{item.description}</span>
+                            </td>
+                            <td className="px-4 py-4 font-mono">{item.startDate || '-'}</td>
+                            <td className="px-4 py-4 font-mono">{duration}</td>
+                            <td className="px-4 py-4 font-mono text-blue-400">{finishDate ? finishDate.toLocaleDateString() : '-'}</td>
+                            <td className="px-4 py-4">
+                              <div className="flex items-center gap-2">
+                                <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden min-w-[60px]">
+                                  <div 
+                                    className={cn("h-full rounded-full", timeProgress > 100 ? "bg-red-500" : "bg-purple-500")}
+                                    style={{ width: `${Math.min(timeProgress, 100)}%` }}
+                                  />
+                                </div>
+                                <span className="text-[10px] font-mono">{elapsedDays} {language === 'ar' ? 'يوم' : 'd'}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-4">
+                              {startDate ? (
+                                <span className={cn(
+                                  "px-2 py-1 rounded-md text-[10px] font-bold uppercase",
+                                  timeProgress > 100 ? "bg-red-900/20 text-red-500" : 
+                                  timeProgress > 80 ? "bg-orange-900/20 text-orange-500" :
+                                  "bg-green-900/20 text-green-500"
+                                )}>
+                                  {timeProgress > 100 ? (language === 'ar' ? 'متأخر' : 'Overdue') : 
+                                   timeProgress > 80 ? (language === 'ar' ? 'أوشك على الانتهاء' : 'Near Finish') :
+                                   (language === 'ar' ? 'قيد التنفيذ' : 'On Track')}
+                                </span>
+                              ) : (
+                                <span className="text-gray-600 text-[10px]">{language === 'ar' ? 'غير مجدول' : 'Not Scheduled'}</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

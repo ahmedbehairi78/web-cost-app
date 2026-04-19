@@ -1,7 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { cn } from '../lib/utils';
 
 type Language = 'ar' | 'en';
-type Theme = 'dark' | 'light';
+type Theme = 'dark' | 'light' | 'soft';
 
 interface LanguageContextType {
   language: Language;
@@ -75,6 +76,7 @@ const translations: Record<Language, Record<string, string>> = {
     print_settings: 'إعدادات الطباعة',
     dark_mode: 'الوضع الليلي',
     light_mode: 'الوضع المضيء',
+    soft_mode: 'الوضع الهادئ',
     logout: 'تسجيل الخروج',
     purchases: 'المشتريات',
     invoice_entry: 'إثبات فاتورة',
@@ -153,6 +155,7 @@ const translations: Record<Language, Record<string, string>> = {
     print_settings: 'Print Settings',
     dark_mode: 'Dark Mode',
     light_mode: 'Light Mode',
+    soft_mode: 'Soft Mode',
     logout: 'Logout',
     purchases: 'Purchases',
     invoice_entry: 'Invoice Entry',
@@ -186,16 +189,17 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     document.documentElement.dir = dir;
     document.documentElement.lang = language;
+    document.documentElement.classList.remove('dark', 'soft');
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    } else if (theme === 'soft') {
+      document.documentElement.classList.add('soft');
     }
   }, [language, dir, theme]);
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, theme, setTheme, t, dir }}>
-      <div className={theme === 'dark' ? 'dark' : ''}>
+      <div className={cn(theme === 'dark' ? 'dark' : '', theme === 'soft' ? 'soft' : '')}>
         {children}
       </div>
     </LanguageContext.Provider>

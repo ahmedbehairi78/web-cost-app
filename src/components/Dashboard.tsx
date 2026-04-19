@@ -21,20 +21,23 @@ import {
   LineChart, 
   Line,
   AreaChart,
-  Area
+  Area,
+  ScatterChart,
+  Scatter,
+  ZAxis,
+  Legend
 } from 'recharts';
-import { collection, onSnapshot, query } from 'firebase/firestore';
+import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
-import { sortByDateFieldDesc } from '../lib/firestoreSorts';
 import { useLanguage } from '../context/LanguageContext';
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
 
 export function Dashboard() {
   const { t, language, theme } = useLanguage();
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [refreshKey, setRefreshKey] = useState(0);
   const [stats, setStats] = useState({
     totalBudget: 0,
     totalSpent: 0,
@@ -44,43 +47,79 @@ export function Dashboard() {
   const [alerts, setAlerts] = useState<any[]>([]);
   const [chartData, setChartData] = useState<any[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    setLoading(true);
     const unsubs: (() => void)[] = [];
-    const ready = {
-      projects: false,
-      transactions: false,
-      boq: false,
-    };
-
-    const finishRefresh = () => {
-      if (ready.projects && ready.transactions && ready.boq) {
-        setLoading(false);
-        setRefreshing(false);
-      }
-    };
 
     const handleStatsUpdate = (projectsData: any[], transData: any[], boqItems: any[]) => {
       setRecentTransactions(transData.slice(0, 5));
 
-      // Calculate from transactions (Source of Truth)
-      const totalSpent = transData.reduce((sum, t: any) => {
-        const expenseEntries = t.entries?.filter((e: any) => e.accountCode?.startsWith('5')) || [];
-        return sum + expenseEntries.reduce((s: number, e: any) => s + (e.debit || 0), 0);
-      }, 0);
+      let totalSpent = 0;
+      let totalCollected = 0;
+      let totalRevenue = 0;
+      const monthlyMap: { [key: string]: { name: string, revenue: number, cost: number, collections: number } } = {};
 
-      const totalCollected = transData.reduce((sum, t: any) => {
-        const isCollection = t.entries?.some((e: any) => e.accountCode === '1101' && e.debit > 0) &&
-                            t.entries?.some((e: any) => e.accountCode === '1102' && e.credit > 0);
-        if (!isCollection) return sum;
-        const cashEntry = t.entries?.find((e: any) => e.accountCode === '1101');
-        return sum + (cashEntry?.debit || 0);
-      }, 0);
+      // Single pass over transactions for better performance
+      transData.forEach((t: any) => {
+        if (!t.entries) return;
 
-      const totalRevenue = transData.reduce((sum, t: any) => {
-        const revenueEntries = t.entries?.filter((e: any) => e.accountCode === '41') || [];
-        return sum + revenueEntries.reduce((s: number, e: any) => s + (e.credit || 0), 0);
-      }, 0);
+        const date = new Date(t.date);
+        const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        const monthName = date.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', { month: 'short', year: '2-digit' });
+
+        if (!monthlyMap[monthYear]) {
+          monthlyMap[monthYear] = { name: monthName, revenue: 0, cost: 0, collections: 0 };
+        }
+
+        t.entries.forEach((e: any) => {
+          // Expenses (Account codes starting with 5)
+          if (e.accountCode?.startsWith('5')) {
+            const val = (e.debit || 0);
+            totalSpent += val;
+            monthlyMap[monthYear].cost += val;
+          }
+          // Revenue (Account code 41)
+          if (e.accountCode === '41') {
+            const val = (e.credit || 0);
+            totalRevenue += val;
+            monthlyMap[monthYear].revenue += val;
+          }
+        });
+
+        // Collection logic
+        const hasCashDebit = t.entries.some((e: any) => e.accountCode === '1101' && e.debit > 0);
+        const hasBankCredit = t.entries.some((e: any) => e.accountCode === '1102' && e.credit > 0);
+        
+        if (hasCashDebit && hasBankCredit) {
+          const cashEntry = t.entries.find((e: any) => e.accountCode === '1101');
+          const val = (cashEntry?.debit || 0);
+          totalCollected += val;
+          monthlyMap[monthYear].collections += val;
+        }
+      });
+
+      const sortedMonths = Object.keys(monthlyMap).sort();
+      let runningRevenue = 0;
+      let runningCost = 0;
+      let runningCollections = 0;
+
+      const cumulativeData = sortedMonths.map(key => {
+        runningRevenue += monthlyMap[key].revenue;
+        runningCost += monthlyMap[key].cost;
+        runningCollections += monthlyMap[key].collections;
+        return {
+          name: monthlyMap[key].name,
+          revenue: runningRevenue,
+          cost: runningCost,
+          collections: runningCollections
+        };
+      });
+
+      const sortedChartData = cumulativeData.slice(-6); // Last 6 months with cumulative totals
+      
+      setChartData(sortedChartData);
 
       const pendingBilling = totalRevenue - totalCollected;
       const totalBudget = boqItems.reduce((sum, i: any) => sum + (i.tenderAmount || 0), 0);
@@ -91,77 +130,118 @@ export function Dashboard() {
         totalCollected,
         pendingBilling
       });
+      setLoading(false);
     };
 
     let projectsData: any[] = [];
     let transData: any[] = [];
     let boqItems: any[] = [];
 
-    const unsubProjects = onSnapshot(collection(db, 'projects'), (snapshot) => {
-      projectsData = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter((project: any) => project.isDeleted !== true);
-      ready.projects = true;
+    const unsubProjects = onSnapshot(query(collection(db, 'projects'), where('isDeleted', '==', false)), (snapshot) => {
+      projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       handleStatsUpdate(projectsData, transData, boqItems);
-      finishRefresh();
     }, (err) => {
       console.error("Dashboard projects listener error:", err);
-      ready.projects = true;
-      setLoading(false);
-      setRefreshing(false);
     });
 
-    const unsubTransactions = onSnapshot(collection(db, 'transactions'), (snapshot) => {
-      transData = sortByDateFieldDesc(
-        snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() }))
-          .filter((transaction: any) => transaction.isDeleted !== true),
-        'date'
-      );
-      ready.transactions = true;
+    const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false)), (snapshot) => {
+      transData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       handleStatsUpdate(projectsData, transData, boqItems);
-      finishRefresh();
     }, (err) => {
       console.error("Dashboard transactions listener error:", err);
-      ready.transactions = true;
-      setLoading(false);
-      setRefreshing(false);
     });
 
     const unsubBOQ = onSnapshot(collection(db, 'boq_items'), (snapshot) => {
-      boqItems = snapshot.docs
-        .map(doc => ({ id: doc.id, ...doc.data() }))
-        .filter((item: any) => item.isDeleted !== true);
-      ready.boq = true;
+      boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       handleStatsUpdate(projectsData, transData, boqItems);
-      finishRefresh();
     }, (err) => {
       console.error("Dashboard boq_items listener error:", err);
-      ready.boq = true;
-      setLoading(false);
-      setRefreshing(false);
     });
 
     unsubs.push(unsubProjects, unsubTransactions, unsubBOQ);
-
-    setChartData([
-      { name: language === 'ar' ? 'يناير' : 'Jan', revenue: 400000, cost: 240000 },
-      { name: language === 'ar' ? 'فبراير' : 'Feb', revenue: 300000, cost: 139800 },
-      { name: language === 'ar' ? 'مارس' : 'Mar', revenue: 200000, cost: 980000 },
-      { name: language === 'ar' ? 'أبريل' : 'Apr', revenue: 278000, cost: 390800 },
-      { name: language === 'ar' ? 'مايو' : 'May', revenue: 189000, cost: 480000 },
-      { name: language === 'ar' ? 'يونيو' : 'Jun', revenue: 239000, cost: 380000 },
-    ]);
 
     return () => {
       unsubs.forEach(unsub => unsub());
     }; 
   }, [language, refreshKey]);
 
-  const handleRefreshData = () => {
-    if (refreshing) return;
-    setRefreshing(true);
-    setRefreshKey((current) => current + 1);
+  const handleRefresh = () => {
+    setLoading(true);
+    setRefreshKey(prev => prev + 1);
+  };
+
+  const handleExportPDF = () => {
+    const isAr = language === 'ar';
+    const element = document.createElement('div');
+    element.dir = isAr ? 'rtl' : 'ltr';
+    element.style.padding = '40px';
+    element.style.backgroundColor = '#ffffff';
+    element.style.color = '#000000';
+    element.style.fontFamily = isAr ? 'Arial, sans-serif' : 'inherit';
+
+    element.innerHTML = `
+      <div style="text-align: center; margin-bottom: 40px;">
+        <h1 style="font-size: 28px; color: #1e3a8a; margin-bottom: 10px;">${isAr ? 'تقرير ملخص المحفظة' : 'Portfolio Summary Report'}</h1>
+        <p style="color: #666;">${new Date().toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px;">
+        <div style="padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <p style="font-size: 12px; color: #666; margin-bottom: 5px;">${isAr ? 'إجمالي قيمة العقود' : 'Total Contracts Value'}</p>
+          <h2 style="font-size: 20px; font-weight: bold;">${stats.totalBudget.toLocaleString()} EGP</h2>
+        </div>
+        <div style="padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <p style="font-size: 12px; color: #666; margin-bottom: 5px;">${isAr ? 'إجمالي التكاليف الفعلية' : 'Total Actual Costs'}</p>
+          <h2 style="font-size: 20px; font-weight: bold;">${stats.totalSpent.toLocaleString()} EGP</h2>
+        </div>
+        <div style="padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <p style="font-size: 12px; color: #666; margin-bottom: 5px;">${isAr ? 'إجمالي التحصيلات' : 'Total Collections'}</p>
+          <h2 style="font-size: 20px; font-weight: bold;">${stats.totalCollected.toLocaleString()} EGP</h2>
+        </div>
+        <div style="padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <p style="font-size: 12px; color: #666; margin-bottom: 5px;">${isAr ? 'مستخلصات قيد التحصيل' : 'Pending Billing'}</p>
+          <h2 style="font-size: 20px; font-weight: bold;">${stats.pendingBilling.toLocaleString()} EGP</h2>
+        </div>
+      </div>
+
+      <div style="margin-top: 40px;">
+        <h3 style="font-size: 18px; margin-bottom: 20px; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px;">
+          ${isAr ? 'أحدث المعاملات' : 'Recent Transactions'}
+        </h3>
+        <table style="width: 100%; border-collapse: collapse;">
+          <thead>
+            <tr style="background-color: #f8fafc;">
+              <th style="border: 1px solid #e2e8f0; padding: 12px; text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'التاريخ' : 'Date'}</th>
+              <th style="border: 1px solid #e2e8f0; padding: 12px; text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'البيان' : 'Description'}</th>
+              <th style="border: 1px solid #e2e8f0; padding: 12px; text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'القيمة' : 'Amount'}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${recentTransactions.map((tx: any) => `
+              <tr>
+                <td style="border: 1px solid #e2e8f0; padding: 12px;">${tx.date}</td>
+                <td style="border: 1px solid #e2e8f0; padding: 12px;">${tx.description}</td>
+                <td style="border: 1px solid #e2e8f0; padding: 12px;">${(tx.entries?.reduce((sum: number, e: any) => sum + (e.debit || 0), 0) || 0).toLocaleString()} EGP</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+
+      <div style="margin-top: 60px; text-align: center; font-size: 10px; color: #999;">
+        <p>${isAr ? 'تم إنشاء هذا التقرير آلياً بواسطة نظام إدارة المشاريع' : 'This report was generated automatically by the Project Management System'}</p>
+      </div>
+    `;
+
+    const opt = {
+      margin: 0.5,
+      filename: `Portfolio_Report_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'in' as const, format: 'letter' as const, orientation: 'portrait' as const }
+    };
+
+    html2pdf().set(opt).from(element).save();
   };
 
   const statCards = [
@@ -181,20 +261,29 @@ export function Dashboard() {
   }
 
   return (
-    <div className={cn("p-8 space-y-8 min-h-screen transition-colors", theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : "bg-gray-50 text-gray-900")}>
+    <div className={cn(
+      "p-8 space-y-8 min-h-screen transition-colors", 
+      theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : 
+      theme === 'soft' ? "bg-[#eceff1] text-[#37474f]" :
+      "bg-gray-50 text-gray-900"
+    )}>
       <header className="flex justify-between items-end">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">{language === 'ar' ? 'نظرة عامة على المحفظة' : 'Portfolio Overview'}</h2>
           <p className="text-gray-400 mt-1">{language === 'ar' ? 'متابعة الأداء المالي والتدفق النقدي لكافة المشاريع' : 'Monitor financial performance and cash flow across all projects'}</p>
         </div>
         <div className="flex gap-3">
-          <button className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors", theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : "bg-white border border-gray-200 hover:bg-gray-50")}>{language === 'ar' ? 'تصدير تقرير PDF' : 'Export PDF'}</button>
-          <button
-            onClick={handleRefreshData}
-            disabled={refreshing}
-            className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:cursor-not-allowed px-4 py-2 rounded-md text-sm font-medium transition-colors text-white flex items-center gap-2"
+          <button 
+            onClick={handleExportPDF}
+            className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors", theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : "bg-white border border-gray-200 hover:bg-gray-50")}
           >
-            {refreshing && <Loader2 size={16} className="animate-spin" />}
+            {language === 'ar' ? 'تصدير تقرير PDF' : 'Export PDF'}
+          </button>
+          <button 
+            onClick={handleRefresh}
+            className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-sm font-medium transition-colors text-white flex items-center gap-2"
+          >
+            {loading && <Loader2 className="animate-spin" size={16} />}
             {language === 'ar' ? 'تحديث البيانات' : 'Refresh Data'}
           </button>
         </div>
@@ -207,11 +296,16 @@ export function Dashboard() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: i * 0.1 }}
-            key={stat.label}
-            className={cn("border p-6 rounded-xl transition-all group", theme === 'dark' ? "bg-[#151619] border-gray-800 hover:border-gray-700" : "bg-white border-gray-200 hover:border-blue-200 shadow-sm")}
+            key={`${stat.label}-${i}`}
+            className={cn(
+              "border p-6 rounded-xl transition-all group", 
+              theme === 'dark' ? "bg-[#151619] border-gray-800 hover:border-gray-700" : 
+              theme === 'soft' ? "bg-white border-[#cfd8dc] hover:border-[#546e7a]" :
+              "bg-white border-gray-200 hover:border-blue-200 shadow-sm"
+            )}
           >
             <div className="flex justify-between items-start">
-              <div className={cn("p-2 rounded-lg", theme === 'dark' ? "bg-gray-900" : "bg-gray-50", stat.color)}>
+              <div className={cn("p-2 rounded-lg", theme === 'dark' ? "bg-gray-900" : theme === 'soft' ? "bg-[#eceff1]" : "bg-gray-50", stat.color)}>
                 <stat.icon size={24} />
               </div>
               <span className={cn(
@@ -231,54 +325,110 @@ export function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Cash Flow Chart */}
-        <div className={cn("lg:col-span-2 border p-6 rounded-xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200 shadow-sm")}>
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-bold flex items-center gap-2">
+        <div className={cn(
+          "lg:col-span-2 border p-6 rounded-xl transition-colors", 
+          theme === 'dark' ? "bg-[#0b0c0e] border-gray-800" : 
+          theme === 'soft' ? "bg-white border-[#cfd8dc]" :
+          "bg-white border-gray-200 shadow-sm"
+        )}>
+          <div className="flex justify-end items-center mb-6">
+            <h3 className="text-lg font-bold flex items-center gap-2 flex-row-reverse" dir="rtl">
               <BarChart3 className="text-blue-500" size={20} />
-              {t('cash_flow_analysis')}
+              {language === 'ar' ? 'تحليل التدفق النقدي' : t('cash_flow_analysis')}
             </h3>
           </div>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={chartData}>
-                <defs>
-                  <linearGradient id="colorRev" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="colorCost" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3}/>
-                    <stop offset="95%" stopColor="#ef4444" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? "#1f2937" : "#e5e7eb"} vertical={false} />
-                <XAxis dataKey="name" stroke="#6b7280" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#6b7280" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${value/1000}k`} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: theme === 'dark' ? '#111827' : '#ffffff', border: `1px solid ${theme === 'dark' ? '#374151' : '#e5e7eb'}`, borderRadius: '8px' }}
-                  itemStyle={{ fontSize: '12px' }}
+          <div className="h-[350px] w-full min-h-[350px]">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
+              <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? "#1f2937" : "#e5e7eb"} opacity={0.3} />
+                <XAxis 
+                  dataKey="name" 
+                  stroke="#4b5563" 
+                  fontSize={12} 
+                  tickLine={false} 
+                  axisLine={false} 
+                  dy={10}
+                  reversed={language === 'ar'}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#3b82f6" fillOpacity={1} fill="url(#colorRev)" name={language === 'ar' ? 'الإيرادات' : 'Revenue'} />
-                <Area type="monotone" dataKey="cost" stroke="#ef4444" fillOpacity={1} fill="url(#colorCost)" name={language === 'ar' ? 'التكاليف' : 'Costs'} />
-              </AreaChart>
+                <YAxis 
+                  stroke="#4b5563" 
+                  fontSize={12} 
+                  tickLine={false} 
+                  axisLine={false} 
+                  tickFormatter={(value) => `${value/1000}k`}
+                  orientation={language === 'ar' ? "right" : "left"}
+                  dx={language === 'ar' ? 10 : -10}
+                />
+                <Tooltip 
+                  contentStyle={{ 
+                    backgroundColor: theme === 'dark' ? '#111827' : theme === 'soft' ? '#ffffff' : '#ffffff', 
+                    border: theme === 'dark' ? '1px solid #374151' : '1px solid #cfd8dc', 
+                    borderRadius: '12px',
+                    fontSize: '12px',
+                    color: theme === 'dark' ? '#fff' : '#000'
+                  }}
+                  itemStyle={{ color: theme === 'dark' ? '#fff' : '#000' }}
+                  cursor={{ fill: theme === 'dark' ? '#1f2937' : theme === 'soft' ? '#cfd8dc' : '#f3f4f6', opacity: 0.4 }}
+                />
+                <Legend 
+                  verticalAlign="top" 
+                  align={language === 'ar' ? 'right' : 'left'}
+                  height={36}
+                  iconType="circle"
+                />
+                <Bar 
+                  name={language === 'ar' ? 'التكاليف' : 'Costs'} 
+                  dataKey="cost" 
+                  fill="#ef4444" 
+                  radius={[4, 4, 0, 0]} 
+                  barSize={12}
+                />
+                <Bar 
+                  name={language === 'ar' ? 'الإيرادات' : 'Revenue'} 
+                  dataKey="revenue" 
+                  fill="#3b82f6" 
+                  radius={[4, 4, 0, 0]} 
+                  barSize={12}
+                />
+                <Bar 
+                  name={language === 'ar' ? 'المتحصلات' : 'Collections'} 
+                  dataKey="collections" 
+                  fill="#10b981" 
+                  radius={[4, 4, 0, 0]} 
+                  barSize={12}
+                />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
 
         {/* Recent Transactions */}
-        <div className={cn("border p-6 rounded-xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200 shadow-sm")}>
+        <div className={cn(
+          "border p-6 rounded-xl transition-colors", 
+          theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+          theme === 'soft' ? "bg-white border-[#cfd8dc]" :
+          "bg-white border-gray-200 shadow-sm"
+        )}>
           <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
             <Clock className="text-blue-500" size={20} />
             {language === 'ar' ? 'أحدث القيود المحاسبية' : 'Recent Journal Entries'}
           </h3>
           <div className="space-y-4">
             {recentTransactions.length === 0 ? (
-              <div className="p-8 text-center text-gray-500 border border-dashed rounded-lg border-gray-800">
+              <div className={cn(
+                "p-8 text-center text-gray-500 border border-dashed rounded-lg",
+                theme === 'dark' ? "border-gray-800" : "border-gray-200"
+              )}>
                 {language === 'ar' ? 'لا توجد قيود حالياً' : 'No entries yet'}
               </div>
             ) : (
-              recentTransactions.map((t, i) => (
-                <div key={i} className="flex justify-between items-center p-3 rounded-lg bg-gray-900/50 border border-gray-800">
+              recentTransactions.map((t) => (
+                <div key={t.id} className={cn(
+                  "flex justify-between items-center p-3 rounded-lg border",
+                  theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+                  theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" :
+                  "bg-gray-50 border-gray-100"
+                )}>
                   <div>
                     <p className="text-sm font-bold">{t.description}</p>
                     <p className="text-[10px] text-gray-500">{t.date}</p>

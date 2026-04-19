@@ -12,6 +12,8 @@ import {
   Edit2,
   Trash2,
   AlertCircle,
+  CheckCircle2,
+  Clock,
   Briefcase,
   X,
   Download,
@@ -19,10 +21,9 @@ import {
   FileSpreadsheet,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
-import { sortByTextField } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
@@ -61,6 +62,8 @@ interface BOQItem {
   rateProfitPct: number;
   unitRateTotal: number;
   tenderAmount: number;
+  startDate?: string;
+  expectedDuration?: number;
   createdAt?: any;
 }
 
@@ -71,10 +74,18 @@ export function BOQ() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedContractId, setSelectedContractId] = useState<string>('');
   const [items, setItems] = useState<BOQItem[]>([]);
+  const [progressMap, setProgressMap] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<BOQItem | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // New Contract Form State
+  const [contractFormData, setContractFormData] = useState({
+    contractName: '',
+    contractNumber: ''
+  });
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -103,16 +114,15 @@ export function BOQ() {
     rateLabour: 0,
     rateEquipment: 0,
     rateOverheadPct: 10,
-    rateProfitPct: 12
+    rateProfitPct: 12,
+    startDate: '',
+    expectedDuration: 0
   });
 
   useEffect(() => {
-    const q = query(collection(db, 'projects'), where('isDeleted', '==', false));
+    const q = query(collection(db, 'projects'), where('isDeleted', '==', false), orderBy('projectCode'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = sortByTextField(
-        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)),
-        'projectCode'
-      );
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id);
@@ -153,13 +163,11 @@ export function BOQ() {
     setLoading(true);
     const q = query(
       collection(db, 'boq_items'), 
-      where('contractId', '==', selectedContractId)
+      where('contractId', '==', selectedContractId),
+      orderBy('itemCode')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = sortByTextField(
-        snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)),
-        'itemCode'
-      );
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       setItems(data);
       setLoading(false);
     }, (error) => {
@@ -167,6 +175,64 @@ export function BOQ() {
     });
     return () => unsubscribe();
   }, [selectedContractId]);
+
+  // Calculate project progress from IPCs
+  useEffect(() => {
+    if (!selectedContractId) {
+      setProgressMap({});
+      return;
+    }
+
+    const q = query(
+      collection(db, 'billing'),
+      where('contractId', '==', selectedContractId),
+      where('status', 'in', ['approved', 'paid'])
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const progress: Record<string, number> = {};
+      
+      snapshot.docs.forEach(doc => {
+        const ipc = doc.data();
+        if (ipc.items && Array.isArray(ipc.items)) {
+          ipc.items.forEach((item: any) => {
+            if (item.boqItemId) {
+              const currentTotal = progress[item.boqItemId] || 0;
+              progress[item.boqItemId] = currentTotal + (item.currentQty || 0);
+            }
+          });
+        }
+      });
+      
+      setProgressMap(progress);
+    }, (error) => {
+      console.error("Error fetching progress for BOQ items:", error);
+    });
+
+    return () => unsubscribe();
+  }, [selectedContractId]);
+
+  const handleContractSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedProjectId) return;
+    setIsSubmitting(true);
+
+    try {
+      const docRef = await addDoc(collection(db, 'contracts'), {
+        ...contractFormData,
+        projectId: selectedProjectId,
+        isDeleted: false,
+        createdAt: serverTimestamp()
+      });
+      setIsContractModalOpen(false);
+      setContractFormData({ contractName: '', contractNumber: '' });
+      setSelectedContractId(docRef.id);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'contracts');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   const calculateRates = () => {
     const direct = formData.rateMaterials + formData.rateLabour + formData.rateEquipment;
@@ -215,7 +281,9 @@ export function BOQ() {
         rateLabour: 0,
         rateEquipment: 0,
         rateOverheadPct: 10,
-        rateProfitPct: 12
+        rateProfitPct: 12,
+        startDate: '',
+        expectedDuration: 0
       });
     } catch (error) {
       handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, 'boq_items');
@@ -266,7 +334,9 @@ export function BOQ() {
       rateLabour: item.rateLabour || 0,
       rateEquipment: item.rateEquipment || 0,
       rateOverheadPct: item.rateOverheadPct,
-      rateProfitPct: item.rateProfitPct
+      rateProfitPct: item.rateProfitPct,
+      startDate: item.startDate || '',
+      expectedDuration: item.expectedDuration || 0
     });
     setIsModalOpen(true);
   };
@@ -304,7 +374,9 @@ export function BOQ() {
       'تكلفة العمالة': item.rateLabour || 0,
       'تكلفة المعدات': item.rateEquipment || 0,
       'نسبة المصاريف العمومية %': item.rateOverheadPct,
-      'نسبة الربح %': item.rateProfitPct
+      'نسبة الربح %': item.rateProfitPct,
+      'تاريخ بدء العمل': item.startDate || '',
+      'مدة التنفيذ المتوقعة': item.expectedDuration || 0
     })) : [{
       'كود الفصل': '01',
       'اسم الفصل': 'الأعمال الترابية',
@@ -319,7 +391,9 @@ export function BOQ() {
       'تكلفة العمالة': 30,
       'تكلفة المعدات': 20,
       'نسبة المصاريف العمومية %': 10,
-      'نسبة الربح %': 12
+      'نسبة الربح %': 12,
+      'تاريخ بدء العمل': '2024-01-01',
+      'مدة التنفيذ المتوقعة': 30
     }];
 
     const ws = XLSX.utils.json_to_sheet(data);
@@ -342,6 +416,8 @@ export function BOQ() {
       { wch: 15 }, // Equip
       { wch: 15 }, // Overhead
       { wch: 15 }, // Profit
+      { wch: 20 }, // Start Date
+      { wch: 20 }, // Duration
     ];
     ws['!cols'] = wscols;
 
@@ -377,6 +453,8 @@ export function BOQ() {
           const rateEquipment = Number(row['تكلفة المعدات'] || 0);
           const rateOverheadPct = Number(row['نسبة المصاريف العمومية %'] || 10);
           const rateProfitPct = Number(row['نسبة الربح %'] || 12);
+          const startDate = row['تاريخ بدء العمل'] || '';
+          const expectedDuration = Number(row['مدة التنفيذ المتوقعة'] || 0);
 
           if (!itemCode || !description) continue;
 
@@ -401,6 +479,8 @@ export function BOQ() {
             rateEquipment,
             rateOverheadPct,
             rateProfitPct,
+            startDate,
+            expectedDuration,
             projectId: selectedProjectId,
             contractId: selectedContractId,
             rateDirect: direct,
@@ -422,35 +502,50 @@ export function BOQ() {
   };
 
   return (
-    <div className="p-8 bg-[#0a0a0a] min-h-screen text-gray-100" dir="rtl">
+    <div className={cn(
+      "p-8 min-h-screen transition-colors",
+      theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : 
+      theme === 'soft' ? "bg-[#eceff1] text-[#37474f]" : 
+      "bg-gray-50 text-gray-900"
+    )} dir={dir}>
       <header className="flex justify-between items-center mb-8">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">جدول الكميات (BOQ)</h2>
-          <p className="text-gray-400 mt-1">إدارة بنود التعاقد، الكميات، وتحليل الأسعار</p>
+          <h2 className="text-3xl font-bold tracking-tight">{language === 'ar' ? 'جدول الكميات (BOQ)' : 'Bill of Quantities (BOQ)'}</h2>
+          <p className="text-gray-400 mt-1">{language === 'ar' ? 'إدارة بنود التعاقد، الكميات، وتحليل الأسعار' : 'Manage contract items, quantities, and price analysis'}</p>
         </div>
         <div className="flex gap-4">
           <div className="flex flex-col items-end">
-            <span className="text-[10px] text-gray-500 font-bold uppercase">إجمالي قيمة المشروع</span>
-            <span className="text-xl font-bold text-blue-500">{totalBOQAmount.toLocaleString()} <span className="text-xs font-normal">ج.م</span></span>
+            <span className="text-[10px] text-gray-500 font-bold uppercase">{language === 'ar' ? 'إجمالي قيمة المشروع' : 'Total Project Value'}</span>
+            <span className="text-xl font-bold text-blue-500">{totalBOQAmount.toLocaleString()} <span className="text-xs font-normal">{language === 'ar' ? 'ج.م' : 'EGP'}</span></span>
           </div>
           
           <div className="flex gap-2">
             <button 
               onClick={handleExportTemplate}
-              className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border border-gray-700"
-              title="تصدير قالب"
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border",
+                theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700" : 
+                theme === 'soft' ? "bg-white hover:bg-[#eceff1] text-[#37474f] border-[#cfd8dc]" :
+                "bg-white hover:bg-gray-50 text-gray-700 border-gray-200 shadow-sm"
+              )}
+              title={language === 'ar' ? 'تصدير قالب' : 'Export Template'}
             >
               <Download size={18} />
-              تصدير
+              {language === 'ar' ? 'تصدير' : 'Export'}
             </button>
             <button 
               disabled={!selectedContractId || isSubmitting}
               onClick={() => fileInputRef.current?.click()}
-              className="bg-gray-800 hover:bg-gray-700 text-gray-300 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border border-gray-700 disabled:opacity-50"
-              title="استيراد قالب"
+              className={cn(
+                "px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border disabled:opacity-50",
+                theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700" : 
+                theme === 'soft' ? "bg-white hover:bg-[#eceff1] text-[#37474f] border-[#cfd8dc]" :
+                "bg-white hover:bg-gray-50 text-gray-700 border-gray-200 shadow-sm"
+              )}
+              title={language === 'ar' ? 'استيراد قالب' : 'Import Template'}
             >
               <Upload size={18} />
-              استيراد
+              {language === 'ar' ? 'استيراد' : 'Import'}
             </button>
             <input 
               type="file" 
@@ -479,62 +574,90 @@ export function BOQ() {
                   rateLabour: 0,
                   rateEquipment: 0,
                   rateOverheadPct: 10,
-                  rateProfitPct: 12
+                  rateProfitPct: 12,
+                  startDate: '',
+                  expectedDuration: 0
                 });
                 setIsModalOpen(true);
               }}
-              className="bg-blue-600 hover:bg-blue-500 disabled:bg-gray-800 disabled:text-gray-600 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 text-white"
+              className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 text-white"
             >
               <Plus size={18} />
-              بند جديد
+              {language === 'ar' ? 'بند جديد' : 'New Item'}
             </button>
             <button 
               disabled={!selectedContractId || isSubmitting || items.length === 0}
               onClick={handleClearBOQ}
               className="bg-red-900/20 hover:bg-red-900/40 text-red-500 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border border-red-900/50"
-              title="تفريغ الجدول"
+              title={language === 'ar' ? 'تفريغ الجدول' : 'Clear Table'}
             >
               <Trash2 size={18} />
-              تفريغ
+              {language === 'ar' ? 'تفريغ' : 'Clear'}
             </button>
           </div>
       </header>
 
       {/* Selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
-        <div className="bg-[#151619] border border-gray-800 p-4 rounded-xl flex items-center gap-4">
+        <div className={cn(
+          "border p-4 rounded-xl flex items-center gap-4",
+          theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+          theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+          "bg-white border-gray-200 shadow-sm"
+        )}>
           <div className="p-2 bg-blue-900/20 rounded-lg text-blue-500">
             <Briefcase size={20} />
           </div>
           <div className="flex-1">
-            <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">المشروع</label>
+            <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">{language === 'ar' ? 'المشروع' : 'Project'}</label>
             <select 
-              className="bg-transparent text-lg font-bold outline-none w-full cursor-pointer"
+              className={cn(
+                "bg-transparent text-lg font-bold outline-none w-full cursor-pointer",
+                theme === 'dark' ? "text-white" : "text-gray-900"
+              )}
               value={selectedProjectId}
               onChange={(e) => setSelectedProjectId(e.target.value)}
             >
               {projects.map(p => (
-                <option key={p.id} value={p.id} className="bg-[#151619]">{p.projectName} ({p.projectCode})</option>
+                <option key={p.id} value={p.id} className={theme === 'dark' ? "bg-[#151619]" : "bg-white"}>{p.projectName} ({p.projectCode})</option>
               ))}
             </select>
           </div>
         </div>
 
-        <div className="bg-[#151619] border border-gray-800 p-4 rounded-xl flex items-center gap-4">
+        <div className={cn(
+          "border p-4 rounded-xl flex items-center gap-4",
+          theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+          theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+          "bg-white border-gray-200 shadow-sm"
+        )}>
           <div className="p-2 bg-purple-900/20 rounded-lg text-purple-500">
             <FileText size={20} />
           </div>
           <div className="flex-1">
-            <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">العقد</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[10px] text-gray-500 font-bold uppercase block">{language === 'ar' ? 'العقد' : 'Contract'}</label>
+              <button 
+                onClick={() => setIsContractModalOpen(true)}
+                disabled={!selectedProjectId}
+                className="p-1 px-2 bg-purple-900/20 text-purple-500 rounded text-[10px] font-black uppercase flex items-center gap-1 hover:bg-purple-900/30 transition-colors disabled:opacity-50"
+              >
+                <Plus size={10} />
+                {language === 'ar' ? 'إضافة عقد' : 'Add Contract'}
+              </button>
+            </div>
             <select 
-              className="bg-transparent text-lg font-bold outline-none w-full cursor-pointer"
+              className={cn(
+                "bg-transparent text-lg font-bold outline-none w-full cursor-pointer",
+                theme === 'dark' ? "text-white" : "text-gray-900"
+              )}
               value={selectedContractId}
               onChange={(e) => setSelectedContractId(e.target.value)}
               disabled={!selectedProjectId}
             >
-              <option value="" disabled>اختر العقد</option>
+              <option value="" disabled>{language === 'ar' ? 'اختر العقد' : 'Select Contract'}</option>
               {contracts.map(c => (
-                <option key={c.id} value={c.id} className="bg-[#151619]">{c.contractName} ({c.contractNumber})</option>
+                <option key={c.id} value={c.id} className={theme === 'dark' ? "bg-[#151619]" : "bg-white"}>{c.contractName} ({c.contractNumber})</option>
               ))}
             </select>
           </div>
@@ -542,16 +665,31 @@ export function BOQ() {
       </div>
 
       {/* BOQ Table */}
-      <div className="bg-[#151619] border border-gray-800 rounded-xl overflow-hidden shadow-2xl">
+      <div className={cn(
+        "border rounded-xl overflow-hidden shadow-2xl",
+        theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+        "bg-white border-gray-200"
+      )}>
         <table className="w-full text-right border-collapse">
           <thead>
-            <tr className="bg-gray-900/50 border-b border-gray-800 text-[10px] font-bold text-gray-400 uppercase">
+            <tr className={cn(
+              "border-b text-[10px] font-bold text-gray-400 uppercase",
+              theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+              theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+              "bg-gray-50 border-gray-100"
+            )}>
               <th className="p-4 w-24">{language === 'ar' ? 'الفصل' : 'Chapter'}</th>
               <th className="p-4 w-24">{language === 'ar' ? 'القسم' : 'Section'}</th>
               <th className="p-4 w-20">{language === 'ar' ? 'الكود' : 'Code'}</th>
               <th className="p-4">{language === 'ar' ? 'الوصف' : 'Description'}</th>
               <th className="p-4 w-16">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
               <th className="p-4 w-20">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
+              <th className="p-4 w-28 whitespace-nowrap">{language === 'ar' ? 'بدء العمل' : 'Start Date'}</th>
+              <th className="p-4 w-16 whitespace-nowrap">{language === 'ar' ? 'المدة' : 'Dur.'}</th>
+              <th className="p-4 w-28 whitespace-nowrap">{language === 'ar' ? 'نهاية العمل' : 'End Date'}</th>
+              <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'الإنجاز' : 'Progress'}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'الحالة' : 'Status'}</th>
               <th className="p-4 w-24">{language === 'ar' ? 'سعر الوحدة' : 'Unit Rate'}</th>
               <th className="p-4 w-24">{language === 'ar' ? 'الإجمالي' : 'Total'}</th>
               <th className="p-4 w-12"></th>
@@ -559,12 +697,17 @@ export function BOQ() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="p-12 text-center text-gray-500">جاري تحميل البنود...</td></tr>
+              <tr><td colSpan={9} className="p-12 text-center text-gray-500">{language === 'ar' ? 'جاري تحميل البنود...' : 'Loading items...'}</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={9} className="p-12 text-center text-gray-500">لا توجد بنود مسجلة لهذا المشروع.</td></tr>
+              <tr><td colSpan={9} className="p-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد بنود مسجلة لهذا المشروع.' : 'No items recorded for this project.'}</td></tr>
             ) : (
               items.map((item) => (
-                <tr key={item.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition-colors group">
+                <tr key={item.id} className={cn(
+                  "border-b transition-colors group",
+                  theme === 'dark' ? "border-gray-800/50 hover:bg-gray-800/30" : 
+                  theme === 'soft' ? "border-[#cfd8dc] hover:bg-[#eceff1]" : 
+                  "border-gray-100 hover:bg-gray-50"
+                )}>
                   <td className="p-4 text-xs">
                     <div className="font-bold">{item.chapterName}</div>
                     <div className="text-[8px] opacity-50">{item.chapterCode}</div>
@@ -577,6 +720,95 @@ export function BOQ() {
                   <td className="p-4 text-sm font-medium">{item.description}</td>
                   <td className="p-4 text-sm text-gray-400">{item.unit}</td>
                   <td className="p-4 text-sm font-bold">{item.tenderQty.toLocaleString()}</td>
+                  <td className="p-4 text-xs font-mono text-gray-400">
+                    {item.startDate ? new Date(item.startDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                  </td>
+                  <td className="p-4 text-xs font-mono">
+                    {item.expectedDuration ? (
+                      <div className="flex items-center gap-1">
+                        <Clock size={12} className="text-gray-500" />
+                        <span>{item.expectedDuration}</span>
+                      </div>
+                    ) : '-'}
+                  </td>
+                  <td className={cn(
+                    "p-4 text-xs font-mono font-bold",
+                    (() => {
+                      if (!item.startDate || !item.expectedDuration) return "text-gray-500";
+                      const start = new Date(item.startDate);
+                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      const totalExecuted = progressMap[item.id] || 0;
+                      const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
+                      const isDelayed = end < new Date() && progressPct < 99.9;
+                      return isDelayed ? "text-red-500" : "text-blue-500";
+                    })()
+                  )}>
+                    {(() => {
+                      if (!item.startDate || !item.expectedDuration) return '-';
+                      const start = new Date(item.startDate);
+                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      return end.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
+                    })()}
+                  </td>
+                  <td className="p-4">
+                    {(() => {
+                      const totalExecuted = progressMap[item.id] || 0;
+                      const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
+                      return (
+                        <div className="space-y-1">
+                          <div className="flex justify-between text-[10px] font-mono">
+                            <span>{progressPct.toFixed(1)}%</span>
+                          </div>
+                          <div className={cn("w-full h-1 rounded-full", theme === 'dark' ? "bg-gray-800" : "bg-gray-200")}>
+                            <div 
+                              className={cn(
+                                "h-full rounded-full transition-all duration-500",
+                                progressPct >= 100 ? "bg-green-500" : "bg-blue-500"
+                              )}
+                              style={{ width: `${Math.min(progressPct, 100)}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td className="p-4">
+                    {(() => {
+                      if (!item.startDate || !item.expectedDuration) return null;
+                      const start = new Date(item.startDate);
+                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      const totalExecuted = progressMap[item.id] || 0;
+                      const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
+                      
+                      const isCompleted = progressPct >= 99.9;
+                      const isDelayed = end < new Date() && !isCompleted;
+
+                      if (isCompleted) {
+                        return (
+                          <div className="flex items-center gap-1 text-[10px] font-bold text-green-500 bg-green-500/10 px-2 py-1 rounded-full w-fit">
+                            <CheckCircle2 size={10} />
+                            {language === 'ar' ? 'مكتمل' : 'Completed'}
+                          </div>
+                        );
+                      }
+
+                      if (isDelayed) {
+                        return (
+                          <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-full w-fit">
+                            <AlertCircle size={10} />
+                            {language === 'ar' ? 'متأخر' : 'Delayed'}
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full w-fit">
+                          <Clock size={10} />
+                          {language === 'ar' ? 'جاري' : 'In Progress'}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td className="p-4 text-sm font-bold text-green-400">{item.unitRateTotal?.toLocaleString()}</td>
                   <td className="p-4 text-sm font-bold">{item.tenderAmount?.toLocaleString()}</td>
                   <td className="p-4 text-left">
@@ -612,18 +844,33 @@ export function BOQ() {
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#151619] border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+              className={cn(
+                "border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl",
+                theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+                theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                "bg-white border-gray-200"
+              )}
             >
-              <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
+              <div className={cn(
+                "p-6 border-b flex justify-between items-center",
+                theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+                theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                "bg-gray-50 border-gray-200"
+              )}>
                 <h3 className="text-lg font-bold text-red-500">{confirmConfig.title}</h3>
-                <button onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} className="text-gray-500 hover:text-white transition-colors">
+                <button onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))} className="text-gray-500 hover:text-red-500 transition-colors">
                   <X size={20} />
                 </button>
               </div>
               <div className="p-6">
-                <p className="text-gray-300">{confirmConfig.message}</p>
+                <p className={theme === 'dark' ? "text-gray-300" : "text-gray-600"}>{confirmConfig.message}</p>
               </div>
-              <div className="p-6 border-t border-gray-800 flex justify-end gap-3 bg-gray-900/30">
+              <div className={cn(
+                "p-6 border-t flex justify-end gap-3",
+                theme === 'dark' ? "bg-gray-900/30 border-gray-800" : 
+                theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                "bg-gray-50 border-gray-200"
+              )}>
                 <button 
                   onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
@@ -643,92 +890,223 @@ export function BOQ() {
           </div>
         )}
 
+        <AnimatePresence>
+          {isContractModalOpen && (
+            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className={cn(
+                  "border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl",
+                  theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+                  theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                  "bg-white border-gray-200"
+                )}
+              >
+                <div className={cn(
+                  "p-6 border-b flex justify-between items-center",
+                  theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+                  theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                  "bg-gray-50 border-gray-200"
+                )}>
+                  <h3 className="text-xl font-bold">{language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract'}</h3>
+                  <button onClick={() => setIsContractModalOpen(false)} className={cn("transition-colors", theme === 'dark' ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900")}>
+                    <X size={20} />
+                  </button>
+                </div>
+
+                <form onSubmit={handleContractSubmit} className="p-6 space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العقد' : 'Contract Name'}</label>
+                    <input 
+                      required
+                      type="text" 
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
+                      value={contractFormData.contractName}
+                      onChange={(e) => setContractFormData({...contractFormData, contractName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم العقد' : 'Contract Number'}</label>
+                    <input 
+                      required
+                      type="text" 
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
+                      value={contractFormData.contractNumber}
+                      onChange={(e) => setContractFormData({...contractFormData, contractNumber: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="pt-4 flex gap-3">
+                    <button 
+                      disabled={isSubmitting}
+                      type="submit"
+                      className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
+                    >
+                      {isSubmitting && <Loader2 className="animate-spin" size={18} />}
+                      {language === 'ar' ? 'إضافة العقد' : 'Add Contract'}
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={() => setIsContractModalOpen(false)}
+                      className={cn(
+                        "flex-1 py-3 rounded-xl font-bold transition-all",
+                        theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
+                        theme === 'soft' ? "bg-gray-200 hover:bg-gray-300 text-gray-700" : 
+                        "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                      )}
+                    >
+                      {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
         {isModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-[#151619] border border-gray-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl"
+              className={cn(
+                "border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl",
+                theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+                theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                "bg-white border-gray-200"
+              )}
             >
-              <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
-                <h3 className="text-xl font-bold">{editingItem ? 'تعديل البند التعاقدي' : 'إضافة بند تعاقدي جديد'}</h3>
-                <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
+              <div className={cn(
+                "p-6 border-b flex justify-between items-center",
+                theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+                theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                "bg-gray-50 border-gray-200"
+              )}>
+                <h3 className="text-xl font-bold">{editingItem ? (language === 'ar' ? 'تعديل البند التعاقدي' : 'Edit Contract Item') : (language === 'ar' ? 'إنشاء مستخلص أعمال جديد' : 'Create New IPC')}</h3>
+                <button onClick={() => setIsModalOpen(false)} className={cn("transition-colors", theme === 'dark' ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900")}>
                   <X size={20} />
                 </button>
               </div>
 
               <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">كود الفصل</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود الفصل' : 'Chapter Code'}</label>
                     <input 
                       type="text" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.chapterCode}
                       onChange={(e) => setFormData({...formData, chapterCode: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">اسم الفصل</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم الفصل' : 'Chapter Name'}</label>
                     <input 
                       type="text" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.chapterName}
                       onChange={(e) => setFormData({...formData, chapterName: e.target.value})}
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">كود نوع العمل</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود نوع العمل' : 'Work Type Code'}</label>
                     <input 
                       type="text" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.workTypeCode}
                       onChange={(e) => setFormData({...formData, workTypeCode: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">كود القسم</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود القسم' : 'Section Code'}</label>
                     <input 
                       type="text" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.sectionCode}
                       onChange={(e) => setFormData({...formData, sectionCode: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">اسم القسم</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم القسم' : 'Section Name'}</label>
                     <input 
                       type="text" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.sectionName}
                       onChange={(e) => setFormData({...formData, sectionName: e.target.value})}
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">كود البند</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود البند' : 'Item Code'}</label>
                     <input 
                       required
                       type="text" 
-                      placeholder="مثال: 1.1.1"
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      placeholder={language === 'ar' ? "مثال: 1.1.1" : "Ex: 1.1.1"}
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.itemCode}
                       onChange={(e) => setFormData({...formData, itemCode: e.target.value})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">الوحدة</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الوحدة' : 'Unit'}</label>
                     <input 
                       required
                       type="text" 
-                      placeholder="م3، م2، طن..."
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      placeholder={language === 'ar' ? "م3، م2، طن..." : "m3, m2, ton..."}
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.unit}
                       onChange={(e) => setFormData({...formData, unit: e.target.value})}
                     />
@@ -736,92 +1114,169 @@ export function BOQ() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">وصف البند</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'وصف البند' : 'Item Description'}</label>
                   <textarea 
                     required
                     rows={2}
-                    placeholder="أدخل وصفاً تفصيلياً للبند..."
-                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors resize-none"
+                    placeholder={language === 'ar' ? "أدخل وصفاً تفصيلياً للبند..." : "Enter item description..."}
+                    className={cn(
+                      "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors resize-none",
+                      theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                      theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                      "bg-white border-gray-200 shadow-sm"
+                    )}
                     value={formData.description}
                     onChange={(e) => setFormData({...formData, description: e.target.value})}
                   />
                 </div>
 
-                <div className="grid grid-cols-3 gap-4 p-4 bg-gray-900/30 rounded-xl border border-gray-800/50">
+                <div className={cn(
+                  "grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl border",
+                  theme === 'dark' ? "bg-gray-900/30 border-gray-800/50" : 
+                  theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                  "bg-gray-50 border-gray-100 shadow-sm"
+                )}>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">الكمية التعاقدية</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الكمية التعاقدية' : 'Contract Qty'}</label>
                     <input 
                       required
                       type="number" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.tenderQty}
                       onChange={(e) => setFormData({...formData, tenderQty: Number(e.target.value)})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">المواد (Direct)</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'المواد (Direct)' : 'Materials (Direct)'}</label>
                     <input 
                       type="number" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.rateMaterials}
                       onChange={(e) => setFormData({...formData, rateMaterials: Number(e.target.value)})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">العمالة (Direct)</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'العمالة (Direct)' : 'Labour (Direct)'}</label>
                     <input 
                       type="number" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.rateLabour}
                       onChange={(e) => setFormData({...formData, rateLabour: Number(e.target.value)})}
                     />
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">المعدات (Direct)</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'المعدات (Direct)' : 'Equipment (Direct)'}</label>
                     <input 
                       type="number" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.rateEquipment}
                       onChange={(e) => setFormData({...formData, rateEquipment: Number(e.target.value)})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">المصاريف %</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'المصاريف %' : 'Overhead %'}</label>
                     <input 
                       type="number" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.rateOverheadPct}
                       onChange={(e) => setFormData({...formData, rateOverheadPct: Number(e.target.value)})}
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">الربح %</label>
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الربح %' : 'Profit %'}</label>
                     <input 
                       type="number" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
                       value={formData.rateProfitPct}
                       onChange={(e) => setFormData({...formData, rateProfitPct: Number(e.target.value)})}
                     />
                   </div>
                 </div>
 
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'تاريخ بدء العمل' : 'Start Date'}</label>
+                    <input 
+                      type="date" 
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({...formData, startDate: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'مدة التنفيذ المتوقعة (يوم)' : 'Expected Duration (Days)'}</label>
+                    <input 
+                      type="number" 
+                      className={cn(
+                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-200 shadow-sm"
+                      )}
+                      value={formData.expectedDuration}
+                      onChange={(e) => setFormData({...formData, expectedDuration: Number(e.target.value)})}
+                    />
+                  </div>
+                </div>
+
                 <div className="pt-4 flex gap-3">
                   <button 
-                    type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+                    type="submit"
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
                   >
-                    {isSubmitting ? 'جاري الحفظ...' : 'حفظ البند'}
+                    {isSubmitting && <Loader2 className="animate-spin" size={18} />}
+                    {editingItem ? (language === 'ar' ? 'تحديث البند' : 'Update Item') : (language === 'ar' ? 'حفظ البند' : 'Save Item')}
                   </button>
                   <button 
                     type="button"
                     onClick={() => setIsModalOpen(false)}
-                    className="flex-1 bg-gray-800 hover:bg-gray-700 py-3 rounded-xl font-bold transition-all"
+                    className={cn(
+                      "flex-1 py-3 rounded-xl font-bold transition-all",
+                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
+                      theme === 'soft' ? "bg-[#cfd8dc] hover:bg-[#b0bec5] text-[#37474f]" : 
+                      "bg-gray-200 hover:bg-gray-300 text-gray-700"
+                    )}
                   >
-                    إلغاء
+                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
                   </button>
                 </div>
               </form>

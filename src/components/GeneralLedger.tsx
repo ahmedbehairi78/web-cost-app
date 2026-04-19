@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   FolderTree, 
@@ -15,24 +15,23 @@ import {
   Printer,
   Calculator,
   X,
-  AlertCircle
+  AlertCircle,
+  Loader2,
+  ChevronLast,
+  Wallet,
+  FileUp,
+  FileDown
 } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy, addDoc, where, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, where, serverTimestamp, limit } from 'firebase/firestore';
+// @ts-ignore
+import * as XLSX from 'xlsx';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
-import { sortByDateFieldDesc } from '../lib/firestoreSorts';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
-import { accountingService } from '../services/accountingService';
-
-interface Account {
-  id: string;
-  accountCode: string;
-  accountName: string;
-  parentCode: string;
-  type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
-  isGroup: boolean;
-}
+// @ts-ignore
+import html2pdf from 'html2pdf.js';
+import { accountingService, Account, Transaction as ServiceTransaction, JournalEntry } from '../services/accountingService';
 
 interface Project {
   id: string;
@@ -58,18 +57,18 @@ interface Transaction {
     accountName: string;
     debit: number;
     credit: number;
-    note?: string;
   }[];
   createdBy: string;
 }
 
 export function GeneralLedger() {
   const { t, language, theme, dir } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState<'coa' | 'journal' | 'ledger'>('coa');
+  const [activeSubTab, setActiveSubTab] = useState<'coa' | 'journal' | 'ledger' | 'custody'>('coa');
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionLimit, setTransactionLimit] = useState(50);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(['1', '2', '3', '4', '5']));
@@ -79,14 +78,48 @@ export function GeneralLedger() {
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [selectedLedgerAccount, setSelectedLedgerAccount] = useState<string>('');
+
+  // Custody Settlement State
+  const [selectedCustodyAccount, setSelectedCustodyAccount] = useState<string>('');
+  const [custodySettlement, setCustodySettlement] = useState({
+    date: new Date().toISOString().split('T')[0],
+    description: language === 'ar' ? 'تسوية عهدة' : 'Custody Settlement',
+    items: [{ id: crypto.randomUUID(), accountCode: '', accountName: '', amount: 0, description: '' }]
+  });
+
+  // Optimized lookups
+  const contractsMap = useMemo(() => {
+    const map = new Map();
+    contracts.forEach(c => map.set(c.id, c));
+    return map;
+  }, [contracts]);
+
+  const projectsMap = useMemo(() => {
+    const map = new Map();
+    projects.forEach(p => map.set(p.id, p));
+    return map;
+  }, [projects]);
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
   const [entryForm, setEntryForm] = useState({
     date: new Date().toISOString().split('T')[0],
     description: '',
     costCenterId: '',
     entries: [
-      { accountCode: '', debit: 0, credit: 0 },
-      { accountCode: '', debit: 0, credit: 0 }
+      { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 },
+      { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }
     ]
   });
 
@@ -104,10 +137,17 @@ export function GeneralLedger() {
     projectId: '',
   });
 
+  const [accountForm, setAccountForm] = useState({
+    accountCode: '',
+    accountName: '',
+    parentCode: '',
+    type: 'asset' as const,
+    isGroup: false,
+    status: 'active' as const,
+  });
+
   useEffect(() => {
     setLoading(true);
-    void accountingService.ensureDefaultChartAccounts();
-
     const unsubAccounts = onSnapshot(
       query(collection(db, 'chart_of_accounts'), orderBy('accountCode')),
       (snapshot) => {
@@ -133,12 +173,9 @@ export function GeneralLedger() {
     );
 
     const unsubTransactions = onSnapshot(
-      collection(db, 'transactions'),
+      query(collection(db, 'transactions'), where('isDeleted', '==', false), orderBy('date', 'desc'), limit(transactionLimit)),
       (snapshot) => {
-        const activeTransactions = snapshot.docs
-          .map(doc => ({ id: doc.id, ...doc.data() } as Transaction))
-          .filter((transaction) => (transaction as any).isDeleted !== true);
-        setTransactions(sortByDateFieldDesc(activeTransactions, 'date'));
+        setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
         setLoading(false);
       },
       (error) => handleFirestoreError(error, OperationType.LIST, 'transactions')
@@ -150,7 +187,141 @@ export function GeneralLedger() {
       unsubContracts();
       unsubTransactions();
     };
-  }, []);
+  }, [transactionLimit]);
+
+  const handleExportLedgerPDF = () => {
+    if (!selectedLedgerAccount) return;
+    
+    const account = accounts.find(a => a.accountCode === selectedLedgerAccount);
+    const isAr = language === 'ar';
+    const element = document.createElement('div');
+    element.dir = isAr ? 'rtl' : 'ltr';
+    element.style.padding = '40px';
+    element.style.backgroundColor = '#ffffff';
+    element.style.color = '#000000';
+    element.style.fontFamily = isAr ? 'Arial, sans-serif' : 'inherit';
+
+    let runningBalance = 0;
+    const accountTransactions = transactions
+      .filter(tx => tx.entries.some(e => e.accountCode === selectedLedgerAccount))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    element.innerHTML = `
+      <div style="text-align: center; margin-bottom: 30px;">
+        <h1 style="font-size: 24px; color: #1e3a8a; margin-bottom: 5px;">${isAr ? 'كشف حساب تفصيلي' : 'Detailed Account Statement'}</h1>
+        <p style="font-size: 18px; font-weight: bold;">${account?.accountCode} - ${account?.accountName}</p>
+        <p style="color: #666; font-size: 12px;">${new Date().toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+          <tr style="background-color: #f8fafc; border-bottom: 2px solid #1e3a8a;">
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'التاريخ' : 'Date'}</th>
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'البيان' : 'Description'}</th>
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: center;">${isAr ? 'مدين' : 'Debit'}</th>
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: center;">${isAr ? 'دائن' : 'Credit'}</th>
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: center;">${isAr ? 'الرصيد' : 'Balance'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${accountTransactions.map(tx => {
+            const entry = tx.entries.find(e => e.accountCode === selectedLedgerAccount)!;
+            runningBalance += (entry.debit - entry.credit);
+            return `
+              <tr>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${tx.date}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0;">${tx.description}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; color: #3b82f6;">${entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; color: #ef4444;">${entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
+                <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; font-weight: bold; color: ${runningBalance >= 0 ? '#10b981' : '#ef4444'};">
+                  ${runningBalance.toLocaleString()}
+                </td>
+              </tr>
+            `;
+          }).join('')}
+        </tbody>
+      </table>
+    `;
+
+    const opt = {
+      margin: 0.5,
+      filename: `Ledger_${selectedLedgerAccount}_${new Date().toISOString().split('T')[0]}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'in' as const, format: 'letter' as const, orientation: 'portrait' as const }
+    };
+
+    html2pdf().set(opt).from(element).save();
+  };
+
+  const handleExportTransactionPDF = (tx: Transaction) => {
+    const isAr = language === 'ar';
+    const element = document.createElement('div');
+    element.dir = isAr ? 'rtl' : 'ltr';
+    element.style.padding = '40px';
+    element.style.backgroundColor = '#ffffff';
+    element.style.color = '#000000';
+    element.style.fontFamily = isAr ? 'Arial, sans-serif' : 'inherit';
+
+    const contract = contractsMap.get(tx.costCenterId);
+    const project = projectsMap.get(contract?.projectId);
+
+    element.innerHTML = `
+      <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #1e3a8a; padding-bottom: 10px;">
+        <h1 style="font-size: 24px; color: #1e3a8a; margin-bottom: 5px;">${isAr ? 'قيد محاسبي' : 'Journal Entry'}</h1>
+        <p style="font-size: 14px; color: #666;">${tx.reference}</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 30px; font-size: 14px;">
+        <div>
+          <p><strong>${isAr ? 'التاريخ:' : 'Date:'}</strong> ${tx.date}</p>
+          <p><strong>${isAr ? 'البيان:' : 'Description:'}</strong> ${tx.description}</p>
+        </div>
+        <div>
+          <p><strong>${isAr ? 'مركز التكلفة:' : 'Cost Center:'}</strong> ${contract ? `${contract.contractName} (${project?.projectName || '...'})` : '-'}</p>
+        </div>
+      </div>
+
+      <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
+        <thead>
+          <tr style="background-color: #f8fafc; border-bottom: 1px solid #e2e8f0;">
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: ${isAr ? 'right' : 'left'};">${isAr ? 'الحساب' : 'Account'}</th>
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: center;">${isAr ? 'مدين' : 'Debit'}</th>
+            <th style="padding: 10px; border: 1px solid #e2e8f0; text-align: center;">${isAr ? 'دائن' : 'Credit'}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${tx.entries.map(entry => `
+            <tr>
+              <td style="padding: 8px; border: 1px solid #e2e8f0;">
+                <div>${entry.accountName}</div>
+                <div style="font-size: 10px; color: #666;">${entry.accountCode}</div>
+              </td>
+              <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; color: #3b82f6;">${entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
+              <td style="padding: 8px; border: 1px solid #e2e8f0; text-align: center; color: #ef4444;">${entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="background-color: #f8fafc; font-weight: bold;">
+            <td style="padding: 10px; border: 1px solid #e2e8f0;">${isAr ? 'الإجمالي' : 'Total'}</td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0; text-align: center; color: #3b82f6;">${tx.entries.reduce((sum, e) => sum + e.debit, 0).toLocaleString()}</td>
+            <td style="padding: 10px; border: 1px solid #e2e8f0; text-align: center; color: #ef4444;">${tx.entries.reduce((sum, e) => sum + e.credit, 0).toLocaleString()}</td>
+          </tr>
+        </tfoot>
+      </table>
+    `;
+
+    const opt = {
+      margin: 0.5,
+      filename: `Entry_${tx.reference}.pdf`,
+      image: { type: 'jpeg' as const, quality: 0.98 },
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'in' as const, format: 'letter' as const, orientation: 'portrait' as const }
+    };
+
+    html2pdf().set(opt).from(element).save();
+  };
 
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -205,10 +376,56 @@ export function GeneralLedger() {
     }
   };
 
+  const handleSaveAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      await addDoc(collection(db, 'chart_of_accounts'), {
+        ...accountForm,
+        createdAt: serverTimestamp(),
+      });
+      setIsAccountModalOpen(false);
+      setAccountForm({
+        accountCode: '',
+        accountName: '',
+        parentCode: '',
+        type: 'asset',
+        isGroup: false,
+        status: 'active',
+      });
+    } catch (error) {
+      console.error('Save Account Error:', error);
+      alert(language === 'ar' ? 'فشل حفظ الحساب. يرجى التأكد من صلاحيات قاعدة البيانات.' : 'Failed to save account. Please check database permissions.');
+      handleFirestoreError(error, OperationType.CREATE, 'chart_of_accounts');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteTransaction = (tx: Transaction) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
+      message: language === 'ar' ? 'هل أنت متأكد من حذف هذا القيد؟ لا يمكن التراجع عن هذه العملية.' : 'Are you sure you want to delete this entry? This action cannot be undone.',
+      onConfirm: async () => {
+        setIsSubmitting(true);
+        try {
+          await accountingService.deleteTransaction(tx.id);
+          setSelectedTransaction(null);
+          setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+        } catch (error) {
+          handleFirestoreError(error, OperationType.DELETE, 'transactions');
+        } finally {
+          setIsSubmitting(false);
+        }
+      }
+    });
+  };
+
   const handleAddEntryLine = () => {
     setEntryForm({
       ...entryForm,
-      entries: [...entryForm.entries, { accountCode: '', debit: 0, credit: 0 }]
+      entries: [...entryForm.entries, { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }]
     });
   };
 
@@ -221,8 +438,125 @@ export function GeneralLedger() {
 
   const handleEntryChange = (index: number, field: string, value: any) => {
     const newEntries = [...entryForm.entries];
+    // @ts-ignore
     newEntries[index] = { ...newEntries[index], [field]: value };
+    
+    if (field === 'accountCode') {
+      const account = accounts.find(a => a.accountCode === value);
+      if (account) {
+        // @ts-ignore
+        newEntries[index].accountName = account.accountName;
+      }
+    }
+    
     setEntryForm({ ...entryForm, entries: newEntries });
+  };
+
+  const handleCustodyItemChange = (index: number, field: string, value: any) => {
+    const newItems = [...custodySettlement.items];
+    // @ts-ignore
+    newItems[index] = { ...newItems[index], [field]: value };
+    
+    if (field === 'accountCode') {
+      const account = accounts.find(a => a.accountCode === value);
+      if (account) {
+        // @ts-ignore
+        newItems[index].accountName = account.accountName;
+      }
+    }
+    
+    setCustodySettlement({ ...custodySettlement, items: newItems });
+  };
+
+  const handleSaveCustodySettlement = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustodyAccount || custodySettlement.items.length === 0) return;
+
+    const totalAmount = custodySettlement.items.reduce((sum, item) => sum + Number(item.amount), 0);
+    if (totalAmount <= 0) return;
+
+    setIsSubmitting(true);
+    try {
+      const custodyAcc = accounts.find(a => a.accountCode === selectedCustodyAccount);
+      
+      const entries = [
+        // Credit the custody account
+        {
+          accountCode: selectedCustodyAccount,
+          accountName: custodyAcc?.accountName || '',
+          debit: 0,
+          credit: totalAmount
+        },
+        // Debit the expense accounts
+        ...custodySettlement.items.map(item => ({
+          accountCode: item.accountCode,
+          accountName: item.accountName,
+          debit: Number(item.amount),
+          credit: 0
+        }))
+      ];
+
+      await accountingService.createTransaction({
+        date: custodySettlement.date,
+        description: custodySettlement.description,
+        reference: `SET-${Date.now().toString().slice(-6)}`,
+        entries
+      });
+
+      setCustodySettlement({
+        date: new Date().toISOString().split('T')[0],
+        description: language === 'ar' ? 'تسوية عهدة' : 'Custody Settlement',
+        items: [{ id: crypto.randomUUID(), accountCode: '', accountName: '', amount: 0, description: '' }]
+      });
+      alert(language === 'ar' ? 'تم حفظ التسوية بنجاح' : 'Settlement saved successfully');
+    } catch (error) {
+      console.error('Custody Settlement error:', error);
+      handleFirestoreError(error, OperationType.CREATE, 'transactions');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleExportCustodyExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(custodySettlement.items.map(item => ({
+      'Account Code': item.accountCode,
+      'Account Name': item.accountName,
+      'Amount': item.amount,
+      'Description': item.description
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "CustodySettlement");
+    XLSX.writeFile(wb, `Custody_Settlement_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleImportCustodyExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const bstr = evt.target?.result as string;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      const importedItems = data.map((row: any) => ({
+        id: crypto.randomUUID(),
+        accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
+        accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),
+        amount: Number(row['Amount'] || row['المبلغ'] || 0),
+        description: String(row['Description'] || row['البيان'] || '')
+      })).filter(item => item.accountCode && item.amount > 0);
+
+      if (importedItems.length > 0) {
+        setCustodySettlement(prev => ({
+          ...prev,
+          items: importedItems
+        }));
+      }
+    };
+    reader.readAsBinaryString(file);
   };
 
   const handleSaveEntry = async (e: React.FormEvent) => {
@@ -263,13 +597,26 @@ export function GeneralLedger() {
         date: new Date().toISOString().split('T')[0],
         description: '',
         costCenterId: '',
-        entries: [{ accountCode: '', debit: 0, credit: 0 }, { accountCode: '', debit: 0, credit: 0 }]
+        entries: [
+          { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }, 
+          { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }
+        ]
       });
     } catch (error) {
       console.error('Save Entry Error:', error);
       alert(language === 'ar' ? 'فشل حفظ القيد. يرجى المحاولة مرة أخرى.' : 'Failed to save entry. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleToggleAccountStatus = async (acc: Account) => {
+    const newStatus = acc.status === 'disabled' ? 'active' : 'disabled';
+    try {
+      await accountingService.updateAccount(acc.id, { status: newStatus });
+    } catch (error) {
+      console.error('Toggle Status Error:', error);
+      handleFirestoreError(error, OperationType.UPDATE, 'chart_of_accounts');
     }
   };
 
@@ -290,8 +637,16 @@ export function GeneralLedger() {
         <div key={acc.id} className="select-none">
           <div 
             className={cn(
-              "flex items-center gap-2 py-2 px-4 hover:bg-gray-800/50 cursor-pointer border-b border-gray-800/30 group transition-colors",
-              level === 0 && "bg-gray-900/30 font-bold text-blue-400"
+              "flex items-center gap-2 py-2 px-4 cursor-pointer border-b transition-colors group",
+              theme === 'dark' ? "hover:bg-gray-800/50 border-gray-800/30" : 
+              theme === 'soft' ? "hover:bg-white/50 border-[#cfd8dc]" :
+              "hover:bg-gray-100 border-gray-100",
+              level === 0 && (
+                theme === 'dark' ? "bg-gray-900/30 font-bold text-blue-400" :
+                theme === 'soft' ? "bg-white/40 font-bold text-blue-600" :
+                "bg-gray-200/50 font-bold text-blue-700"
+              ),
+              acc.status === 'disabled' && "opacity-40 grayscale"
             )}
             style={{ [dir === 'rtl' ? 'paddingRight' : 'paddingLeft']: `${level * 24 + 16}px` }}
             onClick={() => acc.isGroup && toggleGroup(acc.accountCode)}
@@ -302,9 +657,24 @@ export function GeneralLedger() {
               <div className="w-4" />
             )}
             <span className="font-mono text-xs opacity-50 w-16">{acc.accountCode}</span>
-            <span className="flex-1">{acc.accountName}</span>
+            <span className={cn("flex-1", acc.status === 'disabled' && "line-through")}>{acc.accountName}</span>
             
             <div className="flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
+              {acc.status === 'disabled' ? (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleToggleAccountStatus(acc); }}
+                  className="text-[10px] bg-green-600/20 text-green-500 px-2 py-0.5 rounded font-bold hover:bg-green-600/30 transition-colors"
+                >
+                  {language === 'ar' ? 'تفعيل' : 'Activate'}
+                </button>
+              ) : (
+                <button 
+                  onClick={(e) => { e.stopPropagation(); handleToggleAccountStatus(acc); }}
+                  className="text-[10px] bg-red-600/20 text-red-500 px-2 py-0.5 rounded font-bold hover:bg-red-600/30 transition-colors"
+                >
+                  {language === 'ar' ? 'تعطيل' : 'Disable'}
+                </button>
+              )}
               <span className={cn(
                 "text-[10px] uppercase px-2 py-0.5 rounded font-bold",
                 acc.type === 'asset' ? "bg-green-900/20 text-green-400" :
@@ -339,22 +709,19 @@ export function GeneralLedger() {
   };
 
   const seedAccounts = async () => {
-    await accountingService.ensureDefaultChartAccounts();
-    return;
-
     const initialAccounts = [
-      { accountCode: '1', accountName: 'الأصول', parentCode: '', type: 'asset', isGroup: true },
-      { accountCode: '11', accountName: 'الأصول المتداولة', parentCode: '1', type: 'asset', isGroup: true },
-      { accountCode: '1101', accountName: 'البنك', parentCode: '11', type: 'asset', isGroup: false },
-      { accountCode: '1102', accountName: 'العملاء - مستخلصات تحت التحصيل', parentCode: '11', type: 'asset', isGroup: false },
-      { accountCode: '2', accountName: 'الخصوم', parentCode: '', type: 'liability', isGroup: true },
-      { accountCode: '21', accountName: 'الموردين ومقاولي الباطن', parentCode: '2', type: 'liability', isGroup: false },
-      { accountCode: '3', accountName: 'حقوق الملكية', parentCode: '', type: 'equity', isGroup: true },
-      { accountCode: '4', accountName: 'الإيرادات', parentCode: '', type: 'revenue', isGroup: true },
-      { accountCode: '41', accountName: 'إيرادات عقود المقاولات', parentCode: '4', type: 'revenue', isGroup: false },
-      { accountCode: '5', accountName: 'المصروفات', parentCode: '', type: 'expense', isGroup: true },
-      { accountCode: '51', accountName: 'تكاليف مباشرة - مواد', parentCode: '5', type: 'expense', isGroup: false },
-      { accountCode: '52', accountName: 'تكاليف مباشرة - عمالة', parentCode: '5', type: 'expense', isGroup: false },
+      { accountCode: '1', accountName: 'الأصول', parentCode: '', type: 'asset', isGroup: true, status: 'active' },
+      { accountCode: '11', accountName: 'الأصول المتداولة', parentCode: '1', type: 'asset', isGroup: true, status: 'active' },
+      { accountCode: '1101', accountName: 'البنك', parentCode: '11', type: 'asset', isGroup: false, status: 'active' },
+      { accountCode: '1102', accountName: 'العملاء - مستخلصات تحت التحصيل', parentCode: '11', type: 'asset', isGroup: false, status: 'active' },
+      { accountCode: '2', accountName: 'الخصوم', parentCode: '', type: 'liability', isGroup: true, status: 'active' },
+      { accountCode: '21', accountName: 'الموردين ومقاولي الباطن', parentCode: '2', type: 'liability', isGroup: false, status: 'active' },
+      { accountCode: '3', accountName: 'حقوق الملكية', parentCode: '', type: 'equity', isGroup: true, status: 'active' },
+      { accountCode: '4', accountName: 'الإيرادات', parentCode: '', type: 'revenue', isGroup: true, status: 'active' },
+      { accountCode: '41', accountName: 'إيرادات عقود المقاولات', parentCode: '4', type: 'revenue', isGroup: false, status: 'active' },
+      { accountCode: '5', accountName: 'المصروفات', parentCode: '', type: 'expense', isGroup: true, status: 'active' },
+      { accountCode: '51', accountName: 'تكاليف مباشرة - مواد', parentCode: '5', type: 'expense', isGroup: false, status: 'active' },
+      { accountCode: '52', accountName: 'تكاليف مباشرة - عمالة', parentCode: '5', type: 'expense', isGroup: false, status: 'active' },
     ];
 
     for (const acc of initialAccounts) {
@@ -362,8 +729,66 @@ export function GeneralLedger() {
     }
   };
 
+  const handleExportCOAExcel = () => {
+    const ws = XLSX.utils.json_to_sheet(accounts.map(acc => ({
+      'Account Code': acc.accountCode,
+      'Account Name': acc.accountName,
+      'Parent Code': acc.parentCode,
+      'Type': acc.type,
+      'Is Group': acc.isGroup ? 'Yes' : 'No',
+      'Status': acc.status || 'active'
+    })));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "ChartOfAccounts");
+    XLSX.writeFile(wb, `COA_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const handleImportCOAExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const bstr = evt.target?.result as string;
+      const wb = XLSX.read(bstr, { type: 'binary' });
+      const wsname = wb.SheetNames[0];
+      const ws = wb.Sheets[wsname];
+      const data = XLSX.utils.sheet_to_json(ws);
+      
+      setIsSubmitting(true);
+      try {
+        for (const row of data as any[]) {
+          const acc = {
+            accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
+            accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),
+            parentCode: String(row['Parent Code'] || row['الحساب الأب'] || ''),
+            type: (row['Type'] || row['النوع'] || 'asset').toLowerCase(),
+            isGroup: (row['Is Group'] || row['مجموعة'] || 'No').toLowerCase() === 'yes',
+            createdAt: serverTimestamp()
+          };
+          
+          if (acc.accountCode && acc.accountName) {
+            await addDoc(collection(db, 'chart_of_accounts'), acc);
+          }
+        }
+        alert(language === 'ar' ? 'تم استيراد الحسابات بنجاح' : 'Accounts imported successfully');
+      } catch (error) {
+        console.error('Import COA Excel error:', error);
+        handleFirestoreError(error, OperationType.CREATE, 'chart_of_accounts');
+      } finally {
+        setIsSubmitting(false);
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
   return (
-    <div className={cn("p-8 min-h-screen transition-colors", theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : "bg-gray-50 text-gray-900")} dir={dir}>
+    <div className={cn(
+      "p-8 min-h-screen transition-colors", 
+      theme === 'dark' ? "bg-[#0a0a0a] text-gray-100" : 
+      theme === 'soft' ? "bg-[#eceff1] text-[#37474f]" :
+      "bg-gray-50 text-gray-900"
+    )} dir={dir}>
       <header className="flex justify-between items-center mb-8">
         <div>
           <h2 className="text-3xl font-bold tracking-tight">{language === 'ar' ? 'الأستاذ العام' : 'General Ledger'}</h2>
@@ -371,7 +796,13 @@ export function GeneralLedger() {
         </div>
         <div className="flex gap-3">
           <button 
-            onClick={() => setIsEntryModalOpen(true)}
+            onClick={() => {
+              if (activeSubTab === 'coa') {
+                setIsAccountModalOpen(true);
+              } else {
+                setIsEntryModalOpen(true);
+              }
+            }}
             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 text-white"
           >
             <Plus size={18} />
@@ -388,9 +819,19 @@ export function GeneralLedger() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-[#151619] border border-gray-800 rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl"
+              className={cn(
+                "border rounded-2xl w-full max-w-4xl overflow-hidden shadow-2xl transition-colors",
+                theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+                theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                "bg-white border-gray-200"
+              )}
             >
-              <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
+              <div className={cn(
+                "p-6 border-b flex justify-between items-center transition-colors",
+                theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+                theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                "bg-gray-50 border-gray-200"
+              )}>
                 <h3 className="text-xl font-bold">{language === 'ar' ? 'إضافة قيد محاسبي جديد' : 'Add New Journal Entry'}</h3>
                 <button onClick={() => setIsEntryModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
                   <X size={20} />
@@ -404,7 +845,12 @@ export function GeneralLedger() {
                     <input 
                       required
                       type="date" 
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-300 text-gray-900"
+                      )}
                       value={entryForm.date}
                       onChange={(e) => setEntryForm({...entryForm, date: e.target.value})}
                     />
@@ -415,7 +861,12 @@ export function GeneralLedger() {
                       required
                       type="text" 
                       placeholder={language === 'ar' ? 'وصف القيد المحاسبي' : 'Entry description'}
-                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors"
+                      className={cn(
+                        "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                        "bg-white border-gray-300 text-gray-900"
+                      )}
                       value={entryForm.description}
                       onChange={(e) => setEntryForm({...entryForm, description: e.target.value})}
                     />
@@ -436,7 +887,12 @@ export function GeneralLedger() {
                   </div>
                   <select 
                     required
-                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors appearance-none"
+                    className={cn(
+                      "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors appearance-none",
+                      theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                      theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                      "bg-white border-gray-300 text-gray-900"
+                    )}
                     value={entryForm.costCenterId}
                     onChange={(e) => setEntryForm({...entryForm, costCenterId: e.target.value})}
                   >
@@ -467,17 +923,22 @@ export function GeneralLedger() {
 
                   <div className="space-y-3">
                     {entryForm.entries.map((entry, idx) => (
-                      <div key={idx} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                      <div key={entry.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                         <div className="md:col-span-5 space-y-1">
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'الحساب' : 'Account'}</label>
                           <select 
                             required
-                            className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 transition-colors"
+                            className={cn(
+                              "w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 transition-colors",
+                              theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                              theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                              "bg-white border-gray-300 text-gray-900"
+                            )}
                             value={entry.accountCode}
                             onChange={(e) => handleEntryChange(idx, 'accountCode', e.target.value)}
                           >
                             <option value="">{language === 'ar' ? 'اختر الحساب' : 'Select Account'}</option>
-                            {accounts.filter(acc => !acc.isGroup).map(acc => (
+                            {accounts.filter(acc => !acc.isGroup && acc.status !== 'disabled').map(acc => (
                               <option key={acc.id} value={acc.accountCode}>{acc.accountCode} - {acc.accountName}</option>
                             ))}
                           </select>
@@ -487,7 +948,12 @@ export function GeneralLedger() {
                           <input 
                             type="number" 
                             step="0.01"
-                            className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 transition-colors text-blue-400"
+                            className={cn(
+                              "w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 transition-colors",
+                              theme === 'dark' ? "bg-gray-900 border-gray-800 text-blue-400" : 
+                              theme === 'soft' ? "bg-white border-[#cfd8dc] text-blue-600" : 
+                              "bg-white border-gray-300 text-blue-700"
+                            )}
                             value={entry.debit}
                             onChange={(e) => handleEntryChange(idx, 'debit', e.target.value)}
                           />
@@ -497,7 +963,12 @@ export function GeneralLedger() {
                           <input 
                             type="number" 
                             step="0.01"
-                            className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 transition-colors text-red-400"
+                            className={cn(
+                              "w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 transition-colors",
+                              theme === 'dark' ? "bg-gray-900 border-gray-800 text-red-400" : 
+                              theme === 'soft' ? "bg-white border-[#cfd8dc] text-red-600" : 
+                              "bg-white border-gray-300 text-red-700"
+                            )}
                             value={entry.credit}
                             onChange={(e) => handleEntryChange(idx, 'credit', e.target.value)}
                           />
@@ -516,7 +987,10 @@ export function GeneralLedger() {
                   </div>
                 </div>
 
-                <div className="pt-6 border-t border-gray-800 flex justify-between items-center">
+                <div className={cn(
+                  "pt-6 border-t flex justify-between items-center transition-colors",
+                  theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-200"
+                )}>
                   <div className="flex gap-8 text-sm">
                     <div className="flex flex-col">
                       <span className="text-gray-500 text-[10px] uppercase">{language === 'ar' ? 'إجمالي المدين' : 'Total Debit'}</span>
@@ -544,7 +1018,12 @@ export function GeneralLedger() {
                     <button 
                       type="button"
                       onClick={() => setIsEntryModalOpen(false)}
-                      className="bg-gray-800 hover:bg-gray-700 px-8 py-3 rounded-xl font-bold transition-all"
+                      className={cn(
+                        "px-8 py-3 rounded-xl font-bold transition-all",
+                        theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : 
+                        theme === 'soft' ? "bg-[#eceff1] hover:bg-[#cfd8dc] text-[#37474f]" : 
+                        "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                      )}
                     >
                       {language === 'ar' ? 'إلغاء' : 'Cancel'}
                     </button>
@@ -730,8 +1209,122 @@ export function GeneralLedger() {
         )}
       </AnimatePresence>
 
+      {/* New Account Modal */}
+      <AnimatePresence>
+        {isAccountModalOpen && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-[#1a1b1e] border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-gray-800 flex justify-between items-center">
+                <h3 className="text-lg font-bold">{language === 'ar' ? 'إضافة حساب جديد' : 'Add New Account'}</h3>
+                <button onClick={() => setIsAccountModalOpen(false)} className="text-gray-500 hover:text-white">
+                  <X size={20} />
+                </button>
+              </div>
+              <form onSubmit={handleSaveAccount} className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'كود الحساب' : 'Account Code'}</label>
+                  <input 
+                    required
+                    type="text" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500"
+                    placeholder="e.g. 1101"
+                    value={accountForm.accountCode}
+                    onChange={(e) => setAccountForm({...accountForm, accountCode: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'اسم الحساب' : 'Account Name'}</label>
+                  <input 
+                    required
+                    type="text" 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500"
+                    value={accountForm.accountName}
+                    onChange={(e) => setAccountForm({...accountForm, accountName: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الحساب الأب' : 'Parent Account'}</label>
+                  <select 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 appearance-none"
+                    value={accountForm.parentCode}
+                    onChange={(e) => setAccountForm({...accountForm, parentCode: e.target.value})}
+                  >
+                    <option value="">{language === 'ar' ? 'بدون (حساب رئيسي)' : 'None (Main Account)'}</option>
+                    {accounts.filter(a => a.isGroup).map(a => (
+                      <option key={a.id} value={a.accountCode}>{a.accountCode} - {a.accountName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'النوع' : 'Type'}</label>
+                    <select 
+                      required
+                      className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 appearance-none"
+                      value={accountForm.type}
+                      onChange={(e) => setAccountForm({...accountForm, type: e.target.value as any})}
+                    >
+                      <option value="asset">{language === 'ar' ? 'أصول' : 'Asset'}</option>
+                      <option value="liability">{language === 'ar' ? 'خصوم' : 'Liability'}</option>
+                      <option value="equity">{language === 'ar' ? 'حقوق ملكية' : 'Equity'}</option>
+                      <option value="revenue">{language === 'ar' ? 'إيرادات' : 'Revenue'}</option>
+                      <option value="expense">{language === 'ar' ? 'مصروفات' : 'Expense'}</option>
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2 pt-6">
+                    <input 
+                      type="checkbox"
+                      id="isGroup"
+                      className="rounded border-gray-800 bg-gray-900 text-blue-600 focus:ring-blue-500"
+                      checked={accountForm.isGroup}
+                      onChange={(e) => setAccountForm({...accountForm, isGroup: e.target.checked})}
+                    />
+                    <label htmlFor="isGroup" className="text-sm font-medium">{language === 'ar' ? 'حساب رئيسي' : 'Group Account'}</label>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الحالة' : 'Status'}</label>
+                  <select 
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 appearance-none"
+                    value={accountForm.status}
+                    onChange={(e) => setAccountForm({...accountForm, status: e.target.value as any})}
+                  >
+                    <option value="active">{language === 'ar' ? 'نشط' : 'Active'}</option>
+                    <option value="disabled">{language === 'ar' ? 'معطل' : 'Disabled'}</option>
+                  </select>
+                </div>
+                <div className="pt-4 flex gap-3">
+                  <button 
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-2 rounded-lg font-bold transition-colors text-white"
+                  >
+                    {isSubmitting ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ الحساب' : 'Save Account')}
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setIsAccountModalOpen(false)}
+                    className="flex-1 bg-gray-800 hover:bg-gray-700 py-2 rounded-lg font-bold transition-colors"
+                  >
+                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Tabs */}
-      <div className="flex gap-4 mb-8 border-b border-gray-800">
+      <div className={cn(
+        "flex gap-4 mb-8 border-b",
+        theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-200"
+      )}>
         <button 
           onClick={() => setActiveSubTab('coa')}
           className={cn(
@@ -771,11 +1364,221 @@ export function GeneralLedger() {
           </div>
           {activeSubTab === 'ledger' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
         </button>
+        <button 
+          onClick={() => setActiveSubTab('custody')}
+          className={cn(
+            "pb-4 px-2 text-sm font-bold transition-all relative",
+            activeSubTab === 'custody' ? "text-blue-500" : "text-gray-500 hover:text-gray-300"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <Wallet size={16} />
+            {language === 'ar' ? 'تسويات عهد' : 'Settlement of Custody'}
+          </div>
+          {activeSubTab === 'custody' && <motion.div layoutId="activeTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />}
+        </button>
       </div>
 
+      {activeSubTab === 'custody' && (
+        <div className="space-y-6">
+          <div className={cn(
+            "p-6 border rounded-xl shadow-sm transition-colors", 
+            theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+            "bg-white border-gray-200"
+          )}>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div>
+                <div className="flex justify-between items-center mb-2">
+                  <label className="block text-xs font-bold text-gray-500 uppercase">
+                    {language === 'ar' ? 'اختر العهدة' : 'Select Custody Account'}
+                  </label>
+                  <button 
+                    type="button"
+                    onClick={() => setIsAccountModalOpen(true)}
+                    className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+                  >
+                    <Plus size={12} />
+                    {language === 'ar' ? 'حساب جديد' : 'New Account'}
+                  </button>
+                </div>
+                <select
+                  value={selectedCustodyAccount}
+                  onChange={(e) => setSelectedCustodyAccount(e.target.value)}
+                  className={cn(
+                    "w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all",
+                    theme === 'dark' ? "bg-gray-900 border-gray-800 text-white" : "bg-gray-50 border-gray-200"
+                  )}
+                >
+                  <option value="">{language === 'ar' ? '--- اختر عهدة ---' : '--- Select a Custody ---'}</option>
+                  {accounts.filter(a => !a.isGroup && a.status !== 'disabled' && (a.accountName.includes('عهدة') || a.accountName.includes('Custody') || a.accountCode.startsWith('1'))).map(acc => (
+                    <option key={acc.id} value={acc.accountCode}>
+                      {acc.accountCode} - {acc.accountName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
+                  {language === 'ar' ? 'رصيد العهدة الحالي' : 'Current Custody Balance'}
+                </label>
+                <div className={cn("px-4 py-2 rounded-lg border font-mono font-bold text-lg", theme === 'dark' ? "bg-gray-900 border-gray-800 text-blue-400" : "bg-gray-50 border-gray-200 text-blue-600")}>
+                  {(() => {
+                    if (!selectedCustodyAccount) return '0.00';
+                    const balance = transactions.reduce((sum, tx) => {
+                      const entries = tx.entries.filter(e => e.accountCode === selectedCustodyAccount);
+                      return sum + entries.reduce((s, e) => s + (e.debit - e.credit), 0);
+                    }, 0);
+                    return balance.toLocaleString(undefined, { minimumFractionDigits: 2 });
+                  })()}
+                </div>
+              </div>
+              <div className="flex items-end gap-2">
+                <button 
+                  onClick={handleExportCustodyExcel}
+                  className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 text-white"
+                >
+                  <FileDown size={16} />
+                  {language === 'ar' ? 'تصدير إكسل' : 'Export Excel'}
+                </button>
+                <label className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold transition-colors flex items-center justify-center gap-2 text-white cursor-pointer">
+                  <FileUp size={16} />
+                  {language === 'ar' ? 'استيراد إكسل' : 'Import Excel'}
+                  <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleImportCustodyExcel} />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <div className={cn(
+            "p-6 border rounded-xl shadow-sm transition-colors", 
+            theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+            "bg-white border-gray-200"
+          )}>
+            <form onSubmit={handleSaveCustodySettlement} className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-gray-500 font-bold uppercase">{language === 'ar' ? 'تاريخ التسوية' : 'Settlement Date'}</label>
+                  <input 
+                    type="date"
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500"
+                    value={custodySettlement.date}
+                    onChange={(e) => setCustodySettlement({ ...custodySettlement, date: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-gray-500 font-bold uppercase">{language === 'ar' ? 'وصف التسوية' : 'Settlement Description'}</label>
+                  <input 
+                    type="text"
+                    className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500"
+                    value={custodySettlement.description}
+                    onChange={(e) => setCustodySettlement({ ...custodySettlement, description: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="font-bold text-sm">{language === 'ar' ? 'بنود المصروفات' : 'Expense Items'}</h4>
+                  <button 
+                    type="button"
+                    onClick={() => setCustodySettlement({ ...custodySettlement, items: [...custodySettlement.items, { id: crypto.randomUUID(), accountCode: '', accountName: '', amount: 0, description: '' }] })}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1"
+                  >
+                    <Plus size={14} />
+                    {language === 'ar' ? 'إضافة بند' : 'Add Item'}
+                  </button>
+                </div>
+
+                <div className="space-y-3">
+                  {custodySettlement.items.map((item, idx) => (
+                    <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-gray-900/40 p-3 rounded-lg border border-gray-800">
+                      <div className="md:col-span-4 space-y-1">
+                        <div className="flex justify-between items-center">
+                          <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'مصروف' : 'Expense Account'}</label>
+                          <button 
+                            type="button"
+                            onClick={() => setIsAccountModalOpen(true)}
+                            className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"
+                          >
+                            <Plus size={10} />
+                            {language === 'ar' ? 'جديد' : 'New'}
+                          </button>
+                        </div>
+                        <select 
+                          className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500"
+                          value={item.accountCode}
+                          onChange={(e) => handleCustodyItemChange(idx, 'accountCode', e.target.value)}
+                        >
+                          <option value="">{language === 'ar' ? 'اختر حساب المصروف' : 'Select Expense'}</option>
+                          {accounts.filter(a => !a.isGroup && a.status !== 'disabled' && a.type === 'expense').map(acc => (
+                            <option key={acc.id} value={acc.accountCode}>{acc.accountCode} - {acc.accountName}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="md:col-span-2 space-y-1">
+                        <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'المبلغ' : 'Amount'}</label>
+                        <input 
+                          type="number"
+                          className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 text-blue-400"
+                          value={item.amount}
+                          onChange={(e) => handleCustodyItemChange(idx, 'amount', e.target.value)}
+                        />
+                      </div>
+                      <div className="md:col-span-5 space-y-1">
+                        <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'ملاحظات' : 'Notes'}</label>
+                        <input 
+                          type="text"
+                          className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500"
+                          value={item.description}
+                          onChange={(e) => handleCustodyItemChange(idx, 'description', e.target.value)}
+                        />
+                      </div>
+                      <div className="md:col-span-1 flex justify-center pb-2">
+                        <button 
+                          type="button"
+                          onClick={() => setCustodySettlement({ ...custodySettlement, items: custodySettlement.items.filter((_, i) => i !== idx) })}
+                          className="text-gray-500 hover:text-red-500 transition-colors"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-gray-800 flex justify-between items-center">
+                <div className="text-xl font-bold">
+                  <span className="text-gray-500 text-sm mr-2">{language === 'ar' ? 'إجمالي التسوية:' : 'Total Settlement:'}</span>
+                  <span className="text-blue-500 font-mono">{custodySettlement.items.reduce((sum, item) => sum + Number(item.amount), 0).toLocaleString()}</span>
+                </div>
+                <button 
+                  type="submit"
+                  disabled={isSubmitting || !selectedCustodyAccount}
+                  className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-gray-400 px-12 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
+                >
+                  {isSubmitting ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ التسوية' : 'Save Settlement')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
       {activeSubTab === 'coa' && (
-        <div className={cn("border rounded-xl overflow-hidden shadow-2xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}>
-          <div className={cn("p-4 border-b flex items-center gap-4", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
+        <div className={cn(
+          "border rounded-xl overflow-hidden shadow-2xl transition-colors", 
+          theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+          theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+          "bg-white border-gray-200"
+        )}>
+          <div className={cn(
+            "p-4 border-b flex items-center gap-4 transition-colors", 
+            theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+            theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+            "bg-gray-50 border-gray-200"
+          )}>
             <div className="relative flex-1">
               <Search className={cn("absolute top-1/2 -translate-y-1/2 text-gray-500", dir === 'rtl' ? "right-3" : "left-3")} size={18} />
               <input 
@@ -788,14 +1591,28 @@ export function GeneralLedger() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            {accounts.length === 0 && (
+            <div className="flex gap-2">
               <button 
-                onClick={seedAccounts}
-                className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-md text-xs font-medium transition-colors"
+                onClick={handleExportCOAExcel}
+                className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white"
               >
-                {language === 'ar' ? 'توليد الشجرة الافتراضية' : 'Seed Default COA'}
+                <FileDown size={14} />
+                {language === 'ar' ? 'تصدير إكسل' : 'Export Excel'}
               </button>
-            )}
+              <label className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white cursor-pointer">
+                <FileUp size={14} />
+                {language === 'ar' ? 'استيراد إكسل' : 'Import Excel'}
+                <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleImportCOAExcel} />
+              </label>
+              {accounts.length === 0 && (
+                <button 
+                  onClick={seedAccounts}
+                  className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-md text-xs font-medium transition-colors"
+                >
+                  {language === 'ar' ? 'توليد الشجرة الافتراضية' : 'Seed Default COA'}
+                </button>
+              )}
+            </div>
           </div>
           <div className="overflow-y-auto max-h-[calc(100vh-350px)]">
             {loading ? (
@@ -812,8 +1629,18 @@ export function GeneralLedger() {
       )}
 
       {activeSubTab === 'journal' && (
-        <div className={cn("border rounded-xl overflow-hidden shadow-2xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}>
-          <div className={cn("p-4 border-b flex items-center justify-between", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
+        <div className={cn(
+          "border rounded-xl overflow-hidden shadow-2xl transition-colors", 
+          theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+          theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+          "bg-white border-gray-200"
+        )}>
+          <div className={cn(
+            "p-4 border-b flex items-center justify-between transition-colors", 
+            theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+            theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+            "bg-gray-50 border-gray-200"
+          )}>
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-xs">
                 <Calendar size={14} />
@@ -833,7 +1660,12 @@ export function GeneralLedger() {
           <div className="overflow-x-auto">
             <table className="w-full text-right border-collapse">
               <thead>
-                <tr className={cn("border-b", theme === 'dark' ? "border-gray-800 bg-gray-900/30" : "border-gray-200 bg-gray-50")}>
+                <tr className={cn(
+                  "border-b transition-colors", 
+                  theme === 'dark' ? "border-gray-800 bg-gray-900/30" : 
+                  theme === 'soft' ? "border-[#cfd8dc] bg-[#eceff1]" : 
+                  "border-gray-200 bg-gray-50"
+                )}>
                   <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
                   <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'البيان' : 'Description'}</th>
                   <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'مركز التكلفة' : 'Cost Center'}</th>
@@ -842,13 +1674,21 @@ export function GeneralLedger() {
                   <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'دائن' : 'Credit'}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-800/50">
+              <tbody className={cn(
+                "divide-y transition-colors",
+                theme === 'dark' ? "divide-gray-800/50" : theme === 'soft' ? "divide-[#cfd8dc]" : "divide-gray-100"
+              )}>
                 {transactions.map((tx) => (
                   <React.Fragment key={tx.id}>
                     {tx.entries.map((entry, idx) => (
                       <tr 
                         key={`${tx.id}-${idx}`} 
-                        className="hover:bg-gray-800/20 transition-colors group cursor-pointer"
+                        className={cn(
+                          "transition-colors group cursor-pointer",
+                          theme === 'dark' ? "hover:bg-gray-800/20" : 
+                          theme === 'soft' ? "hover:bg-[#eceff1]/50" : 
+                          "hover:bg-gray-50"
+                        )}
                         onClick={() => setSelectedTransaction(tx)}
                       >
                         <td className="px-6 py-4 text-sm font-mono text-gray-500">
@@ -859,20 +1699,15 @@ export function GeneralLedger() {
                         </td>
                         <td className="px-6 py-4 text-sm text-blue-400 font-medium">
                           {idx === 0 ? (() => {
-                            const contract = contracts.find(c => c.id === tx.costCenterId);
-                            const project = projects.find(p => p.id === contract?.projectId);
+                            const contract = contractsMap.get(tx.costCenterId);
+                            const project = projectsMap.get(contract?.projectId);
                             return contract ? `${contract.contractName} (${project?.projectName || '...'})` : '-';
                           })() : ''}
                         </td>
                         <td className="px-6 py-4 text-sm">
-                          <div className="flex flex-col gap-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-gray-500">{entry.accountCode}</span>
-                              <span>{entry.accountName}</span>
-                            </div>
-                            {entry.note && (
-                              <span className="text-[10px] text-gray-500">{entry.note}</span>
-                            )}
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-[10px] text-gray-500">{entry.accountCode}</span>
+                            <span>{entry.accountName}</span>
                           </div>
                         </td>
                         <td className="px-6 py-4 text-sm font-mono text-blue-400">
@@ -883,8 +1718,13 @@ export function GeneralLedger() {
                         </td>
                       </tr>
                     ))}
-                    <tr className="bg-gray-900/10 border-b border-gray-800/50">
-                      <td colSpan={6} className="px-6 py-1 text-[10px] text-gray-600 italic">
+                    <tr className={cn(
+                      "border-b transition-colors",
+                      theme === 'dark' ? "bg-gray-900/10 border-gray-800/50" : 
+                      theme === 'soft' ? "bg-[#eceff1]/20 border-[#cfd8dc]" : 
+                      "bg-gray-50/50 border-gray-100"
+                    )}>
+                      <td colSpan={6} className="px-6 py-1 text-[10px] text-gray-500 italic">
                         {language === 'ar' ? 'مرجع: ' : 'Ref: '}{tx.reference}
                       </td>
                     </tr>
@@ -893,14 +1733,122 @@ export function GeneralLedger() {
               </tbody>
             </table>
           </div>
+          
+          {transactions.length >= transactionLimit && (
+            <div className={cn(
+              "p-4 border-t transition-colors flex justify-center",
+              theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-200"
+            )}>
+              <button 
+                onClick={() => setTransactionLimit(prev => prev + 50)}
+                className="text-blue-400 hover:text-blue-300 text-sm font-bold flex items-center gap-2"
+              >
+                <ChevronLast size={16} />
+                {language === 'ar' ? 'تحميل المزيد من القيود' : 'Load More Entries'}
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {activeSubTab === 'ledger' && (
-        <div className="flex flex-col items-center justify-center p-20 text-gray-500 border border-dashed border-gray-800 rounded-xl">
-          <Calculator size={48} className="mb-4 opacity-20" />
-          <h3 className="text-xl font-bold">{language === 'ar' ? 'كشف الحساب التفصيلي' : 'Detailed Account Statement'}</h3>
-          <p className="mt-2">{language === 'ar' ? 'اختر حساباً من الشجرة لعرض حركته التفصيلية هنا' : 'Select an account from the tree to view its detailed movement here'}</p>
+        <div className="space-y-6">
+          <div className={cn(
+            "p-6 border rounded-xl shadow-sm transition-colors", 
+            theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+            "bg-white border-gray-200"
+          )}>
+            <div className="flex flex-col md:flex-row md:items-center gap-4">
+              <div className="flex-1">
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-2">
+                  {language === 'ar' ? 'اختر الحساب' : 'Select Account'}
+                </label>
+                <select
+                  value={selectedLedgerAccount}
+                  onChange={(e) => setSelectedLedgerAccount(e.target.value)}
+                  className={cn(
+                    "w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all",
+                    theme === 'dark' ? "bg-gray-900 border-gray-800 text-white" : "bg-gray-50 border-gray-200"
+                  )}
+                >
+                  <option value="">{language === 'ar' ? '--- اختر حساباً ---' : '--- Select an Account ---'}</option>
+                  {accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(acc => (
+                    <option key={acc.id} value={acc.accountCode}>
+                      {acc.accountCode} - {acc.accountName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-2 self-end">
+                <button 
+                  onClick={handleExportLedgerPDF}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+                >
+                  <Printer size={16} />
+                  {language === 'ar' ? 'طباعة' : 'Print'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {!selectedLedgerAccount ? (
+            <div className="flex flex-col items-center justify-center p-20 text-gray-500 border border-dashed border-gray-800 rounded-xl">
+              <Calculator size={48} className="mb-4 opacity-20" />
+              <h3 className="text-xl font-bold">{language === 'ar' ? 'كشف الحساب التفصيلي' : 'Detailed Account Statement'}</h3>
+              <p className="mt-2">{language === 'ar' ? 'اختر حساباً من القائمة أعلاه لعرض حركته التفصيلية' : 'Select an account from the list above to view its detailed movement'}</p>
+            </div>
+          ) : (
+            <div className={cn("border rounded-xl overflow-hidden shadow-sm", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}>
+              <div className="overflow-x-auto">
+                <table className="w-full text-right border-collapse">
+                  <thead>
+                    <tr className={cn("border-b", theme === 'dark' ? "border-gray-800 bg-gray-900/30" : "border-gray-200 bg-gray-50")}>
+                      <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'التاريخ' : 'Date'}</th>
+                      <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'البيان' : 'Description'}</th>
+                      <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'مدين' : 'Debit'}</th>
+                      <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'دائن' : 'Credit'}</th>
+                      <th className="px-6 py-4 text-xs font-black text-gray-400 uppercase">{language === 'ar' ? 'الرصيد' : 'Balance'}</th>
+                    </tr>
+                  </thead>
+                  <tbody className={cn(
+                    "divide-y transition-colors",
+                    theme === 'dark' ? "divide-gray-800/50" : 
+                    theme === 'soft' ? "divide-[#cfd8dc]" : 
+                    "divide-gray-100"
+                  )}>
+                    {(() => {
+                      let runningBalance = 0;
+                      const accountTransactions = transactions
+                        .filter(tx => tx.entries.some(e => e.accountCode === selectedLedgerAccount))
+                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                      return accountTransactions.map(tx => {
+                        const entry = tx.entries.find(e => e.accountCode === selectedLedgerAccount)!;
+                        runningBalance += (entry.debit - entry.credit);
+                        return (
+                          <tr key={tx.id} className={cn(
+                            "transition-colors",
+                            theme === 'dark' ? "hover:bg-gray-800/20" : 
+                            theme === 'soft' ? "hover:bg-[#eceff1]/50" : 
+                            "hover:bg-gray-50"
+                          )}>
+                            <td className="px-6 py-4 text-sm font-mono text-gray-500">{tx.date}</td>
+                            <td className="px-6 py-4 text-sm font-bold">{tx.description}</td>
+                            <td className="px-6 py-4 text-sm font-mono text-blue-400">{entry.debit > 0 ? entry.debit.toLocaleString() : '-'}</td>
+                            <td className="px-6 py-4 text-sm font-mono text-red-400">{entry.credit > 0 ? entry.credit.toLocaleString() : '-'}</td>
+                            <td className={cn("px-6 py-4 text-sm font-mono font-bold", runningBalance >= 0 ? "text-green-400" : "text-red-400")}>
+                              {runningBalance.toLocaleString()}
+                            </td>
+                          </tr>
+                        );
+                      });
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -912,9 +1860,19 @@ export function GeneralLedger() {
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className="bg-[#151619] border border-gray-800 rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl"
+              className={cn(
+                "border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl transition-colors",
+                theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+                theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                "bg-white border-gray-200"
+              )}
             >
-              <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
+              <div className={cn(
+                "p-6 border-b flex justify-between items-center transition-colors",
+                theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
+                theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                "bg-gray-50 border-gray-200"
+              )}>
                 <div>
                   <h3 className="text-xl font-bold">{language === 'ar' ? 'تفاصيل القيد' : 'Journal Entry Details'}</h3>
                   <p className="text-xs text-gray-500 mt-1 font-mono">{selectedTransaction.reference}</p>
@@ -934,8 +1892,8 @@ export function GeneralLedger() {
                     <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'مركز التكلفة' : 'Cost Center'}</p>
                     <p className="text-sm font-bold">
                       {(() => {
-                        const contract = contracts.find(c => c.id === selectedTransaction.costCenterId);
-                        const project = projects.find(p => p.id === contract?.projectId);
+                        const contract = contractsMap.get(selectedTransaction.costCenterId);
+                        const project = projectsMap.get(contract?.projectId);
                         return contract ? `${contract.contractName} (${project?.projectName || '...'})` : '-';
                       })()}
                     </p>
@@ -962,9 +1920,6 @@ export function GeneralLedger() {
                             <div className="flex flex-col">
                               <span className="text-sm font-medium">{entry.accountName}</span>
                               <span className="text-[10px] text-gray-500 font-mono">{entry.accountCode}</span>
-                              {entry.note && (
-                                <span className="text-[10px] text-gray-500 mt-1">{entry.note}</span>
-                              )}
                             </div>
                           </td>
                           <td className="px-4 py-3 text-sm font-mono text-blue-400">
@@ -990,21 +1945,83 @@ export function GeneralLedger() {
                   </table>
                 </div>
 
-                <div className="flex gap-3 justify-end pt-4">
+                <div className={cn(
+                  "flex gap-3 justify-end pt-4 border-t",
+                  theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-100"
+                )}>
                   <button 
-                    onClick={() => window.print()}
-                    className="px-6 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold transition-colors flex items-center gap-2"
+                    onClick={() => handleDeleteTransaction(selectedTransaction)}
+                    className="px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-500 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 mr-auto"
+                  >
+                    <Trash2 size={16} />
+                    {language === 'ar' ? 'حذف القيد' : 'Delete Entry'}
+                  </button>
+                  <button 
+                    onClick={() => handleExportTransactionPDF(selectedTransaction)}
+                    className={cn(
+                      "px-6 py-2 rounded-lg text-sm font-bold transition-colors flex items-center gap-2",
+                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
+                      theme === 'soft' ? "bg-white border border-[#cfd8dc] text-[#37474f] hover:bg-[#eceff1]" : 
+                      "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                    )}
                   >
                     <Printer size={16} />
                     {language === 'ar' ? 'طباعة' : 'Print'}
                   </button>
                   <button 
                     onClick={() => setSelectedTransaction(null)}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold transition-colors"
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg text-sm font-bold text-white transition-colors"
                   >
                     {language === 'ar' ? 'إغلاق' : 'Close'}
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Confirmation Modal */}
+      <AnimatePresence>
+        {confirmConfig.isOpen && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className={cn(
+                "border rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl p-6 text-center transition-colors",
+                theme === 'dark' ? "bg-[#1a1b1e] border-gray-800" : 
+                theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                "bg-white border-gray-200"
+              )}
+            >
+              <div className="w-16 h-16 bg-red-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <AlertCircle className="text-red-500" size={32} />
+              </div>
+              <h3 className="text-xl font-bold mb-2">{confirmConfig.title}</h3>
+              <p className="text-gray-400 text-sm mb-8">{confirmConfig.message}</p>
+              <div className="flex gap-3">
+                <button
+                  onClick={confirmConfig.onConfirm}
+                  disabled={isSubmitting}
+                  className="flex-1 bg-red-600 hover:bg-red-500 disabled:bg-red-800 py-3 rounded-xl font-bold transition-all text-white flex items-center justify-center gap-2"
+                >
+                  {isSubmitting && <Loader2 className="animate-spin" size={18} />}
+                  {language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete'}
+                </button>
+                <button
+                  onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+                  disabled={isSubmitting}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl font-bold transition-all",
+                    theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : 
+                    theme === 'soft' ? "bg-[#eceff1] hover:bg-[#cfd8dc] text-[#37474f]" : 
+                    "bg-gray-100 hover:bg-gray-200"
+                  )}
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
               </div>
             </motion.div>
           </div>
