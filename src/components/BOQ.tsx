@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
   Search, 
@@ -64,7 +64,6 @@ interface BOQItem {
   tenderAmount: number;
   startDate?: string;
   expectedDuration?: number;
-  actualEndDate?: string;
   createdAt?: any;
 }
 
@@ -123,7 +122,7 @@ export function BOQ() {
   useEffect(() => {
     const q = query(collection(db, 'projects'), where('isDeleted', '==', false), orderBy('projectCode'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Project));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       setProjects(data);
       if (data.length > 0 && !selectedProjectId) {
         setSelectedProjectId(data[0].id);
@@ -142,7 +141,7 @@ export function BOQ() {
     }
     const q = query(collection(db, 'contracts'), where('projectId', '==', selectedProjectId), where('isDeleted', '==', false));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Contract));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract));
       setContracts(data);
       if (data.length > 0) {
         setSelectedContractId(data[0].id);
@@ -168,7 +167,7 @@ export function BOQ() {
       orderBy('itemCode')
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as BOQItem));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       setItems(data);
       setLoading(false);
     }, (error) => {
@@ -192,21 +191,22 @@ export function BOQ() {
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const progress: Record<string, number> = {};
-
-      snapshot.docs.forEach(ipcDoc => {
-        const ipc = ipcDoc.data();
-        if (Array.isArray(ipc.items)) {
+      
+      snapshot.docs.forEach(doc => {
+        const ipc = doc.data();
+        if (ipc.items && Array.isArray(ipc.items)) {
           ipc.items.forEach((item: any) => {
             if (item.boqItemId) {
-              progress[item.boqItemId] = (progress[item.boqItemId] || 0) + (item.currentQty || 0);
+              const currentTotal = progress[item.boqItemId] || 0;
+              progress[item.boqItemId] = currentTotal + (item.currentQty || 0);
             }
           });
         }
       });
-
+      
       setProgressMap(progress);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'billing');
+      console.error("Error fetching progress for BOQ items:", error);
     });
 
     return () => unsubscribe();
@@ -357,13 +357,6 @@ export function BOQ() {
     });
   };
 
-  const filteredProgressMap = useMemo(() => {
-    const validIds = new Set(items.map(i => i.id));
-    return Object.fromEntries(
-      Object.entries(progressMap).filter(([id]) => validIds.has(id))
-    );
-  }, [progressMap, items]);
-
   const totalBOQAmount = items.reduce((sum, item) => sum + (item.tenderAmount || 0), 0);
 
   const handleExportTemplate = () => {
@@ -438,33 +431,39 @@ export function BOQ() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+      const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
       
       setIsSubmitting(true);
       try {
+        const getVal = (row: any, key: string, fallback: any = 0) => {
+          if (row[key] !== undefined) return row[key];
+          const normalizedKey = key.trim();
+          for (const k in row) {
+            if (k.trim() === normalizedKey) return row[k];
+          }
+          return fallback;
+        };
+
         for (const row of jsonData as any[]) {
-          const chapterCode = String(row['كود الفصل'] || '');
-          const chapterName = String(row['اسم الفصل'] || '');
-          const workTypeCode = String(row['كود نوع العمل'] || '');
-          const sectionCode = String(row['كود القسم'] || '');
-          const sectionName = String(row['اسم القسم'] || '');
-          const itemCode = String(row['كود البند'] || '');
-          const description = String(row['وصف البند'] || '');
-          const unit = String(row['الوحدة'] || '');
-          const tenderQty = Number(row['الكمية'] || 0);
-          const rateMaterials = Number(row['تكلفة المواد'] || 0);
-          const rateLabour = Number(row['تكلفة العمالة'] || 0);
-          const rateEquipment = Number(row['تكلفة المعدات'] || 0);
-          const rateOverheadPct = Number(row['نسبة المصاريف العمومية %'] || 10);
-          const rateProfitPct = Number(row['نسبة الربح %'] || 12);
-          const rawDate = row['تاريخ بدء العمل'];
-          const startDate = rawDate instanceof Date
-            ? rawDate.toISOString().slice(0, 10)
-            : String(rawDate || '');
-          const expectedDuration = Number(row['مدة التنفيذ المتوقعة'] || 0);
+          const chapterCode = String(getVal(row, 'كود الفصل', ''));
+          const chapterName = String(getVal(row, 'اسم الفصل', ''));
+          const workTypeCode = String(getVal(row, 'كود نوع العمل', ''));
+          const sectionCode = String(getVal(row, 'كود القسم', ''));
+          const sectionName = String(getVal(row, 'اسم القسم', ''));
+          const itemCode = String(getVal(row, 'كود البند', ''));
+          const description = String(getVal(row, 'وصف البند', ''));
+          const unit = String(getVal(row, 'الوحدة', ''));
+          const tenderQty = Number(getVal(row, 'الكمية', 0));
+          const rateMaterials = Number(getVal(row, 'تكلفة المواد', 0));
+          const rateLabour = Number(getVal(row, 'تكلفة العمالة', 0));
+          const rateEquipment = Number(getVal(row, 'تكلفة المعدات', 0));
+          const rateOverheadPct = Number(getVal(row, 'نسبة المصاريف العمومية %', 10));
+          const rateProfitPct = Number(getVal(row, 'نسبة الربح %', 12));
+          const startDate = getVal(row, 'تاريخ بدء العمل', '');
+          const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
 
           if (!itemCode || !description) continue;
 
@@ -677,12 +676,11 @@ export function BOQ() {
       {/* BOQ Table */}
       <div className={cn(
         "border rounded-xl overflow-hidden shadow-2xl",
-        theme === 'dark' ? "bg-[#151619] border-gray-800" :
-        theme === 'soft' ? "bg-white border-[#cfd8dc]" :
+        theme === 'dark' ? "bg-[#151619] border-gray-800" : 
+        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
         "bg-white border-gray-200"
       )}>
-        <div className="overflow-x-auto">
-        <table className="w-full text-right border-collapse min-w-[1800px]">
+        <table className="w-full text-right border-collapse">
           <thead>
             <tr className={cn(
               "border-b text-[10px] font-bold text-gray-400 uppercase",
@@ -692,20 +690,21 @@ export function BOQ() {
             )}>
               <th className="p-4 w-24">{language === 'ar' ? 'الفصل' : 'Chapter'}</th>
               <th className="p-4 w-24">{language === 'ar' ? 'القسم' : 'Section'}</th>
+              <th className="p-4 w-20">{language === 'ar' ? 'كود النوع' : 'Type'}</th>
               <th className="p-4 w-20">{language === 'ar' ? 'الكود' : 'Code'}</th>
               <th className="p-4">{language === 'ar' ? 'الوصف' : 'Description'}</th>
               <th className="p-4 w-16">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
               <th className="p-4 w-20">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
-              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'تكلفة المواد' : 'Materials'}</th>
-              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'تكلفة العمالة' : 'Labour'}</th>
-              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'تكلفة المعدات' : 'Equipment'}</th>
-              <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'مصاريف %' : 'OH %'}</th>
-              <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'ربح %' : 'Profit %'}</th>
-              <th className="p-4 w-28 whitespace-nowrap">{language === 'ar' ? 'بدء العمل' : 'Start Date'}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'بدء العمل' : 'Start Date'}</th>
               <th className="p-4 w-16 whitespace-nowrap">{language === 'ar' ? 'المدة' : 'Dur.'}</th>
-              <th className="p-4 w-28 whitespace-nowrap">{language === 'ar' ? 'نهاية العمل' : 'End Date'}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'نهاية العمل' : 'End Date'}</th>
               <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'الإنجاز' : 'Progress'}</th>
               <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'الحالة' : 'Status'}</th>
+              <th className="p-4 w-20 whitespace-normal text-[8px]">{language === 'ar' ? 'مواد' : 'Mat.'}</th>
+              <th className="p-4 w-20 whitespace-normal text-[8px]">{language === 'ar' ? 'عمالة' : 'Lab.'}</th>
+              <th className="p-4 w-20 whitespace-normal text-[8px]">{language === 'ar' ? 'معدات' : 'Equip.'}</th>
+              <th className="p-4 w-12 whitespace-normal text-[8px]">{language === 'ar' ? 'م.ع %' : 'OH%'}</th>
+              <th className="p-4 w-12 whitespace-normal text-[8px]">{language === 'ar' ? 'ربح %' : 'Prof%'}</th>
               <th className="p-4 w-24">{language === 'ar' ? 'سعر الوحدة' : 'Unit Rate'}</th>
               <th className="p-4 w-24">{language === 'ar' ? 'الإجمالي' : 'Total'}</th>
               <th className="p-4 w-12"></th>
@@ -713,9 +712,9 @@ export function BOQ() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={14} className="p-12 text-center text-gray-500">{language === 'ar' ? 'جاري تحميل البنود...' : 'Loading items...'}</td></tr>
+              <tr><td colSpan={20} className="p-12 text-center text-gray-500">{language === 'ar' ? 'جاري تحميل البنود...' : 'Loading items...'}</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={14} className="p-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد بنود مسجلة لهذا المشروع.' : 'No items recorded for this project.'}</td></tr>
+              <tr><td colSpan={20} className="p-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد بنود مسجلة لهذا المشروع.' : 'No items recorded for this project.'}</td></tr>
             ) : (
               items.map((item) => (
                 <tr key={item.id} className={cn(
@@ -724,27 +723,25 @@ export function BOQ() {
                   theme === 'soft' ? "border-[#cfd8dc] hover:bg-[#eceff1]" : 
                   "border-gray-100 hover:bg-gray-50"
                 )}>
-                  <td className="p-4 text-xs">
-                    <div className="font-bold">{item.chapterName}</div>
+                  <td className="p-4 text-[10px]">
+                    <div className="font-bold whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]">{item.chapterName}</div>
                     <div className="text-[8px] opacity-50">{item.chapterCode}</div>
                   </td>
-                  <td className="p-4 text-xs">
-                    <div>{item.sectionName}</div>
+                  <td className="p-4 text-[10px]">
+                    <div className="whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]">{item.sectionName}</div>
                     <div className="text-[8px] opacity-50">{item.sectionCode}</div>
                   </td>
-                  <td className="p-4 font-mono text-xs text-blue-400">{item.itemCode}</td>
-                  <td className="p-4 text-sm font-medium">{item.description}</td>
-                  <td className="p-4 text-sm text-gray-400">{item.unit}</td>
-                  <td className="p-4 text-sm font-bold">{item.tenderQty.toLocaleString()}</td>
-                  <td className="p-4 text-sm font-mono text-amber-400">{(item.rateMaterials || 0).toLocaleString()}</td>
-                  <td className="p-4 text-sm font-mono text-sky-400">{(item.rateLabour || 0).toLocaleString()}</td>
-                  <td className="p-4 text-sm font-mono text-violet-400">{(item.rateEquipment || 0).toLocaleString()}</td>
-                  <td className="p-4 text-sm font-mono text-orange-400">{item.rateOverheadPct}%</td>
-                  <td className="p-4 text-sm font-mono text-emerald-400">{item.rateProfitPct}%</td>
-                  <td className="p-4 text-xs font-mono text-gray-400">
-                    {item.startDate ? new Date(item.startDate + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                  <td className="p-4 text-[10px] font-mono text-gray-500">{item.workTypeCode || '-'}</td>
+                  <td className="p-4 font-mono text-[10px] text-blue-400">{item.itemCode}</td>
+                  <td className="p-4 text-xs font-medium max-w-[150px] whitespace-normal">
+                    <div className="line-clamp-2" title={item.description}>{item.description}</div>
                   </td>
-                  <td className="p-4 text-xs font-mono">
+                  <td className="p-4 text-xs text-gray-400">{item.unit}</td>
+                  <td className="p-4 text-xs font-bold">{item.tenderQty.toLocaleString()}</td>
+                  <td className="p-4 text-[10px] font-mono text-gray-400">
+                    {item.startDate ? new Date(item.startDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                  </td>
+                  <td className="p-4 text-[10px] font-mono">
                     {item.expectedDuration ? (
                       <div className="flex items-center gap-1">
                         <Clock size={12} className="text-gray-500" />
@@ -753,36 +750,34 @@ export function BOQ() {
                     ) : '-'}
                   </td>
                   <td className={cn(
-                    "p-4 text-xs font-mono font-bold",
+                    "p-4 text-[10px] font-mono font-bold",
                     (() => {
-                      if (item.actualEndDate) return "text-green-500";
                       if (!item.startDate || !item.expectedDuration) return "text-gray-500";
-                      const start = new Date(item.startDate + 'T00:00:00');
+                      const start = new Date(item.startDate);
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
-                      const totalExecuted = filteredProgressMap[item.id] || 0;
+                      const totalExecuted = progressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
                       const isDelayed = end < new Date() && progressPct < 99.9;
                       return isDelayed ? "text-red-500" : "text-blue-500";
                     })()
                   )}>
                     {(() => {
-                      if (item.actualEndDate) return new Date(item.actualEndDate + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
                       if (!item.startDate || !item.expectedDuration) return '-';
-                      const start = new Date(item.startDate + 'T00:00:00');
+                      const start = new Date(item.startDate);
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
                       return end.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
                     })()}
                   </td>
                   <td className="p-4">
                     {(() => {
-                      const totalExecuted = filteredProgressMap[item.id] || 0;
+                      const totalExecuted = progressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
                       return (
                         <div className="space-y-1">
                           <div className="flex justify-between text-[10px] font-mono">
                             <span>{progressPct.toFixed(1)}%</span>
                           </div>
-                          <div className={cn("w-full h-1 rounded-full", theme === 'dark' ? "bg-gray-800" : "bg-gray-200")}>
+                          <div className={cn("w-full h-0.5 bg-gray-800 rounded-full")}>
                             <div 
                               className={cn(
                                 "h-full rounded-full transition-all duration-500",
@@ -797,45 +792,48 @@ export function BOQ() {
                   </td>
                   <td className="p-4">
                     {(() => {
-                      const totalExecuted = filteredProgressMap[item.id] || 0;
+                      if (!item.startDate || !item.expectedDuration) return null;
+                      const start = new Date(item.startDate);
+                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      const totalExecuted = progressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
-                      const isCompleted = !!item.actualEndDate || progressPct >= 99.9;
+                      
+                      const isCompleted = progressPct >= 99.9;
+                      const isDelayed = end < new Date() && !isCompleted;
 
                       if (isCompleted) {
                         return (
-                          <div className="flex items-center gap-1 text-[10px] font-bold text-green-500 bg-green-500/10 px-2 py-1 rounded-full w-fit">
-                            <CheckCircle2 size={10} />
-                            {language === 'ar' ? 'مكتمل' : 'Completed'}
+                          <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full w-fit">
+                            <CheckCircle2 size={8} />
+                            {language === 'ar' ? 'مكتمل' : 'Done'}
                           </div>
                         );
                       }
 
-                      if (!item.startDate) return null;
-
-                      const start = new Date(item.startDate + 'T00:00:00');
-                      const isDelayed = item.expectedDuration
-                        ? new Date(start.getTime() + item.expectedDuration * 86400000) < new Date()
-                        : false;
-
                       if (isDelayed) {
                         return (
-                          <div className="flex items-center gap-1 text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-1 rounded-full w-fit">
-                            <AlertCircle size={10} />
-                            {language === 'ar' ? 'متأخر' : 'Delayed'}
+                          <div className="flex items-center gap-1 text-[8px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full w-fit">
+                            <AlertCircle size={8} />
+                            {language === 'ar' ? 'متأخر' : 'Late'}
                           </div>
                         );
                       }
 
                       return (
-                        <div className="flex items-center gap-1 text-[10px] font-bold text-blue-500 bg-blue-500/10 px-2 py-1 rounded-full w-fit">
-                          <Clock size={10} />
-                          {language === 'ar' ? 'جاري' : 'In Progress'}
+                        <div className="flex items-center gap-1 text-[8px] font-bold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded-full w-fit">
+                          <Clock size={8} />
+                          {language === 'ar' ? 'جاري' : 'Runs'}
                         </div>
                       );
                     })()}
                   </td>
-                  <td className="p-4 text-sm font-bold text-green-400">{item.unitRateTotal?.toLocaleString()}</td>
-                  <td className="p-4 text-sm font-bold">{item.tenderAmount?.toLocaleString()}</td>
+                  <td className="p-4 text-[10px] font-mono text-gray-400">{item.rateMaterials?.toLocaleString()}</td>
+                  <td className="p-4 text-[10px] font-mono text-gray-400">{item.rateLabour?.toLocaleString()}</td>
+                  <td className="p-4 text-[10px] font-mono text-gray-400">{item.rateEquipment?.toLocaleString()}</td>
+                  <td className="p-4 text-[10px] font-mono text-gray-500">{item.rateOverheadPct}%</td>
+                  <td className="p-4 text-[10px] font-mono text-gray-500">{item.rateProfitPct}%</td>
+                  <td className="p-4 text-xs font-bold text-blue-400">{item.unitRateTotal?.toLocaleString()}</td>
+                  <td className="p-4 text-xs font-bold text-green-400">{item.tenderAmount?.toLocaleString()}</td>
                   <td className="p-4 text-left">
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button 
@@ -859,7 +857,6 @@ export function BOQ() {
             )}
           </tbody>
         </table>
-        </div>
       </div>
 
       {/* Modals */}
@@ -1105,107 +1102,101 @@ export function BOQ() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود البند' : 'Item Code'}</label>
-                    <input 
-                      required
-                      type="text" 
-                      placeholder={language === 'ar' ? "مثال: 1.1.1" : "Ex: 1.1.1"}
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.itemCode}
-                      onChange={(e) => setFormData({...formData, itemCode: e.target.value})}
-                    />
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود البند' : 'Item Code'}</label>
+                        <input 
+                          required
+                          type="text" 
+                          placeholder={language === 'ar' ? "مثال: 1.1.1" : "Ex: 1.1.1"}
+                          className={cn(
+                            "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                            theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                            "bg-white border-gray-200 shadow-sm"
+                          )}
+                          value={formData.itemCode}
+                          onChange={(e) => setFormData({...formData, itemCode: e.target.value})}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الوحدة' : 'Unit'}</label>
+                        <input 
+                          required
+                          type="text" 
+                          placeholder={language === 'ar' ? "م3، م2، طن..." : "m3, m2, ton..."}
+                          className={cn(
+                            "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
+                            theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                            "bg-white border-gray-200 shadow-sm"
+                          )}
+                          value={formData.unit}
+                          onChange={(e) => setFormData({...formData, unit: e.target.value})}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'وصف البند' : 'Item Description'}</label>
+                      <textarea 
+                        required
+                        rows={3}
+                        placeholder={language === 'ar' ? "أدخل وصفاً تفصيلياً للبند..." : "Enter item description..."}
+                        className={cn(
+                          "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors resize-none",
+                          theme === 'dark' ? "bg-gray-900 border-gray-800" : 
+                          theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+                          "bg-white border-gray-200 shadow-sm"
+                        )}
+                        value={formData.description}
+                        onChange={(e) => setFormData({...formData, description: e.target.value})}
+                      />
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الوحدة' : 'Unit'}</label>
-                    <input 
-                      required
-                      type="text" 
-                      placeholder={language === 'ar' ? "م3، م2، طن..." : "m3, m2, ton..."}
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.unit}
-                      onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                    />
+
+                  <div className={cn(
+                    "p-4 rounded-xl border space-y-4 h-fit",
+                    theme === 'dark' ? "bg-gray-900/30 border-gray-800/50" : 
+                    theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
+                    "bg-gray-50 border-gray-100 shadow-sm"
+                  )}>
+                    <div className="flex justify-between items-center border-b border-gray-800 pb-2 mb-2">
+                      <span className="text-xs font-bold text-gray-500 uppercase">{language === 'ar' ? 'ملخص الحساب' : 'Calculation Summary'}</span>
+                      <Calculator size={16} className="text-purple-400" />
+                    </div>
+                    
+                    {(() => {
+                      const { direct, total, tenderAmount } = calculateRates();
+                      return (
+                        <div className="space-y-3">
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">{language === 'ar' ? 'إجمالي التكلفة المباشرة' : 'Direct Cost'}</span>
+                            <span className="font-mono">{direct.toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">{language === 'ar' ? 'مبلغ المصاريف (%' : 'Overhead Amt (%'} {formData.rateOverheadPct}%)</span>
+                            <span className="font-mono">{(direct * formData.rateOverheadPct / 100).toLocaleString()}</span>
+                          </div>
+                          <div className="flex justify-between text-xs">
+                            <span className="text-gray-400">{language === 'ar' ? 'مبلغ الربح (%' : 'Profit Amt (%'} {formData.rateProfitPct}%)</span>
+                            <span className="font-mono text-purple-400">{( (direct + (direct * formData.rateOverheadPct / 100)) * formData.rateProfitPct / 100).toLocaleString()}</span>
+                          </div>
+                          <div className="pt-2 border-t border-gray-800 flex justify-between items-center">
+                            <span className="text-xs font-bold text-blue-400">{language === 'ar' ? 'سعر الوحدة النهائي' : 'Unit Rate'}</span>
+                            <span className="font-mono font-black text-blue-400">{total.toLocaleString()}</span>
+                          </div>
+                          <div className="pt-1 flex justify-between items-center">
+                            <span className="text-xs font-bold text-green-400">{language === 'ar' ? 'إجمالي قيمة البند' : 'Item Total'}</span>
+                            <span className="font-mono font-black text-green-400">{tenderAmount.toLocaleString()}</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'وصف البند' : 'Item Description'}</label>
-                  <textarea 
-                    required
-                    rows={2}
-                    placeholder={language === 'ar' ? "أدخل وصفاً تفصيلياً للبند..." : "Enter item description..."}
-                    className={cn(
-                      "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors resize-none",
-                      theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                      theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                      "bg-white border-gray-200 shadow-sm"
-                    )}
-                    value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
-                  />
-                </div>
-
-                <div className={cn(
-                  "grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-xl border",
-                  theme === 'dark' ? "bg-gray-900/30 border-gray-800/50" : 
-                  theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
-                  "bg-gray-50 border-gray-100 shadow-sm"
-                )}>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الكمية التعاقدية' : 'Contract Qty'}</label>
-                    <input 
-                      required
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.tenderQty}
-                      onChange={(e) => setFormData({...formData, tenderQty: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'المواد (Direct)' : 'Materials (Direct)'}</label>
-                    <input 
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.rateMaterials}
-                      onChange={(e) => setFormData({...formData, rateMaterials: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'العمالة (Direct)' : 'Labour (Direct)'}</label>
-                    <input 
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.rateLabour}
-                      onChange={(e) => setFormData({...formData, rateLabour: Number(e.target.value)})}
-                    />
-                  </div>
-                </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-2">
