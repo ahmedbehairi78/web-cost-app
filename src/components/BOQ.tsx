@@ -64,6 +64,7 @@ interface BOQItem {
   tenderAmount: number;
   startDate?: string;
   expectedDuration?: number;
+  actualEndDate?: string;
   createdAt?: any;
 }
 
@@ -437,7 +438,7 @@ export function BOQ() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      const workbook = XLSX.read(data, { type: 'array' });
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
@@ -459,7 +460,10 @@ export function BOQ() {
           const rateEquipment = Number(row['تكلفة المعدات'] || 0);
           const rateOverheadPct = Number(row['نسبة المصاريف العمومية %'] || 10);
           const rateProfitPct = Number(row['نسبة الربح %'] || 12);
-          const startDate = row['تاريخ بدء العمل'] || '';
+          const rawDate = row['تاريخ بدء العمل'];
+          const startDate = rawDate instanceof Date
+            ? rawDate.toISOString().slice(0, 10)
+            : String(rawDate || '');
           const expectedDuration = Number(row['مدة التنفيذ المتوقعة'] || 0);
 
           if (!itemCode || !description) continue;
@@ -673,11 +677,12 @@ export function BOQ() {
       {/* BOQ Table */}
       <div className={cn(
         "border rounded-xl overflow-hidden shadow-2xl",
-        theme === 'dark' ? "bg-[#151619] border-gray-800" : 
-        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
+        theme === 'dark' ? "bg-[#151619] border-gray-800" :
+        theme === 'soft' ? "bg-white border-[#cfd8dc]" :
         "bg-white border-gray-200"
       )}>
-        <table className="w-full text-right border-collapse">
+        <div className="overflow-x-auto">
+        <table className="w-full text-right border-collapse min-w-[1800px]">
           <thead>
             <tr className={cn(
               "border-b text-[10px] font-bold text-gray-400 uppercase",
@@ -691,6 +696,11 @@ export function BOQ() {
               <th className="p-4">{language === 'ar' ? 'الوصف' : 'Description'}</th>
               <th className="p-4 w-16">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
               <th className="p-4 w-20">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'تكلفة المواد' : 'Materials'}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'تكلفة العمالة' : 'Labour'}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'تكلفة المعدات' : 'Equipment'}</th>
+              <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'مصاريف %' : 'OH %'}</th>
+              <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'ربح %' : 'Profit %'}</th>
               <th className="p-4 w-28 whitespace-nowrap">{language === 'ar' ? 'بدء العمل' : 'Start Date'}</th>
               <th className="p-4 w-16 whitespace-nowrap">{language === 'ar' ? 'المدة' : 'Dur.'}</th>
               <th className="p-4 w-28 whitespace-nowrap">{language === 'ar' ? 'نهاية العمل' : 'End Date'}</th>
@@ -703,9 +713,9 @@ export function BOQ() {
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={9} className="p-12 text-center text-gray-500">{language === 'ar' ? 'جاري تحميل البنود...' : 'Loading items...'}</td></tr>
+              <tr><td colSpan={14} className="p-12 text-center text-gray-500">{language === 'ar' ? 'جاري تحميل البنود...' : 'Loading items...'}</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={9} className="p-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد بنود مسجلة لهذا المشروع.' : 'No items recorded for this project.'}</td></tr>
+              <tr><td colSpan={14} className="p-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد بنود مسجلة لهذا المشروع.' : 'No items recorded for this project.'}</td></tr>
             ) : (
               items.map((item) => (
                 <tr key={item.id} className={cn(
@@ -726,8 +736,13 @@ export function BOQ() {
                   <td className="p-4 text-sm font-medium">{item.description}</td>
                   <td className="p-4 text-sm text-gray-400">{item.unit}</td>
                   <td className="p-4 text-sm font-bold">{item.tenderQty.toLocaleString()}</td>
+                  <td className="p-4 text-sm font-mono text-amber-400">{(item.rateMaterials || 0).toLocaleString()}</td>
+                  <td className="p-4 text-sm font-mono text-sky-400">{(item.rateLabour || 0).toLocaleString()}</td>
+                  <td className="p-4 text-sm font-mono text-violet-400">{(item.rateEquipment || 0).toLocaleString()}</td>
+                  <td className="p-4 text-sm font-mono text-orange-400">{item.rateOverheadPct}%</td>
+                  <td className="p-4 text-sm font-mono text-emerald-400">{item.rateProfitPct}%</td>
                   <td className="p-4 text-xs font-mono text-gray-400">
-                    {item.startDate ? new Date(item.startDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                    {item.startDate ? new Date(item.startDate + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
                   </td>
                   <td className="p-4 text-xs font-mono">
                     {item.expectedDuration ? (
@@ -740,8 +755,9 @@ export function BOQ() {
                   <td className={cn(
                     "p-4 text-xs font-mono font-bold",
                     (() => {
+                      if (item.actualEndDate) return "text-green-500";
                       if (!item.startDate || !item.expectedDuration) return "text-gray-500";
-                      const start = new Date(item.startDate);
+                      const start = new Date(item.startDate + 'T00:00:00');
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
                       const totalExecuted = filteredProgressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
@@ -750,8 +766,9 @@ export function BOQ() {
                     })()
                   )}>
                     {(() => {
+                      if (item.actualEndDate) return new Date(item.actualEndDate + 'T00:00:00').toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
                       if (!item.startDate || !item.expectedDuration) return '-';
-                      const start = new Date(item.startDate);
+                      const start = new Date(item.startDate + 'T00:00:00');
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
                       return end.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
                     })()}
@@ -780,14 +797,9 @@ export function BOQ() {
                   </td>
                   <td className="p-4">
                     {(() => {
-                      if (!item.startDate || !item.expectedDuration) return null;
-                      const start = new Date(item.startDate);
-                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
                       const totalExecuted = filteredProgressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
-                      
-                      const isCompleted = progressPct >= 99.9;
-                      const isDelayed = end < new Date() && !isCompleted;
+                      const isCompleted = !!item.actualEndDate || progressPct >= 99.9;
 
                       if (isCompleted) {
                         return (
@@ -797,6 +809,13 @@ export function BOQ() {
                           </div>
                         );
                       }
+
+                      if (!item.startDate) return null;
+
+                      const start = new Date(item.startDate + 'T00:00:00');
+                      const isDelayed = item.expectedDuration
+                        ? new Date(start.getTime() + item.expectedDuration * 86400000) < new Date()
+                        : false;
 
                       if (isDelayed) {
                         return (
@@ -840,6 +859,7 @@ export function BOQ() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       {/* Modals */}

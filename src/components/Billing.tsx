@@ -62,6 +62,8 @@ interface BOQItem {
   rateOverheadPct: number;
   rateProfitPct: number;
   unitRateTotal: number;
+  startDate?: string;
+  actualEndDate?: string;
 }
 
 interface BillingItem {
@@ -487,6 +489,28 @@ export function Billing() {
         } else {
           await addDoc(collection(db, 'billing'), finalBillingData);
         }
+
+        // Update time status on BOQ items based on this IPC
+        const batch = writeBatch(db);
+        let batchHasOps = false;
+        for (const billingItem of formData.items) {
+          if (billingItem.currentQty <= 0) continue;
+          const boqItem = boqItems.find(b => b.id === billingItem.boqItemId);
+          if (!boqItem) continue;
+          const updates: Record<string, string> = {};
+          if (!boqItem.startDate) {
+            updates.startDate = formData.date;
+          }
+          const tenderQty = billingItem.tenderQty ?? boqItem.tenderQty;
+          if (tenderQty > 0 && billingItem.totalQty >= tenderQty) {
+            updates.actualEndDate = formData.date;
+          }
+          if (Object.keys(updates).length > 0) {
+            batch.update(doc(db, 'boq_items', boqItem.id), updates);
+            batchHasOps = true;
+          }
+        }
+        if (batchHasOps) await batch.commit();
       }
 
       setIsModalOpen(false);

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, getDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, doc, getDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -46,6 +46,13 @@ interface Project {
   voValue?: number;
 }
 
+interface Contract {
+  id: string;
+  contractName: string;
+  contractNumber: string;
+  projectId: string;
+}
+
 interface Cost {
   id: string;
   projectId: string;
@@ -57,6 +64,7 @@ interface Cost {
 interface Billing {
   id: string;
   projectId: string;
+  contractId: string;
   netPayable: number;
   worksValueExVat?: number;
   status: string;
@@ -66,9 +74,12 @@ interface Billing {
 interface BOQItem {
   id: string;
   projectId: string;
+  contractId: string;
   tenderAmount: number;
+  tenderQty: number;
   startDate?: string;
   expectedDuration?: number;
+  actualEndDate?: string;
   itemCode: string;
   description: string;
 }
@@ -86,6 +97,8 @@ export function Reports() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [showCharts, setShowCharts] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [contracts, setContracts] = useState<Contract[]>([]);
+  const [selectedContractId, setSelectedContractId] = useState<string>('all');
   
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -153,10 +166,10 @@ export function Reports() {
       console.error("Reports boq_items listener error:", err);
     });
 
-    return () => { 
-      unsubProjects(); 
-      unsubCosts(); 
-      unsubBillings(); 
+    return () => {
+      unsubProjects();
+      unsubCosts();
+      unsubBillings();
       unsubPurchaseTransactions();
       unsubTransactions();
       unsubAccounts();
@@ -164,78 +177,129 @@ export function Reports() {
     };
   }, []);
 
+  useEffect(() => {
+    setSelectedContractId('all');
+    if (selectedProjectId === 'all') {
+      setContracts([]);
+      return;
+    }
+    const q = query(collection(db, 'contracts'), where('projectId', '==', selectedProjectId));
+    const unsub = onSnapshot(q, snap => {
+      setContracts(snap.docs
+        .map(d => ({ id: d.id, ...d.data() } as Contract & { isDeleted?: boolean }))
+        .filter(c => !c.isDeleted)
+      );
+    });
+    return () => unsub();
+  }, [selectedProjectId]);
+
   // Data Processing
-  const filteredProjects = selectedProjectId === 'all' 
-    ? projects 
-    : projects.filter(p => p.id === selectedProjectId);
+  // When a specific contract is selected → contract-centric view
+  // Otherwise → project-level aggregation
+  const computeStats = (
+    id: string,
+    name: string,
+    projectId: string,
+    contractId: string | null,
+    fallbackBoqValue: number,
+    fallbackVoValue: number,
+    fallbackBudget: number
+  ) => {
+    const txFilter = (t: any) =>
+      t.projectId === projectId && (contractId === null || t.costCenterId === contractId);
+    const billingFilter = (b: Billing) =>
+      b.projectId === projectId && b.status !== 'draft' && (contractId === null || b.contractId === contractId);
+    const boqFilter = (item: BOQItem) =>
+      item.projectId === projectId && (contractId === null || item.contractId === contractId);
 
-  const projectStats = filteredProjects.map(p => {
-    // Costs from General Ledger (transactions) - includes ActualCosts, Purchases, and manual JVs
-    // We sum all accounts starting with '5' (Expenses) associated with this project
-    const ledgerCosts = transactions
-      .filter(t => t.projectId === p.id)
-      .reduce((sum, t) => {
-        const expenseEntries = (t.entries || []).filter((e: any) => 
-          e.accountCode.startsWith('5')
-        );
-        return sum + expenseEntries.reduce((s: number, e: any) => s + (e.debit - e.credit), 0);
-      }, 0);
+    const ledgerCosts = transactions.filter(txFilter).reduce((sum, t) => {
+      const expense = (t.entries || []).filter((e: any) => e.accountCode.startsWith('5'));
+      return sum + expense.reduce((s: number, e: any) => s + (e.debit - e.credit), 0);
+    }, 0);
 
-    // Billings/Revenues (Accrual Basis: using gross works value before deductions)
-    const projectRevenue = billings
-      .filter(b => b.projectId === p.id && b.status !== 'draft')
+    const revenue = billings.filter(billingFilter)
       .reduce((sum, b) => sum + (b.worksValueExVat || 0), 0);
-    
-    // Automatically calculate BOQ Value from BOQ Items if they exist, otherwise fallback to project field
-    const calculatedBoqValue = boqItems
-      .filter(item => item.projectId === p.id)
-      .reduce((sum, item) => sum + (item.tenderAmount || 0), 0);
 
-    const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (p.boqValue || 0);
-    const voValue = p.voValue || 0;
-    const budget = (boqValue + voValue) || p.totalContractValue || 0;
-    
+    const boqValue = boqItems.filter(boqFilter)
+      .reduce((sum, item) => sum + (item.tenderAmount || 0), 0) || fallbackBoqValue;
+
+    const voValue = contractId !== null ? 0 : fallbackVoValue;
+    const budget = (boqValue + voValue) || fallbackBudget;
+
     return {
-      id: p.id,
-      name: p.projectName,
-      budget,
-      boqValue,
-      voValue,
-      costs: ledgerCosts,
-      billings: projectRevenue,
-      profit: projectRevenue - ledgerCosts,
+      id, name, budget, boqValue, voValue,
+      costs: ledgerCosts, billings: revenue,
+      profit: revenue - ledgerCosts,
       variance: budget - ledgerCosts,
       variancePct: budget > 0 ? ((budget - ledgerCosts) / budget) * 100 : 0,
-      progress: budget > 0 ? (projectRevenue / budget) * 100 : 0
+      progress: budget > 0 ? (revenue / budget) * 100 : 0
     };
-  });
+  };
+
+  const projectStats = (() => {
+    if (selectedContractId !== 'all') {
+      // Contract-centric: one row per selected contract
+      const contract = contracts.find(c => c.id === selectedContractId);
+      const project = projects.find(p => p.id === selectedProjectId);
+      if (!contract || !project) return [];
+      const label = `${contract.contractName} (${contract.contractNumber})`;
+      return [computeStats(contract.id, label, selectedProjectId, selectedContractId, 0, 0, 0)];
+    }
+
+    // Project-level aggregation
+    const filtered = selectedProjectId === 'all'
+      ? projects
+      : projects.filter(p => p.id === selectedProjectId);
+
+    return filtered.map(p =>
+      computeStats(p.id, p.projectName, p.id, null, p.boqValue || 0, p.voValue || 0, p.totalContractValue || 0)
+    );
+  })();
 
   const totalRevenue = projectStats.reduce((sum, s) => sum + s.billings, 0);
   const totalCosts = projectStats.reduce((sum, s) => sum + s.costs, 0);
   const totalGrossProfit = totalRevenue - totalCosts;
   const totalBudget = projectStats.reduce((sum, s) => sum + s.budget, 0);
 
+  // BOQ progress map: boqItemId → cumulative executed qty (from non-draft billings)
+  const boqProgressMap = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    billings.forEach(b => {
+      if (!['submitted', 'approved', 'paid'].includes(b.status)) return;
+      ((b as any).items || []).forEach((item: any) => {
+        if (item.boqItemId && item.currentQty > 0) {
+          map[item.boqItemId] = (map[item.boqItemId] || 0) + item.currentQty;
+        }
+      });
+    });
+    return map;
+  }, [billings]);
+
   // Analytical Trial Balance Calculation
   const trialBalance = React.useMemo(() => {
     // 1. Get all unique account codes from COA and Transactions
     const coaCodes = accounts.map(a => a.accountCode || a.code).filter(Boolean);
+    const txFilter = (t: any) =>
+      !t.isDeleted &&
+      (selectedProjectId === 'all' || t.projectId === selectedProjectId) &&
+      (selectedContractId === 'all' || t.costCenterId === selectedContractId);
+
     const txCodes = transactions
-      .filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId))
+      .filter(txFilter)
       .flatMap(t => (t.entries || []))
-      .map(e => e.accountCode)
+      .map((e: any) => e.accountCode)
       .filter(Boolean);
-    
+
     const allUniqueCodes = Array.from(new Set([...coaCodes, ...txCodes]));
 
-    // 2. Map data for each code
     const list = allUniqueCodes.map(code => {
       const coaAcc = accounts.find(a => (a.accountCode || a.code) === code);
       const name = coaAcc ? (coaAcc.accountName || (language === 'ar' ? coaAcc.nameAr : coaAcc.nameEn)) : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
-      
+
       const accEntries = transactions
-        .filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId))
+        .filter(txFilter)
         .flatMap(t => (t.entries || []))
-        .filter(e => e.accountCode === code);
+        .filter((e: any) => e.accountCode === code);
       
       const debitMovements = accEntries.reduce((sum, e) => sum + (Number(e.debit) || 0), 0);
       const creditMovements = accEntries.reduce((sum, e) => sum + (Number(e.credit) || 0), 0);
@@ -262,7 +326,7 @@ export function Reports() {
     .sort((a, b) => a.code.localeCompare(b.code));
 
     return list;
-  }, [accounts, transactions, language]);
+  }, [accounts, transactions, language, selectedProjectId, selectedContractId]);
 
   const trialBalanceTotals = React.useMemo(() => {
     return trialBalance.reduce((acc, item) => ({
@@ -324,7 +388,7 @@ export function Reports() {
       filename = 'Analytical_Trial_Balance.xlsx';
     } else if (activeReport === 'time') {
       data = boqItems
-        .filter(item => selectedProjectId === 'all' || item.projectId === selectedProjectId)
+        .filter(item => (selectedProjectId === 'all' || item.projectId === selectedProjectId) && (selectedContractId === 'all' || item.contractId === selectedContractId))
         .map(item => {
           const startDate = item.startDate ? new Date(item.startDate) : null;
           const duration = item.expectedDuration || 0;
@@ -405,7 +469,7 @@ export function Reports() {
             {/* Project Selector */}
             <div className={cn("flex items-center gap-2 px-4 py-2 rounded-xl border", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}>
               <Building2 className="text-blue-500" size={18} />
-              <select 
+              <select
                 value={selectedProjectId}
                 onChange={(e) => setSelectedProjectId(e.target.value)}
                 className="bg-transparent text-sm font-bold outline-none cursor-pointer"
@@ -416,6 +480,24 @@ export function Reports() {
                 ))}
               </select>
             </div>
+
+            {/* Contract Selector — visible whenever a project is selected */}
+            {selectedProjectId !== 'all' && (
+              <div className={cn("flex items-center gap-2 px-4 py-2 rounded-xl border", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}>
+                <FileText className="text-purple-500" size={18} />
+                <select
+                  title={language === 'ar' ? 'اختر العقد' : 'Select Contract'}
+                  value={selectedContractId}
+                  onChange={(e) => setSelectedContractId(e.target.value)}
+                  className="bg-transparent text-sm font-bold outline-none cursor-pointer"
+                >
+                  <option value="all">{language === 'ar' ? 'جميع العقود' : 'All Contracts'}</option>
+                  {contracts.map(c => (
+                    <option key={c.id} value={c.id}>{c.contractName} — {c.contractNumber}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <button 
               onClick={() => setShowCharts(!showCharts)}
@@ -984,16 +1066,22 @@ export function Reports() {
                   </thead>
                   <tbody className="divide-y divide-gray-800/50">
                     {boqItems
-                      .filter(item => selectedProjectId === 'all' || item.projectId === selectedProjectId)
+                      .filter(item => (selectedProjectId === 'all' || item.projectId === selectedProjectId) && (selectedContractId === 'all' || item.contractId === selectedContractId))
                       .map((item) => {
-                        const startDate = item.startDate ? new Date(item.startDate) : null;
+                        const executedQty = boqProgressMap[item.id] || 0;
+                        const progressPct = item.tenderQty > 0 ? (executedQty / item.tenderQty) * 100 : 0;
+                        const isCompleted = !!item.actualEndDate || progressPct >= 99.9;
+
+                        const startDate = item.startDate ? new Date(item.startDate + 'T00:00:00') : null;
                         const duration = item.expectedDuration || 0;
-                        const finishDate = startDate ? new Date(startDate.getTime() + duration * 24 * 60 * 60 * 1000) : null;
-                        
+                        const finishDate = item.actualEndDate
+                          ? new Date(item.actualEndDate + 'T00:00:00')
+                          : startDate && duration ? new Date(startDate.getTime() + duration * 86400000) : null;
+
                         const today = new Date();
-                        const elapsedDays = startDate ? Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24))) : 0;
+                        const elapsedDays = startDate ? Math.max(0, Math.floor((today.getTime() - startDate.getTime()) / 86400000)) : 0;
                         const timeProgress = duration > 0 ? (elapsedDays / duration) * 100 : 0;
-                        
+
                         return (
                           <tr key={item.id} className="hover:bg-gray-900/20 transition-colors text-sm">
                             <td className="px-4 py-4">
@@ -1001,33 +1089,42 @@ export function Reports() {
                               <span className="text-xs text-gray-500 line-clamp-1">{item.description}</span>
                             </td>
                             <td className="px-4 py-4 font-mono">{item.startDate || '-'}</td>
-                            <td className="px-4 py-4 font-mono">{duration}</td>
-                            <td className="px-4 py-4 font-mono text-blue-400">{finishDate ? finishDate.toLocaleDateString() : '-'}</td>
+                            <td className="px-4 py-4 font-mono">{duration || '-'}</td>
+                            <td className={cn("px-4 py-4 font-mono", isCompleted ? "text-green-400" : "text-blue-400")}>
+                              {finishDate ? finishDate.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                            </td>
                             <td className="px-4 py-4">
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden min-w-[60px]">
-                                  <div 
-                                    className={cn("h-full rounded-full", timeProgress > 100 ? "bg-red-500" : "bg-purple-500")}
-                                    style={{ width: `${Math.min(timeProgress, 100)}%` }}
+                                  <div
+                                    className={cn("h-full rounded-full", isCompleted ? "bg-green-500" : timeProgress > 100 ? "bg-red-500" : "bg-purple-500")}
+                                    style={{ width: `${Math.min(isCompleted ? 100 : timeProgress, 100)}%` }}
                                   />
                                 </div>
-                                <span className="text-[10px] font-mono">{elapsedDays} {language === 'ar' ? 'يوم' : 'd'}</span>
+                                <span className="text-[10px] font-mono">
+                                  {isCompleted ? `${progressPct.toFixed(0)}%` : `${elapsedDays} ${language === 'ar' ? 'يوم' : 'd'}`}
+                                </span>
                               </div>
                             </td>
                             <td className="px-4 py-4">
-                              {startDate ? (
-                                <span className={cn(
-                                  "px-2 py-1 rounded-md text-[10px] font-bold uppercase",
-                                  timeProgress > 100 ? "bg-red-900/20 text-red-500" : 
-                                  timeProgress > 80 ? "bg-orange-900/20 text-orange-500" :
-                                  "bg-green-900/20 text-green-500"
-                                )}>
-                                  {timeProgress > 100 ? (language === 'ar' ? 'متأخر' : 'Overdue') : 
-                                   timeProgress > 80 ? (language === 'ar' ? 'أوشك على الانتهاء' : 'Near Finish') :
-                                   (language === 'ar' ? 'قيد التنفيذ' : 'On Track')}
+                              {isCompleted ? (
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-green-900/20 text-green-500">
+                                  {language === 'ar' ? 'مكتمل' : 'Completed'}
+                                </span>
+                              ) : !startDate ? (
+                                <span className="text-gray-600 text-[10px]">{language === 'ar' ? 'غير مجدول' : 'Not Scheduled'}</span>
+                              ) : timeProgress > 100 ? (
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-red-900/20 text-red-500">
+                                  {language === 'ar' ? 'متأخر' : 'Overdue'}
+                                </span>
+                              ) : timeProgress > 80 ? (
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-orange-900/20 text-orange-500">
+                                  {language === 'ar' ? 'أوشك على الانتهاء' : 'Near Finish'}
                                 </span>
                               ) : (
-                                <span className="text-gray-600 text-[10px]">{language === 'ar' ? 'غير مجدول' : 'Not Scheduled'}</span>
+                                <span className="px-2 py-1 rounded-md text-[10px] font-bold uppercase bg-blue-900/20 text-blue-500">
+                                  {language === 'ar' ? 'قيد التنفيذ' : 'On Track'}
+                                </span>
                               )}
                             </td>
                           </tr>
