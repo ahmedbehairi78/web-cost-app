@@ -41,3 +41,117 @@ export interface AppUser {
   permissions: UserPermissions;
   isPending?: boolean;
 }
+
+// ─── Domain types ──────────────────────────────────────────────────────────────
+
+export interface Project {
+  id: string;
+  projectCode: string;
+  projectName: string;
+  clientName: string;
+  status: 'active' | 'completed' | 'suspended' | 'cancelled';
+  createdAt: string;
+  isDeleted?: boolean;
+}
+
+export interface Contract {
+  id: string;
+  projectId: string;
+  contractNumber: string;
+  contractValue: number;
+  startDate: string;
+  endDate?: string;
+  isDeleted?: boolean;
+}
+
+export interface BOQItem {
+  id: string;
+  projectId: string;
+  contractId?: string;
+  itemCode: string;
+  description: string;
+  unit: string;
+  quantity: number;
+  unitRate: number;
+  tenderAmount: number;
+  isDeleted?: boolean;
+  createdAt?: string;
+}
+
+export interface JournalEntry {
+  accountCode: string;
+  accountName: string;
+  debit: number;
+  credit: number;
+}
+
+export interface Transaction {
+  id: string;
+  date: string;
+  description: string;
+  entries: JournalEntry[];
+  isDeleted?: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  transactionType?: string;
+}
+
+export interface BillingRecord {
+  id: string;
+  projectId: string;
+  contractId: string;
+  billingNumber: string;
+  date: string;
+  submissionDate?: string;
+  approvalDate?: string;
+  paymentDate?: string;
+  grossAmount: number;
+  retentionPct?: number;
+  retentionAmount?: number;
+  whtPct?: number;
+  whtAmount?: number;
+  netPayable: number;
+  status: 'draft' | 'submitted' | 'approved' | 'paid';
+  transactionId?: string;
+  isDeleted?: boolean;
+}
+
+export interface Supplier {
+  id: string;
+  supplierName: string;
+  type: 'material' | 'labour' | 'equipment' | 'subcontractor';
+  contact?: string;
+  email?: string;
+  address?: string;
+  isDeleted?: boolean;
+  createdAt?: string;
+}
+
+export interface PurchaseTransaction {
+  id: string;
+  supplierId: string;
+  supplierName?: string;
+  projectId?: string;
+  contractId?: string;
+  invoiceNumber: string;
+  invoiceDate: string;
+  amount: number;
+  vatAmount?: number;
+  totalAmount: number;
+  whtPct?: number;
+  whtAmount?: number;
+  expenseAccountCode?: string;
+  isDeleted?: boolean;
+  createdAt?: string;
+}
+
+export interface ActualCost {
+  id: string;
+  projectId: string;
+  description: string;
+  amount: number;
+  date: string;
+  category?: string;
+  isDeleted?: boolean;
+  createdAt?: string;
+}

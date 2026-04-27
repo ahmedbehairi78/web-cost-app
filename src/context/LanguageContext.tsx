@@ -92,6 +92,12 @@ const translations: Record<Language, Record<string, string>> = {
     wht_amount: 'قيمة الخصم',
     expense_account: 'حساب المصروف',
     select_account: 'اختر الحساب',
+    alert: 'تنبيه',
+    error_saving: 'خطأ في الحفظ، يرجى المحاولة مرة أخرى',
+    error_deleting: 'خطأ في الحذف، يرجى المحاولة مرة أخرى',
+    error_loading: 'خطأ في تحميل البيانات',
+    saved_successfully: 'تم الحفظ بنجاح',
+    deleted_successfully: 'تم الحذف بنجاح',
   },
   en: {
     dashboard: 'Dashboard',
@@ -171,6 +177,12 @@ const translations: Record<Language, Record<string, string>> = {
     wht_amount: 'WHT Amount',
     expense_account: 'Expense Account',
     select_account: 'Select Account',
+    alert: 'Alert',
+    error_saving: 'Error saving, please try again',
+    error_deleting: 'Error deleting, please try again',
+    error_loading: 'Error loading data',
+    saved_successfully: 'Saved successfully',
+    deleted_successfully: 'Deleted successfully',
   }
 };
 

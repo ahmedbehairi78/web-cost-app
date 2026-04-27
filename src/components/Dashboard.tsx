@@ -32,6 +32,7 @@ import { db } from '../firebase';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
+import { type Transaction, type BOQItem, type Project } from '../types';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -44,16 +45,15 @@ export function Dashboard() {
     totalCollected: 0,
     pendingBilling: 0
   });
-  const [alerts, setAlerts] = useState<any[]>([]);
-  const [chartData, setChartData] = useState<any[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<{ name: string; revenue: number; cost: number; collections: number }[]>([]);
+  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     setLoading(true);
     const unsubs: (() => void)[] = [];
 
-    const handleStatsUpdate = (projectsData: any[], transData: any[], boqItems: any[]) => {
+    const handleStatsUpdate = (projectsData: Project[], transData: Transaction[], boqItems: BOQItem[]) => {
       setRecentTransactions(transData.slice(0, 5));
 
       let totalSpent = 0;
@@ -133,26 +133,26 @@ export function Dashboard() {
       setLoading(false);
     };
 
-    let projectsData: any[] = [];
-    let transData: any[] = [];
-    let boqItems: any[] = [];
+    let projectsData: Project[] = [];
+    let transData: Transaction[] = [];
+    let boqItems: BOQItem[] = [];
 
     const unsubProjects = onSnapshot(query(collection(db, 'projects'), where('isDeleted', '==', false)), (snapshot) => {
-      projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
       console.error("Dashboard projects listener error:", err);
     });
 
     const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false)), (snapshot) => {
-      transData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      transData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
       console.error("Dashboard transactions listener error:", err);
     });
 
-    const unsubBOQ = onSnapshot(collection(db, 'boq_items'), (snapshot) => {
-      boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const unsubBOQ = onSnapshot(query(collection(db, 'boq_items'), where('isDeleted', '==', false)), (snapshot) => {
+      boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
       console.error("Dashboard boq_items listener error:", err);
@@ -248,7 +248,7 @@ export function Dashboard() {
     { label: t('total_contracts'), value: stats.totalBudget, icon: DollarSign, color: 'text-blue-500', trend: '+0%' },
     { label: t('actual_costs'), value: stats.totalSpent, icon: TrendingDown, color: 'text-red-500', trend: '+0%' },
     { label: t('cash_collections'), value: stats.totalCollected, icon: TrendingUp, color: 'text-green-500', trend: '+0%' },
-    { label: t('pending_billing'), value: stats.pendingBilling, icon: Clock, color: 'text-yellow-500', trend: t('alert') },
+    { label: t('pending_billing'), value: stats.pendingBilling, icon: Clock, color: 'text-yellow-500', trend: t('alert') as string },
   ];
 
   if (loading) {

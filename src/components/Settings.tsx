@@ -17,6 +17,7 @@ import {
   X,
   Shield,
 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import {
   collection,
   onSnapshot,
@@ -277,31 +278,41 @@ function UsersSection({ language, theme, t }: UsersSectionProps) {
     role: 'admin' | 'user',
     permissions: UserPermissions
   ) => {
-    if (editingUser) {
-      if (editingUser.isPending) {
-        // Update pre-registration
-        await setDoc(doc(db, 'user_permissions', editingUser.id), { email, role, permissions });
+    try {
+      if (editingUser) {
+        if (editingUser.isPending) {
+          await setDoc(doc(db, 'user_permissions', editingUser.id), { email, role, permissions });
+        } else {
+          await updateDoc(doc(db, 'users', editingUser.id), { role, permissions });
+        }
       } else {
-        // Update existing user doc
-        await updateDoc(doc(db, 'users', editingUser.id), { role, permissions });
+        await setDoc(doc(db, 'user_permissions', email), {
+          email,
+          role,
+          permissions,
+          createdAt: new Date().toISOString(),
+          createdBy: auth.currentUser?.email ?? '',
+        });
       }
-    } else {
-      // New pre-registration keyed by email
-      await setDoc(doc(db, 'user_permissions', email), {
-        email,
-        role,
-        permissions,
-        createdAt: new Date().toISOString(),
-        createdBy: auth.currentUser?.email ?? '',
-      });
+      toast.success(language === 'ar' ? 'تم حفظ المستخدم بنجاح' : 'User saved successfully');
+    } catch (error) {
+      console.error('Error saving user:', error);
+      toast.error(language === 'ar' ? 'خطأ في حفظ المستخدم' : 'Error saving user');
+      throw error;
     }
   };
 
   const handleDelete = async (user: AppUser) => {
-    if (user.isPending) {
-      await deleteDoc(doc(db, 'user_permissions', user.id));
-    } else {
-      await updateDoc(doc(db, 'users', user.id), { role: 'user', permissions: EMPTY_PERMISSIONS });
+    try {
+      if (user.isPending) {
+        await deleteDoc(doc(db, 'user_permissions', user.id));
+      } else {
+        await updateDoc(doc(db, 'users', user.id), { role: 'user', permissions: EMPTY_PERMISSIONS });
+      }
+      toast.success(language === 'ar' ? 'تم إزالة الصلاحيات' : 'Permissions removed');
+    } catch (error) {
+      console.error('Error removing user:', error);
+      toast.error(language === 'ar' ? 'خطأ في إزالة المستخدم' : 'Error removing user');
     }
   };
 
@@ -502,12 +513,15 @@ export function Settings() {
       } else {
         await setDoc(ref, printSettings);
       }
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
+      toast.success(language === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
     } catch (error) {
       console.error('Error saving settings:', error);
+      toast.error(language === 'ar' ? 'خطأ في الحفظ، يرجى المحاولة مرة أخرى' : 'Error saving, please try again');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
   };
 
   const sections = [
