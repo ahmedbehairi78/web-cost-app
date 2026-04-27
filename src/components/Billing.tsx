@@ -1,34 +1,25 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  FileText, 
-  CheckCircle2, 
-  Clock, 
-  AlertCircle,
-  MoreVertical,
-  Download,
-  Printer,
-  Edit2,
-  Trash2,
-  DollarSign,
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Plus,
+  FileText,
+  CheckCircle2,
+  Clock,
   Briefcase,
   X,
-  Calculator,
-  Filter,
-  TrendingUp,
-  TrendingDown,
+  Trash2,
+  Edit2,
+  Printer,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
+import * as XLSX from 'xlsx';
+import html2pdf from 'html2pdf.js';
+import { collection, onSnapshot, query, where, orderBy, addDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
-import * as XLSX from 'xlsx';
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
+import { IPCFormModal } from './billing/IPCFormModal';
 
 interface Project {
   id: string;
@@ -214,9 +205,12 @@ export function Billing() {
     };
   }, [selectedContractId]);
 
-  const worksValueExVat = formData.items.reduce((sum, item) => sum + item.amount, 0);
+  const worksValueExVat = useMemo(
+    () => formData.items.reduce((sum, item) => sum + item.amount, 0),
+    [formData.items]
+  );
 
-  const calculateDeductions = () => {
+  const calculateDeductions = useMemo(() => {
     const vat = worksValueExVat * (formData.vatPct / 100);
     const exec = worksValueExVat * (formData.execGuaranteePct / 100);
     const wht = worksValueExVat * (formData.whtPct / 100);
@@ -225,7 +219,7 @@ export function Billing() {
     const advance = formData.advancePaymentRecovery;
     const net = worksValueExVat + vat - exec - wht - insurance - levy - advance;
     return { vat, exec, wht, insurance, levy, advance, net };
-  };
+  }, [worksValueExVat, formData.vatPct, formData.execGuaranteePct, formData.whtPct, formData.labourInsurancePct, formData.manpowerLevyPct, formData.advancePaymentRecovery]);
 
   const handleExportExcel = () => {
     const isAr = language === 'ar';
@@ -287,7 +281,7 @@ export function Billing() {
     });
 
     // Add Summary Section
-    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
+    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions;
     
     aoa.push([]);
     aoa.push([isAr ? 'الملخص المالي' : 'Financial Summary']);
@@ -426,7 +420,7 @@ export function Billing() {
     if (e) e.preventDefault();
     if (!selectedContractId) return;
     setIsSubmitting(true);
-    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
+    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions;
     const contract = contracts.find(c => c.id === selectedContractId);
     
     // Determine the status: if forcedStatus is provided (from Draft button), use it. 
@@ -495,7 +489,7 @@ export function Billing() {
     }
   };
 
-  const { vat, exec, insurance, levy, net } = calculateDeductions();
+  const { vat, exec, insurance, levy, net } = calculateDeductions;
 
   const formatDate = (date: any) => {
     if (!date) return 'N/A';
@@ -949,327 +943,23 @@ export function Billing() {
           </div>
         )}
 
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={cn("border rounded-2xl w-full max-w-6xl overflow-hidden shadow-2xl", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}
-            >
-              <div className={cn("p-6 border-b flex justify-between items-center", theme === 'dark' ? "bg-gray-900/50 border-gray-800" : "bg-gray-50 border-gray-200")}>
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-600 rounded-lg text-white">
-                    <Calculator size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">{editingIPC ? (language === 'ar' ? 'تعديل مستخلص الأعمال' : 'Edit IPC') : (language === 'ar' ? 'إنشاء مستخلص أعمال جديد' : 'Create New IPC')}</h3>
-                    <p className="text-[10px] text-gray-500">{contracts.find(c => c.id === selectedContractId)?.contractName}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <button 
-                    type="button"
-                    onClick={handleExportExcel}
-                    className="text-xs bg-green-600 hover:bg-green-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all"
-                  >
-                    <Download size={14} />
-                    {language === 'ar' ? 'تصدير إكسل' : 'Export Excel'}
-                  </button>
-                  <label className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg flex items-center gap-2 transition-all cursor-pointer">
-                    <Plus size={14} />
-                    {language === 'ar' ? 'استيراد إكسل' : 'Import Excel'}
-                    <input type="file" accept=".xlsx, .xls" className="hidden" onChange={handleImportExcel} />
-                  </label>
-                  <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
-                    <X size={20} />
-                  </button>
-                </div>
-              </div>
+        <IPCFormModal
+          isOpen={isModalOpen}
+          editingIPC={editingIPC}
+          formData={formData}
+          setFormData={setFormData}
+          isSubmitting={isSubmitting}
+          contracts={contracts}
+          selectedContractId={selectedContractId}
+          onClose={() => setIsModalOpen(false)}
+          onSubmit={(status) => handleSubmit(undefined, status)}
+          onItemQtyChange={handleItemQtyChange}
+          onItemRateChange={handleItemRateChange}
+          theme={theme}
+          language={language}
+          dir={dir}
+        />
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم المستخلص' : 'IPC Number'}</label>
-                    <input 
-                      required
-                      type="text" 
-                      placeholder="مثال: IPC-05"
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.billingNumber}
-                      onChange={(e) => setFormData({...formData, billingNumber: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'التاريخ' : 'Date'}</label>
-                    <input 
-                      required
-                      type="date" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.date}
-                      onChange={(e) => setFormData({...formData, date: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider">{language === 'ar' ? 'بنود الأعمال' : 'Work Items'}</h4>
-                  <div className="overflow-x-auto border border-gray-800 rounded-xl">
-                    <table className={cn(
-                      "w-full text-right text-[10px] transition-colors",
-                      theme === 'dark' ? "bg-transparent" : "bg-white"
-                    )}>
-                      <thead>
-                        <tr className={cn(
-                          "transition-colors",
-                          theme === 'dark' ? "border-b border-gray-800 bg-gray-900/50 text-gray-500" : 
-                          theme === 'soft' ? "border-b border-[#cfd8dc] bg-[#eceff1] text-[#546e7a]" : 
-                          "border-b border-gray-200 bg-gray-50 text-gray-600"
-                        )}>
-                          <th className="p-2">{language === 'ar' ? 'الفصل' : 'Chapter'}</th>
-                          <th className="p-2">{language === 'ar' ? 'القسم' : 'Section'}</th>
-                          <th className="p-2">{language === 'ar' ? 'البند' : 'Item'}</th>
-                          <th className="p-2">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
-                          <th className="p-2">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
-                          <th className="p-2">{language === 'ar' ? 'السعر' : 'Rate'}</th>
-                          <th className="p-2">{language === 'ar' ? 'سابق' : 'Prev'}</th>
-                          <th className="p-2">{language === 'ar' ? 'حالي' : 'Curr'}</th>
-                          <th className="p-2">{language === 'ar' ? 'إجمالي' : 'Total'}</th>
-                          <th className="p-2">{language === 'ar' ? '% تنفيذ' : '% Comp'}</th>
-                          <th className="p-2">{language === 'ar' ? 'القيمة' : 'Amount'}</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-800">
-                        {(() => {
-                          const chapters: { [key: string]: typeof formData.items } = {};
-                          formData.items.forEach(item => {
-                            const chapter = item.chapterName || (language === 'ar' ? 'غير مصنف' : 'Uncategorized');
-                            if (!chapters[chapter]) chapters[chapter] = [];
-                            chapters[chapter].push(item);
-                          });
-
-                          return Object.entries(chapters).map(([chapterName, items]) => {
-                            const chapterTotal = items.reduce((sum, item) => sum + item.amount, 0);
-                            const rows = items.map((item) => {
-                              const idx = formData.items.findIndex(fi => fi.boqItemId === item.boqItemId);
-                              const completionPct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
-                              return (
-                                <tr key={item.boqItemId}>
-                                  <td className="p-2">
-                                    <div className="font-bold">{item.chapterName}</div>
-                                    <div className="text-[8px] opacity-50">{item.chapterCode}</div>
-                                  </td>
-                                  <td className="p-2">
-                                    <div>{item.sectionName}</div>
-                                    <div className="text-[8px] opacity-50">{item.sectionCode}</div>
-                                  </td>
-                                  <td className="p-2">
-                                    <div className="max-w-[150px] truncate font-medium">{item.description}</div>
-                                    <div className="text-[8px] text-blue-400">{item.itemCode}</div>
-                                  </td>
-                                  <td className="p-2 text-center text-gray-400">{item.unit}</td>
-                                  <td className="p-2 font-mono text-gray-400">{item.tenderQty?.toLocaleString()}</td>
-                                  <td className="p-2">
-                                    <input 
-                                      type="number" 
-                                      step="0.01"
-                                      inputMode="decimal"
-                                      className={cn(
-                                        "w-24 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono",
-                                        theme === 'dark' ? "bg-gray-900 border-gray-800 text-green-400" : 
-                                        theme === 'soft' ? "bg-white border-[#cfd8dc] text-green-600" : 
-                                        "bg-white border-gray-300 text-green-700"
-                                      )}
-                                      value={item.rate}
-                                      onChange={(e) => handleItemRateChange(idx, Number(e.target.value))}
-                                    />
-                                  </td>
-                                  <td className="p-2 font-mono text-gray-500">{item.previousQty}</td>
-                                  <td className="p-2">
-                                    <input 
-                                      type="number" 
-                                      step="0.01"
-                                      inputMode="decimal"
-                                      className={cn(
-                                        "w-24 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono",
-                                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                                        "bg-white border-gray-300 text-gray-900"
-                                      )}
-                                      value={item.currentQty}
-                                      onChange={(e) => handleItemQtyChange(idx, Number(e.target.value))}
-                                    />
-                                  </td>
-                                  <td className="p-2 font-mono">{item.totalQty}</td>
-                                  <td className="p-2">
-                                    <div className="flex items-center gap-1">
-                                      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                                        <div 
-                                          className={cn("h-full transition-all", completionPct > 100 ? "bg-red-500" : "bg-blue-500")}
-                                          style={{ width: `${Math.min(completionPct, 100)}%` }}
-                                        />
-                                      </div>
-                                      <span className={cn("text-[8px] font-mono", completionPct > 100 ? "text-red-500" : "text-gray-400")}>
-                                        {completionPct.toFixed(1)}%
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="p-2 font-mono font-bold text-blue-400">{item.amount.toLocaleString()}</td>
-                                </tr>
-                              );
-                            });
-
-                            return (
-                              <React.Fragment key={chapterName}>
-                                {rows}
-                                <tr className="bg-blue-900/10 font-bold border-t border-gray-800">
-                                  <td colSpan={10} className="p-3 text-left text-gray-400">
-                                    {language === 'ar' ? 'إجمالي الفصل:' : 'Chapter Total:'} {chapterName}
-                                  </td>
-                                  <td className="p-3 text-blue-400 font-mono">
-                                    {chapterTotal.toLocaleString()}
-                                  </td>
-                                </tr>
-                              </React.Fragment>
-                            );
-                          });
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className={cn("grid grid-cols-3 md:grid-cols-6 gap-4 p-4 rounded-xl border", theme === 'dark' ? "bg-gray-900/30 border-gray-800/50" : "bg-gray-50 border-gray-200")}>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">VAT %</label>
-                    <input 
-                      type="number" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.vatPct}
-                      onChange={(e) => setFormData({...formData, vatPct: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'ضمان أعمال %' : 'Guarantee %'}</label>
-                    <input 
-                      type="number" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.execGuaranteePct}
-                      onChange={(e) => setFormData({...formData, execGuaranteePct: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'خصم وإضافة %' : 'WHT %'}</label>
-                    <input 
-                      type="number" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.whtPct}
-                      onChange={(e) => setFormData({...formData, whtPct: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'تأمينات %' : 'Insurance %'}</label>
-                    <input 
-                      type="number" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.labourInsurancePct}
-                      onChange={(e) => setFormData({...formData, labourInsurancePct: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'قوى عاملة %' : 'Manpower %'}</label>
-                    <input 
-                      type="number" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.manpowerLevyPct}
-                      onChange={(e) => setFormData({...formData, manpowerLevyPct: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'استرداد دفعة مقدمة' : 'Advance Recovery'}</label>
-                    <input 
-                      type="number" 
-                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                      value={formData.advancePaymentRecovery}
-                      onChange={(e) => setFormData({...formData, advancePaymentRecovery: Number(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                {/* Summary Calculation */}
-                {(() => {
-                  const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
-                  return (
-                    <div className={cn("rounded-xl p-6 space-y-3 border", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-gray-50 border-gray-200")}>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">{language === 'ar' ? 'قيمة الأعمال:' : 'Work Value:'}</span>
-                        <span className="font-bold">{worksValueExVat.toLocaleString()} {language === 'ar' ? 'ج.م' : 'EGP'}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">{language === 'ar' ? 'ضريبة القيمة المضافة (+):' : 'VAT (+):'}</span>
-                        <span className="font-bold text-blue-400">{vat.toLocaleString()} {language === 'ar' ? 'ج.م' : 'EGP'}</span>
-                      </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">{language === 'ar' ? 'إجمالي الاستقطاعات (-):' : 'Total Deductions (-):'}</span>
-                        <span className="font-bold text-red-400">{(exec + wht + insurance + levy + advance).toLocaleString()} {language === 'ar' ? 'ج.م' : 'EGP'}</span>
-                      </div>
-                      <div className={cn("pt-3 border-t flex justify-between items-center", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
-                        <span className="text-lg font-bold">{language === 'ar' ? 'صافي المستحق للتحصيل:' : 'Net Payable:'}</span>
-                        <span className="text-2xl font-black text-green-500">{net.toLocaleString()} {language === 'ar' ? 'ج.م' : 'EGP'}</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="pt-4 flex gap-3">
-                  {editingIPC && (
-                    <button 
-                      type="button"
-                      onClick={() => handleDownloadPDF(editingIPC)}
-                      className="px-6 bg-green-600 hover:bg-green-500 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
-                    >
-                      <Printer size={18} />
-                      {language === 'ar' ? 'طباعة' : 'Print'}
-                    </button>
-                  )}
-                  <button 
-                    type="button"
-                    onClick={() => handleSubmit(undefined, 'draft')}
-                    disabled={isSubmitting}
-                    className={cn(
-                      "flex-1 py-3 rounded-xl font-bold transition-all border", 
-                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white border-gray-700" : 
-                      theme === 'soft' ? "bg-white hover:bg-[#eceff1] text-[#37474f] border-[#cfd8dc]" : 
-                      "bg-white hover:bg-gray-50 text-gray-700 border-gray-200"
-                    )}
-                  >
-                    {isSubmitting ? '...' : (language === 'ar' ? 'حفظ كمسودة' : 'Save as Draft')}
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => handleSubmit(undefined, 'submitted')}
-                    disabled={isSubmitting}
-                    className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
-                  >
-                    {isSubmitting ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'اعتماد وحفظ المستخلص' : 'Approve & Save IPC')}
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className={cn(
-                      "flex-1 py-3 rounded-xl font-bold transition-all", 
-                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
-                      theme === 'soft' ? "bg-[#cfd8dc] hover:bg-[#b0bec5] text-[#37474f]" : 
-                      "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                    )}
-                  >
-                    {t('cancel')}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
       </AnimatePresence>
     </div>
   );

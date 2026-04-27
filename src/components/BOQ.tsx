@@ -1,14 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Plus, 
-  Search, 
-  ChevronRight, 
-  ChevronDown, 
-  FileText, 
-  Layers, 
-  Hash,
-  Calculator,
-  MoreVertical,
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Plus,
+  FileText,
   Edit2,
   Trash2,
   AlertCircle,
@@ -18,9 +11,10 @@ import {
   X,
   Download,
   Upload,
-  FileSpreadsheet,
   Loader2
 } from 'lucide-react';
+import { BOQItemFormModal } from './boq/BOQItemFormModal';
+import { ContractFormModal } from './boq/ContractFormModal';
 import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
@@ -357,7 +351,7 @@ export function BOQ() {
     });
   };
 
-  const totalBOQAmount = items.reduce((sum, item) => sum + (item.tenderAmount || 0), 0);
+  const totalBOQAmount = useMemo(() => items.reduce((sum, item) => sum + (item.tenderAmount || 0), 0), [items]);
 
   const handleExportTemplate = () => {
     const data = items.length > 0 ? items.map(item => ({
@@ -913,393 +907,27 @@ export function BOQ() {
           </div>
         )}
 
-        <AnimatePresence>
-          {isContractModalOpen && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className={cn(
-                  "border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl",
-                  theme === 'dark' ? "bg-[#151619] border-gray-800" : 
-                  theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                  "bg-white border-gray-200"
-                )}
-              >
-                <div className={cn(
-                  "p-6 border-b flex justify-between items-center",
-                  theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
-                  theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
-                  "bg-gray-50 border-gray-200"
-                )}>
-                  <h3 className="text-xl font-bold">{language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract'}</h3>
-                  <button onClick={() => setIsContractModalOpen(false)} className={cn("transition-colors", theme === 'dark' ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900")}>
-                    <X size={20} />
-                  </button>
-                </div>
-
-                <form onSubmit={handleContractSubmit} className="p-6 space-y-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العقد' : 'Contract Name'}</label>
-                    <input 
-                      required
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={contractFormData.contractName}
-                      onChange={(e) => setContractFormData({...contractFormData, contractName: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم العقد' : 'Contract Number'}</label>
-                    <input 
-                      required
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={contractFormData.contractNumber}
-                      onChange={(e) => setContractFormData({...contractFormData, contractNumber: e.target.value})}
-                    />
-                  </div>
-
-                  <div className="pt-4 flex gap-3">
-                    <button 
-                      disabled={isSubmitting}
-                      type="submit"
-                      className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
-                    >
-                      {isSubmitting && <Loader2 className="animate-spin" size={18} />}
-                      {language === 'ar' ? 'إضافة العقد' : 'Add Contract'}
-                    </button>
-                    <button 
-                      type="button"
-                      onClick={() => setIsContractModalOpen(false)}
-                      className={cn(
-                        "flex-1 py-3 rounded-xl font-bold transition-all",
-                        theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
-                        theme === 'soft' ? "bg-gray-200 hover:bg-gray-300 text-gray-700" : 
-                        "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                      )}
-                    >
-                      {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                    </button>
-                  </div>
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              className={cn(
-                "border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl",
-                theme === 'dark' ? "bg-[#151619] border-gray-800" : 
-                theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                "bg-white border-gray-200"
-              )}
-            >
-              <div className={cn(
-                "p-6 border-b flex justify-between items-center",
-                theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
-                theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
-                "bg-gray-50 border-gray-200"
-              )}>
-                <h3 className="text-xl font-bold">{editingItem ? (language === 'ar' ? 'تعديل البند التعاقدي' : 'Edit Contract Item') : (language === 'ar' ? 'إنشاء مستخلص أعمال جديد' : 'Create New IPC')}</h3>
-                <button onClick={() => setIsModalOpen(false)} className={cn("transition-colors", theme === 'dark' ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900")}>
-                  <X size={20} />
-                </button>
-              </div>
-
-              <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود الفصل' : 'Chapter Code'}</label>
-                    <input 
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.chapterCode}
-                      onChange={(e) => setFormData({...formData, chapterCode: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم الفصل' : 'Chapter Name'}</label>
-                    <input 
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.chapterName}
-                      onChange={(e) => setFormData({...formData, chapterName: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود نوع العمل' : 'Work Type Code'}</label>
-                    <input 
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.workTypeCode}
-                      onChange={(e) => setFormData({...formData, workTypeCode: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود القسم' : 'Section Code'}</label>
-                    <input 
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.sectionCode}
-                      onChange={(e) => setFormData({...formData, sectionCode: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم القسم' : 'Section Name'}</label>
-                    <input 
-                      type="text" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.sectionName}
-                      onChange={(e) => setFormData({...formData, sectionName: e.target.value})}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'كود البند' : 'Item Code'}</label>
-                        <input 
-                          required
-                          type="text" 
-                          placeholder={language === 'ar' ? "مثال: 1.1.1" : "Ex: 1.1.1"}
-                          className={cn(
-                            "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                            theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                            "bg-white border-gray-200 shadow-sm"
-                          )}
-                          value={formData.itemCode}
-                          onChange={(e) => setFormData({...formData, itemCode: e.target.value})}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الوحدة' : 'Unit'}</label>
-                        <input 
-                          required
-                          type="text" 
-                          placeholder={language === 'ar' ? "م3، م2، طن..." : "m3, m2, ton..."}
-                          className={cn(
-                            "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                            theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                            theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                            "bg-white border-gray-200 shadow-sm"
-                          )}
-                          value={formData.unit}
-                          onChange={(e) => setFormData({...formData, unit: e.target.value})}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'وصف البند' : 'Item Description'}</label>
-                      <textarea 
-                        required
-                        rows={3}
-                        placeholder={language === 'ar' ? "أدخل وصفاً تفصيلياً للبند..." : "Enter item description..."}
-                        className={cn(
-                          "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors resize-none",
-                          theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                          theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                          "bg-white border-gray-200 shadow-sm"
-                        )}
-                        value={formData.description}
-                        onChange={(e) => setFormData({...formData, description: e.target.value})}
-                      />
-                    </div>
-                  </div>
-
-                  <div className={cn(
-                    "p-4 rounded-xl border space-y-4 h-fit",
-                    theme === 'dark' ? "bg-gray-900/30 border-gray-800/50" : 
-                    theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
-                    "bg-gray-50 border-gray-100 shadow-sm"
-                  )}>
-                    <div className="flex justify-between items-center border-b border-gray-800 pb-2 mb-2">
-                      <span className="text-xs font-bold text-gray-500 uppercase">{language === 'ar' ? 'ملخص الحساب' : 'Calculation Summary'}</span>
-                      <Calculator size={16} className="text-purple-400" />
-                    </div>
-                    
-                    {(() => {
-                      const { direct, total, tenderAmount } = calculateRates();
-                      return (
-                        <div className="space-y-3">
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">{language === 'ar' ? 'إجمالي التكلفة المباشرة' : 'Direct Cost'}</span>
-                            <span className="font-mono">{direct.toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">{language === 'ar' ? 'مبلغ المصاريف (%' : 'Overhead Amt (%'} {formData.rateOverheadPct}%)</span>
-                            <span className="font-mono">{(direct * formData.rateOverheadPct / 100).toLocaleString()}</span>
-                          </div>
-                          <div className="flex justify-between text-xs">
-                            <span className="text-gray-400">{language === 'ar' ? 'مبلغ الربح (%' : 'Profit Amt (%'} {formData.rateProfitPct}%)</span>
-                            <span className="font-mono text-purple-400">{( (direct + (direct * formData.rateOverheadPct / 100)) * formData.rateProfitPct / 100).toLocaleString()}</span>
-                          </div>
-                          <div className="pt-2 border-t border-gray-800 flex justify-between items-center">
-                            <span className="text-xs font-bold text-blue-400">{language === 'ar' ? 'سعر الوحدة النهائي' : 'Unit Rate'}</span>
-                            <span className="font-mono font-black text-blue-400">{total.toLocaleString()}</span>
-                          </div>
-                          <div className="pt-1 flex justify-between items-center">
-                            <span className="text-xs font-bold text-green-400">{language === 'ar' ? 'إجمالي قيمة البند' : 'Item Total'}</span>
-                            <span className="font-mono font-black text-green-400">{tenderAmount.toLocaleString()}</span>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-
-
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'المعدات (Direct)' : 'Equipment (Direct)'}</label>
-                    <input 
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.rateEquipment}
-                      onChange={(e) => setFormData({...formData, rateEquipment: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'المصاريف %' : 'Overhead %'}</label>
-                    <input 
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.rateOverheadPct}
-                      onChange={(e) => setFormData({...formData, rateOverheadPct: Number(e.target.value)})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الربح %' : 'Profit %'}</label>
-                    <input 
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors font-mono",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.rateProfitPct}
-                      onChange={(e) => setFormData({...formData, rateProfitPct: Number(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'تاريخ بدء العمل' : 'Start Date'}</label>
-                    <input 
-                      type="date" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.startDate}
-                      onChange={(e) => setFormData({...formData, startDate: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'مدة التنفيذ المتوقعة (يوم)' : 'Expected Duration (Days)'}</label>
-                    <input 
-                      type="number" 
-                      className={cn(
-                        "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                        theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                        theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                        "bg-white border-gray-200 shadow-sm"
-                      )}
-                      value={formData.expectedDuration}
-                      onChange={(e) => setFormData({...formData, expectedDuration: Number(e.target.value)})}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-4 flex gap-3">
-                  <button 
-                    disabled={isSubmitting}
-                    type="submit"
-                    className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
-                  >
-                    {isSubmitting && <Loader2 className="animate-spin" size={18} />}
-                    {editingItem ? (language === 'ar' ? 'تحديث البند' : 'Update Item') : (language === 'ar' ? 'حفظ البند' : 'Save Item')}
-                  </button>
-                  <button 
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className={cn(
-                      "flex-1 py-3 rounded-xl font-bold transition-all",
-                      theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-white" : 
-                      theme === 'soft' ? "bg-[#cfd8dc] hover:bg-[#b0bec5] text-[#37474f]" : 
-                      "bg-gray-200 hover:bg-gray-300 text-gray-700"
-                    )}
-                  >
-                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                  </button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
+        <ContractFormModal
+          isOpen={isContractModalOpen}
+          contractFormData={contractFormData}
+          setContractFormData={setContractFormData}
+          isSubmitting={isSubmitting}
+          onSubmit={handleContractSubmit}
+          onClose={() => setIsContractModalOpen(false)}
+          theme={theme}
+          language={language}
+        />
+        <BOQItemFormModal
+          isOpen={isModalOpen}
+          editingItem={editingItem}
+          formData={formData}
+          setFormData={setFormData}
+          isSubmitting={isSubmitting}
+          onSubmit={handleSubmit}
+          onClose={() => { setIsModalOpen(false); setEditingItem(null); }}
+          theme={theme}
+          language={language}
+        />
       </AnimatePresence>
     </div>
   );
