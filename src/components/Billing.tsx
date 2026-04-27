@@ -73,7 +73,7 @@ interface BillingItem {
   amount: number;
 }
 
-type FirestoreDate = string | { toDate(): Date } | Date;
+type FirestoreDate = string | Date | { seconds: number; toDate(): Date };
 
 interface BillingIPC {
   id: string;
@@ -494,14 +494,13 @@ export function Billing() {
   const { vat, exec, insurance, levy, net } = calculateDeductions;
 
   const formatDate = (date: FirestoreDate | null | undefined) => {
+    const locale = language === 'ar' ? 'ar-EG' : 'en-US';
     if (!date) return 'N/A';
     try {
-      if (typeof date === 'string') return new Date(date).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
-      if (typeof date.toDate === 'function') return date.toDate().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
-      if (date instanceof Date) return date.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
-      const d = new Date(date);
-      return isNaN(d.getTime()) ? 'N/A' : d.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
-    } catch (e) {
+      if (typeof date === 'string') return new Date(date).toLocaleDateString(locale);
+      if (date instanceof Date) return date.toLocaleDateString(locale);
+      return date.toDate().toLocaleDateString(locale);
+    } catch {
       return 'N/A';
     }
   };

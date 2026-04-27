@@ -56,8 +56,8 @@ export function GLJournalEntries({
     description: '',
     costCenterId: '',
     entries: [
-      { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 },
-      { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }
+      { id: crypto.randomUUID(), accountCode: '', accountName: '', debit: 0, credit: 0 },
+      { id: crypto.randomUUID(), accountCode: '', accountName: '', debit: 0, credit: 0 }
     ]
   });
 

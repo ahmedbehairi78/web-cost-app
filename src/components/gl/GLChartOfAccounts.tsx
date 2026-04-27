@@ -84,8 +84,8 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
             accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
             accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),
             parentCode: String(row['Parent Code'] || row['الحساب الأب'] || ''),
-            type: (row['Type'] || row['النوع'] || 'asset').toLowerCase(),
-            isGroup: (row['Is Group'] || row['مجموعة'] || 'No').toLowerCase() === 'yes',
+            type: String(row['Type'] || row['النوع'] || 'asset').toLowerCase(),
+            isGroup: String(row['Is Group'] || row['مجموعة'] || 'No').toLowerCase() === 'yes',
           };
           if (acc.accountCode && acc.accountName) await addDoc(collection(db, 'chart_of_accounts'), acc);
         }
