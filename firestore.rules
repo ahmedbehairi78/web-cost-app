@@ -9,7 +9,7 @@ service cloud.firestore {
     // ===============================================================
     // Helper Functions
     // ===============================================================
-    
+
     function isSignedIn() {
       return request.auth != null;
     }
@@ -18,19 +18,16 @@ service cloud.firestore {
       return isSignedIn() && request.auth.token.email_verified == true;
     }
 
+    // Admin is determined solely by the /admins/{uid} collection.
+    // Add a user's UID as a document ID in that collection via Firebase Console
+    // to grant them admin privileges.
     function isAdmin() {
-      return isEmailVerified() && (
-        request.auth.token.email == "myline78@gmail.com" ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
-      );
+      return isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function isValidId(id) {
-      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
     }
 
     // ===============================================================
@@ -45,73 +42,73 @@ service cloud.firestore {
 
     match /projects/{projectId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /contracts/{contractId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /boq_items/{itemId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /actual_costs/{costId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /collections/{collectionId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /suppliers/{supplierId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /purchase_transactions/{txId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /admin_expenses/{expenseId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /chart_of_accounts/{accountId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /transactions/{transactionId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /billing/{billingId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /ipc_progress/{progressId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn();
+      allow create, update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -120,10 +117,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Explicitly handle 'admins' collection used by helper
+    // Admins collection: managed via Firebase Console only.
     match /admins/{adminId} {
       allow read: if isSignedIn();
-      allow write: if false; // Managed via console
+      allow write: if false;
     }
   }
 }

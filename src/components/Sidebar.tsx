@@ -1,17 +1,18 @@
 import React from 'react';
-import { 
-  LayoutDashboard, 
-  Briefcase, 
-  FileText, 
-  Receipt, 
-  TrendingUp, 
-  Settings, 
-  AlertCircle,
+import {
+  LayoutDashboard,
+  Briefcase,
+  FileText,
+  Receipt,
+  TrendingUp,
+  Settings,
   Users,
   BarChart3,
-  FolderTree,
-  BookOpen
+  BookOpen,
+  LogOut
 } from 'lucide-react';
+import { signOut } from 'firebase/auth';
+import { auth } from '../firebase';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 
@@ -82,13 +83,22 @@ export function Sidebar({ activeTab, setActiveTab }: SidebarProps) {
         "p-4 border-t",
         theme === 'dark' ? "border-gray-800" : theme === 'soft' ? "border-[#cfd8dc]" : "border-gray-200"
       )}>
-        <div className="bg-red-900/20 border border-red-900/50 rounded-lg p-3 flex items-start gap-3">
-          <AlertCircle className="text-red-500 shrink-0" size={18} />
-          <div>
-            <p className="text-xs font-bold text-red-400">تنبيه سيولة</p>
-            <p className="text-[10px] text-red-300/70 mt-1">تأخر تحصيل مستخلص مشروع "أ"</p>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={() => signOut(auth)}
+          className={cn(
+            "w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200",
+            language === 'ar' ? "text-right" : "text-left",
+            theme === 'dark'
+              ? "text-gray-400 hover:bg-red-900/30 hover:text-red-400"
+              : theme === 'soft'
+                ? "text-[#546e7a] hover:bg-red-50 hover:text-red-500"
+                : "text-gray-500 hover:bg-red-50 hover:text-red-500"
+          )}
+        >
+          <LogOut size={20} />
+          <span className="font-medium">{t('logout')}</span>
+        </button>
       </div>
     </div>
   );

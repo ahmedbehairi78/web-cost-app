@@ -25,7 +25,7 @@ import { cn } from './lib/utils';
 export default function App() {
   const { dir, t, language, theme } = useLanguage();
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<import('firebase/auth').User | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -37,11 +37,9 @@ export default function App() {
           const userSnap = await getDoc(userRef);
           
           if (!userSnap.exists()) {
-            // Default role is 'user' unless it's the admin email
-            const isAdminEmail = user.email === "myline78@gmail.com";
             await setDoc(userRef, {
               email: user.email,
-              role: isAdminEmail ? 'admin' : 'user',
+              role: 'user',
               createdAt: new Date().toISOString()
             });
           }
