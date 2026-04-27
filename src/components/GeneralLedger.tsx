@@ -22,7 +22,7 @@ import {
   FileUp,
   FileDown
 } from 'lucide-react';
-import { collection, onSnapshot, query, orderBy, addDoc, where, serverTimestamp, limit, getDocs } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, addDoc, where, serverTimestamp, limit } from 'firebase/firestore';
 // @ts-ignore
 import * as XLSX from 'xlsx';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -81,8 +81,6 @@ export function GeneralLedger() {
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedLedgerAccount, setSelectedLedgerAccount] = useState<string>('');
-  const [ledgerAccountTransactions, setLedgerAccountTransactions] = useState<Transaction[]>([]);
-  const [ledgerLoading, setLedgerLoading] = useState(false);
 
   // Custody Settlement State
   const [selectedCustodyAccount, setSelectedCustodyAccount] = useState<string>('');
@@ -191,26 +189,6 @@ export function GeneralLedger() {
     };
   }, [transactionLimit]);
 
-  useEffect(() => {
-    if (!selectedLedgerAccount) {
-      setLedgerAccountTransactions([]);
-      return;
-    }
-    setLedgerLoading(true);
-    getDocs(
-      query(collection(db, 'transactions'), where('isDeleted', '==', false), orderBy('date', 'asc'))
-    ).then(snapshot => {
-      const all = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      setLedgerAccountTransactions(
-        all.filter(tx => tx.entries.some(e => e.accountCode === selectedLedgerAccount))
-      );
-      setLedgerLoading(false);
-    }).catch(err => {
-      handleFirestoreError(err, OperationType.LIST, 'transactions');
-      setLedgerLoading(false);
-    });
-  }, [selectedLedgerAccount]);
-
   const handleExportLedgerPDF = () => {
     if (!selectedLedgerAccount) return;
     
@@ -224,7 +202,9 @@ export function GeneralLedger() {
     element.style.fontFamily = isAr ? 'Arial, sans-serif' : 'inherit';
 
     let runningBalance = 0;
-    const accountTransactions = ledgerAccountTransactions;
+    const accountTransactions = transactions
+      .filter(tx => tx.entries.some(e => e.accountCode === selectedLedgerAccount))
+      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
     element.innerHTML = `
       <div style="text-align: center; margin-bottom: 30px;">
@@ -1837,13 +1817,13 @@ export function GeneralLedger() {
                     theme === 'soft' ? "divide-[#cfd8dc]" : 
                     "divide-gray-100"
                   )}>
-                    {ledgerLoading ? (
-                      <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">
-                        <Loader2 size={20} className="animate-spin inline-block" />
-                      </td></tr>
-                    ) : (() => {
+                    {(() => {
                       let runningBalance = 0;
-                      return ledgerAccountTransactions.map(tx => {
+                      const accountTransactions = transactions
+                        .filter(tx => tx.entries.some(e => e.accountCode === selectedLedgerAccount))
+                        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+                      return accountTransactions.map(tx => {
                         const entry = tx.entries.find(e => e.accountCode === selectedLedgerAccount)!;
                         runningBalance += (entry.debit - entry.credit);
                         return (
@@ -1864,7 +1844,6 @@ export function GeneralLedger() {
                         );
                       });
                     })()}
-
                   </tbody>
                 </table>
               </div>

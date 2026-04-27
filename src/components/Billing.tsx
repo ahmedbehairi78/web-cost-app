@@ -20,7 +20,7 @@ import {
   TrendingDown,
   Loader2
 } from 'lucide-react';
-import { collection, onSnapshot, query, where, orderBy, addDoc, updateDoc, doc, writeBatch, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn } from '../lib/utils';
@@ -62,8 +62,6 @@ interface BOQItem {
   rateOverheadPct: number;
   rateProfitPct: number;
   unitRateTotal: number;
-  startDate?: string;
-  actualEndDate?: string;
 }
 
 interface BillingItem {
@@ -206,10 +204,8 @@ export function Billing() {
       orderBy('itemCode')
     );
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
-      const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as BOQItem));
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       setBoqItems(data);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'boq_items');
     });
 
     return () => {
@@ -370,7 +366,7 @@ export function Billing() {
       const initialItems: BillingItem[] = boqItems.map(boq => {
         // Calculate previous quantity from existing billings (excluding drafts)
         const previousQty = billings.reduce((sum, b) => {
-          if (!(['submitted', 'approved', 'paid'] as BillingIPC['status'][]).includes(b.status)) return sum;
+          if (b.status === 'draft') return sum;
           const item = b.items?.find(i => i.boqItemId === boq.id);
           return sum + (item?.currentQty || 0);
         }, 0);
@@ -426,47 +422,23 @@ export function Billing() {
     setFormData({ ...formData, items: newItems });
   };
 
-  const saveIPC = async (finalStatus: BillingIPC['status']) => {
+  const handleSubmit = async (e?: React.FormEvent, forcedStatus?: 'draft' | 'submitted') => {
+    if (e) e.preventDefault();
     if (!selectedContractId) return;
     setIsSubmitting(true);
     const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
     const contract = contracts.find(c => c.id === selectedContractId);
+    
+    // Determine the status: if forcedStatus is provided (from Draft button), use it. 
+    // Otherwise use editingIPC.status or default to 'submitted'.
+    const finalStatus = forcedStatus || (editingIPC ? editingIPC.status : 'submitted');
 
     try {
-      const billingData: Omit<BillingIPC, 'id'> = {
-        projectId: selectedProjectId,
-        contractId: selectedContractId,
-        billingNumber: formData.billingNumber,
-        items: formData.items,
-        worksValueExVat,
-        vatAmount: vat,
-        execGuaranteeAmount: exec,
-        whtAmount: wht,
-        labourInsuranceAmount: insurance,
-        manpowerLevyAmount: levy,
-        advancePaymentRecovery: advance,
-        netPayable: net,
-        status: finalStatus,
-        date: formData.date,
-        transactionId: editingIPC?.transactionId || "",
-        isDeleted: false
-      };
+      let transactionId = editingIPC?.transactionId;
 
-      if (finalStatus === 'draft' && editingIPC?.transactionId) {
-        // Atomically soft-delete the GL entry and clear transactionId on billing
-        const batch = writeBatch(db);
-        batch.update(doc(db, 'transactions', editingIPC.transactionId), { isDeleted: true });
-        batch.update(doc(db, 'billing', editingIPC.id), { ...billingData, transactionId: "" });
-        await batch.commit();
-      } else if (finalStatus === 'draft') {
-        if (editingIPC) {
-          await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
-        } else {
-          await addDoc(collection(db, 'billing'), billingData);
-        }
-      } else {
-        // Non-draft: write GL entry first, then persist billing with returned transactionId
-        const transactionId = await accountingService.recordIPC({
+      // Only record in GL if not a draft
+      if (finalStatus !== 'draft') {
+        transactionId = await accountingService.recordIPC({
           worksValue: worksValueExVat,
           vatAmount: vat,
           netPayable: net,
@@ -482,35 +454,36 @@ export function Billing() {
           contractName: contract?.contractName || 'N/A',
           transactionId: editingIPC?.transactionId
         });
+      } else if (editingIPC?.transactionId) {
+        // If it was already in GL and we are reverting to draft, we should ideally mark it as deleted in GL
+        await accountingService.deleteTransaction(editingIPC.transactionId);
+        transactionId = "";
+      }
 
-        const finalBillingData = { ...billingData, transactionId: transactionId || "" };
-        if (editingIPC) {
-          await updateDoc(doc(db, 'billing', editingIPC.id), finalBillingData);
-        } else {
-          await addDoc(collection(db, 'billing'), finalBillingData);
-        }
+      const billingData: any = {
+        projectId: selectedProjectId,
+        contractId: selectedContractId,
+        billingNumber: formData.billingNumber,
+        items: formData.items,
+        worksValueExVat: worksValueExVat,
+        vatAmount: vat,
+        execGuaranteeAmount: exec,
+        whtAmount: wht,
+        labourInsuranceAmount: insurance,
+        manpowerLevyAmount: levy,
+        advancePaymentRecovery: advance,
+        netPayable: net,
+        status: finalStatus,
+        date: formData.date,
+        transactionId: transactionId || "",
+        isDeleted: false
+      };
 
-        // Update time status on BOQ items based on this IPC
-        const batch = writeBatch(db);
-        let batchHasOps = false;
-        for (const billingItem of formData.items) {
-          if (billingItem.currentQty <= 0) continue;
-          const boqItem = boqItems.find(b => b.id === billingItem.boqItemId);
-          if (!boqItem) continue;
-          const updates: Record<string, string> = {};
-          if (!boqItem.startDate) {
-            updates.startDate = formData.date;
-          }
-          const tenderQty = billingItem.tenderQty ?? boqItem.tenderQty;
-          if (tenderQty > 0 && billingItem.totalQty >= tenderQty) {
-            updates.actualEndDate = formData.date;
-          }
-          if (Object.keys(updates).length > 0) {
-            batch.update(doc(db, 'boq_items', boqItem.id), updates);
-            batchHasOps = true;
-          }
-        }
-        if (batchHasOps) await batch.commit();
+      if (editingIPC) {
+        const { updateDoc, doc } = await import('firebase/firestore');
+        await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
+      } else {
+        await addDoc(collection(db, 'billing'), billingData);
       }
 
       setIsModalOpen(false);
@@ -520,13 +493,6 @@ export function Billing() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleSaveDraft = () => saveIPC('draft');
-
-  const handleSubmitIPC = (e: React.FormEvent) => {
-    e.preventDefault();
-    saveIPC('submitted');
   };
 
   const { vat, exec, insurance, levy, net } = calculateDeductions();
@@ -862,11 +828,11 @@ export function Billing() {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={cn(
-                    "text-[10px] font-bold px-2 py-1 rounded uppercase border",
-                    ipc.status === 'paid'   ? "bg-green-500/10 border-green-500/30 text-green-500" :
-                    ipc.status === 'draft'  ? (theme === 'dark' ? "bg-gray-800 border-gray-700 text-gray-400" : "bg-gray-100 border-gray-300 text-gray-500") :
-                    ipc.status === 'review' ? "bg-blue-500/10 border-blue-500/30 text-blue-500" :
-                    "bg-yellow-500/10 border-yellow-500/30 text-yellow-600"
+                    "text-[10px] font-bold px-2 py-1 rounded uppercase",
+                    ipc.status === 'paid' ? "bg-green-900/20 text-green-500" : 
+                    ipc.status === 'draft' ? "bg-gray-800 border border-gray-700 text-gray-400" :
+                    ipc.status === 'review' ? "bg-blue-900/20 text-blue-500" :
+                    "bg-yellow-900/20 text-yellow-500"
                   )}>
                     {ipc.status === 'paid' ? (language === 'ar' ? 'تم التحصيل' : 'Paid') : 
                      ipc.status === 'draft' ? (language === 'ar' ? 'مسودة' : 'Draft') :
@@ -1021,7 +987,7 @@ export function Billing() {
                 </div>
               </div>
 
-              <form onSubmit={handleSubmitIPC} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
+              <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم المستخلص' : 'IPC Number'}</label>
@@ -1266,9 +1232,9 @@ export function Billing() {
                       {language === 'ar' ? 'طباعة' : 'Print'}
                     </button>
                   )}
-                  <button
+                  <button 
                     type="button"
-                    onClick={handleSaveDraft}
+                    onClick={() => handleSubmit(undefined, 'draft')}
                     disabled={isSubmitting}
                     className={cn(
                       "flex-1 py-3 rounded-xl font-bold transition-all border", 
@@ -1279,9 +1245,9 @@ export function Billing() {
                   >
                     {isSubmitting ? '...' : (language === 'ar' ? 'حفظ كمسودة' : 'Save as Draft')}
                   </button>
-                  <button
+                  <button 
                     type="button"
-                    onClick={() => saveIPC('submitted')}
+                    onClick={() => handleSubmit(undefined, 'submitted')}
                     disabled={isSubmitting}
                     className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
                   >

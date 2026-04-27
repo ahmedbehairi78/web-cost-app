@@ -7,11 +7,3 @@ coverage/
 *.log
 .env*
 !.env.example
-
-# Visual Studio IDE files
-.vs/
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
-*.vcxproj.filters
