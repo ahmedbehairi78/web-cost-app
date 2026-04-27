@@ -73,12 +73,14 @@ interface BillingItem {
   amount: number;
 }
 
+type FirestoreDate = string | { toDate(): Date } | Date;
+
 interface BillingIPC {
   id: string;
   projectId: string;
   contractId: string;
   billingNumber: string;
-  date: any;
+  date: FirestoreDate;
   items: BillingItem[];
   worksValueExVat: number;
   vatAmount: number;
@@ -238,7 +240,7 @@ export function Billing() {
       isAr ? 'القيمة' : 'Amount'
     ];
 
-    const aoa: any[][] = [headers];
+    const aoa: (string | number | null | undefined)[][] = [headers];
 
     // Group items by chapter
     const chapters: { [key: string]: BillingItem[] } = {};
@@ -313,11 +315,11 @@ export function Billing() {
       const wb = XLSX.read(bstr, { type: 'binary' });
       const wsname = wb.SheetNames[0];
       const ws = wb.Sheets[wsname];
-      const data = XLSX.utils.sheet_to_json(ws) as any[];
+      const data = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
 
       const updatedItems = [...formData.items];
       data.forEach(row => {
-        const itemCode = row[language === 'ar' ? 'كود البند' : 'Item Code'];
+        const itemCode = row[language === 'ar' ? 'كود البند' : 'Item Code'] as string | undefined;
         const currQty = Number(row[language === 'ar' ? 'الكمية الحالية' : 'Curr Qty']);
         
         if (itemCode !== undefined && !isNaN(currQty)) {
@@ -454,7 +456,7 @@ export function Billing() {
         transactionId = "";
       }
 
-      const billingData: any = {
+      const billingData = {
         projectId: selectedProjectId,
         contractId: selectedContractId,
         billingNumber: formData.billingNumber,
@@ -491,7 +493,7 @@ export function Billing() {
 
   const { vat, exec, insurance, levy, net } = calculateDeductions;
 
-  const formatDate = (date: any) => {
+  const formatDate = (date: FirestoreDate | null | undefined) => {
     if (!date) return 'N/A';
     try {
       if (typeof date === 'string') return new Date(date).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');

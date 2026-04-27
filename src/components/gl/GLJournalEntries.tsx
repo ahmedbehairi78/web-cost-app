@@ -70,12 +70,12 @@ export function GLJournalEntries({
     extra
   );
 
-  const handleEntryChange = (idx: number, field: string, value: any) => {
+  const handleEntryChange = (idx: number, field: keyof typeof entryForm.entries[0], value: string | number) => {
     const next = [...entryForm.entries];
-    (next[idx] as any) = { ...next[idx], [field]: value };
+    next[idx] = { ...next[idx], [field]: value };
     if (field === 'accountCode') {
       const acc = accounts.find(a => a.accountCode === value);
-      if (acc) (next[idx] as any).accountName = acc.accountName;
+      if (acc) next[idx] = { ...next[idx], accountName: acc.accountName };
     }
     setEntryForm({ ...entryForm, entries: next });
   };

@@ -79,7 +79,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
       const data = XLSX.utils.sheet_to_json(ws);
       setIsSubmitting(true);
       try {
-        for (const row of data as any[]) {
+        for (const row of data as Record<string, unknown>[]) {
           const acc = {
             accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
             accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),

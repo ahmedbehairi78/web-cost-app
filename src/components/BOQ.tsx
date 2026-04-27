@@ -58,7 +58,7 @@ interface BOQItem {
   tenderAmount: number;
   startDate?: string;
   expectedDuration?: number;
-  createdAt?: any;
+  createdAt?: { toDate(): Date } | Date | string;
 }
 
 export function BOQ() {
@@ -189,7 +189,7 @@ export function BOQ() {
       snapshot.docs.forEach(doc => {
         const ipc = doc.data();
         if (ipc.items && Array.isArray(ipc.items)) {
-          ipc.items.forEach((item: any) => {
+          ipc.items.forEach((item: { boqItemId?: string; currentQty?: number }) => {
             if (item.boqItemId) {
               const currentTotal = progress[item.boqItemId] || 0;
               progress[item.boqItemId] = currentTotal + (item.currentQty || 0);
@@ -432,7 +432,7 @@ export function BOQ() {
       
       setIsSubmitting(true);
       try {
-        const getVal = (row: any, key: string, fallback: any = 0) => {
+        const getVal = (row: Record<string, unknown>, key: string, fallback: unknown = 0): unknown => {
           if (row[key] !== undefined) return row[key];
           const normalizedKey = key.trim();
           for (const k in row) {
@@ -441,7 +441,7 @@ export function BOQ() {
           return fallback;
         };
 
-        for (const row of jsonData as any[]) {
+        for (const row of jsonData as Record<string, unknown>[]) {
           const chapterCode = String(getVal(row, 'كود الفصل', ''));
           const chapterName = String(getVal(row, 'اسم الفصل', ''));
           const workTypeCode = String(getVal(row, 'كود نوع العمل', ''));

@@ -42,7 +42,7 @@ interface PurchaseTransaction {
   totalAmount: number;
   description: string;
   status: 'pending' | 'approved' | 'paid';
-  createdAt: any;
+  createdAt?: { toDate(): Date } | Date | string | null;
   transactionId?: string;
   isDeleted?: boolean;
 }
@@ -275,10 +275,10 @@ export function Purchases() {
       const bstr = evt.target?.result;
       const wb = XLSX.read(bstr, { type: 'binary' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws) as any[];
+      const data = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
       const updatedItems = [...formData.items];
       data.forEach(row => {
-        const itemCode = row[language === 'ar' ? 'كود البند' : 'Item Code'];
+        const itemCode = row[language === 'ar' ? 'كود البند' : 'Item Code'] as string | undefined;
         const currQty = Number(row[language === 'ar' ? 'الكمية الحالية' : 'Curr Qty']);
         if (itemCode !== undefined && !isNaN(currQty)) {
           const idx = updatedItems.findIndex(item => item.itemCode === String(itemCode));

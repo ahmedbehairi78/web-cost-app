@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
+import { JournalEntry } from '../services/accountingService';
 import { 
   TrendingUp,
   PieChart as PieChartIcon,
@@ -60,7 +61,7 @@ interface Billing {
   netPayable: number;
   worksValueExVat?: number;
   status: string;
-  date: any;
+  date: string | { toDate(): Date } | Date;
 }
 
 interface BOQItem {
@@ -101,7 +102,7 @@ export function Reports() {
     const fetchSettings = async () => {
       const settingsDoc = await getDoc(doc(db, 'settings', 'company_info'));
       if (settingsDoc.exists()) {
-        setCompanyInfo(settingsDoc.data() as any);
+        setCompanyInfo(settingsDoc.data() as typeof companyInfo);
       }
     };
     fetchSettings();
@@ -175,10 +176,10 @@ export function Reports() {
     const ledgerCosts = transactions
       .filter(t => t.projectId === p.id)
       .reduce((sum, t) => {
-        const expenseEntries = (t.entries || []).filter((e: any) => 
+        const expenseEntries = (t.entries || []).filter((e: JournalEntry) =>
           e.accountCode.startsWith('5')
         );
-        return sum + expenseEntries.reduce((s: number, e: any) => s + (e.debit - e.credit), 0);
+        return sum + expenseEntries.reduce((s: number, e: JournalEntry) => s + (e.debit - e.credit), 0);
       }, 0);
 
     // Billings/Revenues (Accrual Basis: using gross works value before deductions)
@@ -276,7 +277,7 @@ export function Reports() {
   }, [trialBalance]);
 
   const exportToExcel = () => {
-    let data: any[] = [];
+    let data: Record<string, unknown>[] = [];
     let filename = 'report.xlsx';
 
     if (activeReport === 'overview') {
@@ -753,7 +754,7 @@ export function Reports() {
                   <div className="space-y-4">
                     {accounts.filter(a => a.type === 'asset' && !a.isGroup).map(acc => {
                       const balance = transactions.reduce((sum, t) => {
-                        const entry = t.entries.find((e: any) => e.accountCode === acc.accountCode);
+                        const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
                         return sum + (entry ? entry.debit - entry.credit : 0);
                       }, 0);
                       return (
@@ -768,7 +769,7 @@ export function Reports() {
                       <span className="text-blue-500">
                         {accounts.filter(a => a.type === 'asset' && !a.isGroup).reduce((total, acc) => {
                           return total + transactions.reduce((sum, t) => {
-                            const entry = t.entries.find((e: any) => e.accountCode === acc.accountCode);
+                            const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
                             return sum + (entry ? entry.debit - entry.credit : 0);
                           }, 0);
                         }, 0).toLocaleString()}
@@ -784,7 +785,7 @@ export function Reports() {
                     <div className="space-y-4">
                       {accounts.filter(a => a.type === 'liability' && !a.isGroup).map(acc => {
                         const balance = transactions.reduce((sum, t) => {
-                          const entry = t.entries.find((e: any) => e.accountCode === acc.accountCode);
+                          const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
                           return sum + (entry ? entry.credit - entry.debit : 0);
                         }, 0);
                         return (
@@ -802,7 +803,7 @@ export function Reports() {
                     <div className="space-y-4">
                       {accounts.filter(a => a.type === 'equity' && !a.isGroup).map(acc => {
                         const balance = transactions.reduce((sum, t) => {
-                          const entry = t.entries.find((e: any) => e.accountCode === acc.accountCode);
+                          const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
                           return sum + (entry ? entry.credit - entry.debit : 0);
                         }, 0);
                         return (
@@ -823,7 +824,7 @@ export function Reports() {
                           {(
                             accounts.filter(a => (a.type === 'liability' || a.type === 'equity') && !a.isGroup).reduce((total, acc) => {
                               return total + transactions.reduce((sum, t) => {
-                                const entry = t.entries.find((e: any) => e.accountCode === acc.accountCode);
+                                const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
                                 return sum + (entry ? entry.credit - entry.debit : 0);
                               }, 0);
                             }, 0) + totalGrossProfit

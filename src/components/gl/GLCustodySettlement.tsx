@@ -43,12 +43,12 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
 
   const totalSettlement = settlement.items.reduce((s, i) => s + Number(i.amount), 0);
 
-  const handleItemChange = (idx: number, field: string, value: any) => {
+  const handleItemChange = (idx: number, field: keyof typeof settlement.items[0], value: string | number) => {
     const next = [...settlement.items];
-    (next[idx] as any) = { ...next[idx], [field]: value };
+    next[idx] = { ...next[idx], [field]: value };
     if (field === 'accountCode') {
       const acc = accounts.find(a => a.accountCode === value);
-      if (acc) (next[idx] as any).accountName = acc.accountName;
+      if (acc) next[idx] = { ...next[idx], accountName: acc.accountName };
     }
     setSettlement({ ...settlement, items: next });
   };
@@ -93,7 +93,7 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
       const XLSX = await import('xlsx');
       const wb = XLSX.read(evt.target?.result as string, { type: 'binary' });
       const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-      const imported = (data as any[]).map(row => ({
+      const imported = (data as Record<string, unknown>[]).map(row => ({
         id: crypto.randomUUID(),
         accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
         accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),

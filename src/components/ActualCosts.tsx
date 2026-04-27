@@ -87,7 +87,7 @@ export function ActualCosts() {
         amount: formData.amount,
         description: formData.description,
         projectId: formData.projectId,
-        category: formData.category as any,
+        category: formData.category as 'materials' | 'labour' | 'admin',
         date: formData.date
       });
 
