@@ -36,8 +36,9 @@ service cloud.firestore {
 
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow create: if isOwner(userId) && isEmailVerified();
+      allow create: if isAdmin() || (isOwner(userId) && isEmailVerified());
       allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
     }
 
     match /projects/{projectId} {
@@ -121,6 +122,13 @@ service cloud.firestore {
     match /admins/{adminId} {
       allow read: if isSignedIn();
       allow write: if false;
+    }
+
+    // Pre-registered user permissions (for users not yet logged in).
+    // Keyed by email. Admin manages; any signed-in user can read their own.
+    match /user_permissions/{permId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }
