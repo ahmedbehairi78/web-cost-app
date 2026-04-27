@@ -107,7 +107,7 @@ export function GLJournalEntries({
         }))
       });
       setIsEntryModalOpen(false);
-      setEntryForm({ date: new Date().toISOString().split('T')[0], description: '', costCenterId: '', entries: [{ id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }, { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }] });
+      setEntryForm({ date: new Date().toISOString().split('T')[0], description: '', costCenterId: '', entries: [{ id: crypto.randomUUID(), accountCode: '', accountName: '', debit: 0, credit: 0 }, { id: crypto.randomUUID(), accountCode: '', accountName: '', debit: 0, credit: 0 }] });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'transactions');
     } finally {
@@ -300,7 +300,7 @@ export function GLJournalEntries({
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider">{language === 'ar' ? 'بنود القيد' : 'Entry Lines'}</h4>
-                    <button type="button" onClick={() => setEntryForm({ ...entryForm, entries: [...entryForm.entries, { id: crypto.randomUUID(), accountCode: '', debit: 0, credit: 0 }] })} className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"><Plus size={14} />{language === 'ar' ? 'إضافة سطر' : 'Add Line'}</button>
+                    <button type="button" onClick={() => setEntryForm({ ...entryForm, entries: [...entryForm.entries, { id: crypto.randomUUID(), accountCode: '', accountName: '', debit: 0, credit: 0 }] })} className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1"><Plus size={14} />{language === 'ar' ? 'إضافة سطر' : 'Add Line'}</button>
                   </div>
                   <div className="space-y-3">
                     {entryForm.entries.map((entry, idx) => (

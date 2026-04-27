@@ -347,7 +347,7 @@ export function Billing() {
       setEditingIPC(ipc);
       setFormData({
         billingNumber: ipc.billingNumber,
-        date: typeof ipc.date === 'string' ? ipc.date : (ipc.date?.seconds ? new Date(ipc.date.seconds * 1000).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]),
+        date: typeof ipc.date === 'string' ? ipc.date : ipc.date instanceof Date ? ipc.date.toISOString().split('T')[0] : ipc.date.toDate().toISOString().split('T')[0],
         items: ipc.items,
         vatPct: (ipc.vatAmount / ipc.worksValueExVat) * 100 || 14,
         execGuaranteePct: (ipc.execGuaranteeAmount / ipc.worksValueExVat) * 100 || 10,
