@@ -44,7 +44,7 @@ interface Contract {
 }
 
 export function Projects() {
-  const { t, language, theme, dir } = useLanguage();
+  const { theme, dir } = useLanguage();
   const [projects, setProjects] = useState<Project[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [loading, setLoading] = useState(true);
@@ -201,8 +201,8 @@ export function Projects() {
   const handleDelete = (id: string) => {
     setConfirmConfig({
       isOpen: true,
-      title: language === 'ar' ? 'تأكيد الحذف' : 'Confirm Delete',
-      message: language === 'ar' ? 'هل أنت متأكد من حذف هذا المشروع؟' : 'Are you sure you want to delete this project?',
+      title: 'تأكيد الحذف',
+      message: 'هل أنت متأكد من حذف هذا المشروع؟',
       onConfirm: async () => {
         setIsSubmitting(true);
         try {
@@ -275,7 +275,7 @@ export function Projects() {
                 "bg-gray-50 border-gray-200"
               )}>
                 <h3 className="text-xl font-bold">
-                  {editingProject ? (language === 'ar' ? 'تعديل بيانات المشروع' : 'Edit Project Details') : (language === 'ar' ? 'إضافة مشروع جديد' : 'Add New Project')}
+                  {editingProject ? 'تعديل بيانات المشروع' : 'إضافة مشروع جديد'}
                 </h3>
                 <button onClick={() => setIsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
                   <X size={20} />
@@ -354,7 +354,7 @@ export function Projects() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'إجمالي قيمة المشروع في قوائم الكميات' : 'Total Project Value in BOQ'}</label>
+                    <label className="text-xs font-bold text-gray-400 uppercase">إجمالي قيمة المشروع في قوائم الكميات</label>
                     <input 
                       type="number" 
                       className={cn(
@@ -366,7 +366,7 @@ export function Projects() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'قيمة أوامر التغيير (VO)' : 'Variation Orders (VO)'}</label>
+                    <label className="text-xs font-bold text-gray-400 uppercase">قيمة أوامر التغيير (VO)</label>
                     <input 
                       type="number" 
                       className={cn(
@@ -385,7 +385,7 @@ export function Projects() {
                     disabled={isSubmitting}
                     className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-gray-400 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
                   >
-                    {isSubmitting ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ المشروع' : 'Save Project')}
+                    {isSubmitting ? 'جاري الحفظ...' : 'حفظ المشروع'}
                   </button>
                   <button 
                     type="button"
@@ -397,7 +397,7 @@ export function Projects() {
                       "bg-gray-100 hover:bg-gray-200 text-gray-900"
                     )}
                   >
-                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                    إلغاء
                   </button>
                 </div>
               </form>
@@ -435,7 +435,7 @@ export function Projects() {
                     "text-gray-500 hover:bg-gray-100"
                   )}
                 >
-                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                  إلغاء
                 </button>
                 <button 
                   onClick={confirmConfig.onConfirm}
@@ -443,7 +443,7 @@ export function Projects() {
                   className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2"
                 >
                   {isSubmitting && <Loader2 className="animate-spin" size={16} />}
-                  {language === 'ar' ? 'تأكيد' : 'Confirm'}
+                  تأكيد
                 </button>
               </div>
             </motion.div>
@@ -487,7 +487,7 @@ export function Projects() {
                       "px-3 py-1 rounded-full font-black uppercase",
                       selectedProject.status === 'active' ? "bg-green-900/20 text-green-500" : "bg-gray-800 text-gray-400"
                     )}>
-                      {selectedProject.status === 'active' ? (language === 'ar' ? 'نشط' : 'Active') : (language === 'ar' ? 'مكتمل' : 'Completed')}
+                      {selectedProject.status === 'active' ? 'نشط' : 'مكتمل'}
                     </span>
                   </div>
                 </div>
@@ -509,7 +509,7 @@ export function Projects() {
                     "p-6 rounded-2xl border",
                     theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-gray-50 border-gray-100 shadow-sm"
                   )}>
-                    <p className="text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">{language === 'ar' ? 'الميزانية الإجمالية' : 'Total Budget'}</p>
+                    <p className="text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">الميزانية الإجمالية</p>
                     <p className="text-2xl font-black text-blue-500">{selectedProject.budget?.toLocaleString()}</p>
                     <p className="text-[10px] text-gray-400 font-bold mt-1">ج.م</p>
                   </div>
@@ -517,7 +517,7 @@ export function Projects() {
                     "p-6 rounded-2xl border",
                     theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-gray-50 border-gray-100 shadow-sm"
                   )}>
-                    <p className="text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">{language === 'ar' ? 'المصاريف الفعلية' : 'Actual Spent'}</p>
+                    <p className="text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">المصاريف الفعلية</p>
                     <p className="text-2xl font-black text-red-500">{selectedProject.spent?.toLocaleString()}</p>
                     <p className="text-[10px] text-gray-400 font-bold mt-1">ج.م</p>
                   </div>
@@ -525,7 +525,7 @@ export function Projects() {
                     "p-6 rounded-2xl border",
                     theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-gray-50 border-gray-100 shadow-sm"
                   )}>
-                    <p className="text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">{language === 'ar' ? 'المبالغ المحصلة' : 'Collected'}</p>
+                    <p className="text-[10px] font-black text-gray-500 uppercase mb-2 tracking-widest">المبالغ المحصلة</p>
                     <p className="text-2xl font-black text-green-500">{selectedProject.collected?.toLocaleString()}</p>
                     <p className="text-[10px] text-gray-400 font-bold mt-1">ج.م</p>
                   </div>
@@ -536,9 +536,9 @@ export function Projects() {
                   {/* contracts count badge in details? No, let's put it as a section */}
                   <div className="space-y-3">
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'العقود المرتبطة' : 'Linked Contracts'}</span>
+                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">العقود المرتبطة</span>
                       <span className="bg-purple-500/10 text-purple-500 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest">
-                        {contracts.filter(c => c.projectId === selectedProject.id).length} {language === 'ar' ? 'عقود' : 'Contracts'}
+                        {contracts.filter(c => c.projectId === selectedProject.id).length} عقود
                       </span>
                     </div>
                     
@@ -554,7 +554,7 @@ export function Projects() {
                       ))}
                       {contracts.filter(c => c.projectId === selectedProject.id).length === 0 && (
                         <p className="col-span-full text-center py-4 text-xs text-gray-500 italic">
-                          {language === 'ar' ? 'لا توجد عقود حتى الآن' : 'No contracts yet'}
+                          لا توجد عقود حتى الآن
                         </p>
                       )}
                     </div>
@@ -562,7 +562,7 @@ export function Projects() {
 
                   <div className="space-y-3">
                     <div className="flex justify-between items-end">
-                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'استهلاك الميزانية' : 'Budget Utilization'}</span>
+                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">استهلاك الميزانية</span>
                       <span className="text-lg font-black text-blue-500">{Math.round((selectedProject.spent! / (selectedProject.budget! || 1)) * 100)}%</span>
                     </div>
                     <div className="h-3 bg-gray-900 rounded-full overflow-hidden p-1 shadow-inner border border-gray-800">
@@ -576,7 +576,7 @@ export function Projects() {
 
                   <div className="space-y-3">
                     <div className="flex justify-between items-end">
-                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'كفاءة التحصيل' : 'Collection Efficiency'}</span>
+                      <span className="text-xs font-black text-gray-400 uppercase tracking-widest">كفاءة التحصيل</span>
                       <span className="text-lg font-black text-green-500">{Math.round((selectedProject.collected! / (selectedProject.spent! || 1)) * 100)}%</span>
                     </div>
                     <div className="h-3 bg-gray-900 rounded-full overflow-hidden p-1 shadow-inner border border-gray-800">
@@ -595,7 +595,7 @@ export function Projects() {
                     "p-6 rounded-2xl border flex items-center gap-4",
                     theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-white border-gray-200"
                   )}>
-                    <p className="text-xs font-black text-gray-500 uppercase vertical-text">{language === 'ar' ? 'العميل' : 'Client'}</p>
+                    <p className="text-xs font-black text-gray-500 uppercase vertical-text">العميل</p>
                     <div className="bg-gray-800/50 w-px h-10 mx-2" />
                     <p className="text-lg font-bold">{selectedProject.clientName}</p>
                   </div>
@@ -603,7 +603,7 @@ export function Projects() {
                     "p-6 rounded-2xl border flex items-center gap-4",
                     theme === 'dark' ? "bg-gray-900/30 border-gray-800" : "bg-white border-gray-200"
                   )}>
-                    <p className="text-xs font-black text-gray-500 uppercase vertical-text">{language === 'ar' ? 'السيولة' : 'Liquidity'}</p>
+                    <p className="text-xs font-black text-gray-500 uppercase vertical-text">السيولة</p>
                     <div className="bg-gray-800/50 w-px h-10 mx-2" />
                     <p className={cn(
                       "text-lg font-bold",
@@ -623,7 +623,7 @@ export function Projects() {
                   onClick={() => setSelectedProject(null)}
                   className="flex-1 bg-gray-800 hover:bg-gray-700 text-white font-black py-4 rounded-2xl transition-all uppercase tracking-widest text-sm"
                 >
-                  {language === 'ar' ? 'إغلاق التفاصيل' : 'Close Details'}
+                  إغلاق التفاصيل
                 </button>
               </div>
             </motion.div>
@@ -654,7 +654,7 @@ export function Projects() {
               )}>
                 <h3 className="text-xl font-bold flex items-center gap-2">
                   <FileText className="text-purple-500" size={24} />
-                  {language === 'ar' ? 'إضافة عقد جديد' : 'Add New Contract'}
+                  إضافة عقد جديد
                 </h3>
                 <button onClick={() => setIsContractModalOpen(false)} className={cn("transition-colors", theme === 'dark' ? "text-gray-500 hover:text-white" : "text-gray-400 hover:text-gray-900")}>
                   <X size={20} />
@@ -663,13 +663,13 @@ export function Projects() {
 
               <div className="p-4 bg-purple-900/10 border-b border-purple-500/20">
                 <p className="text-[10px] font-bold text-purple-400 uppercase tracking-widest leading-relaxed text-center">
-                  {language === 'ar' ? 'للمشروع:' : 'For Project:'} <span className={theme === 'dark' ? "text-white" : "text-gray-900"}>{targetProjectForContract?.projectName}</span>
+                  للمشروع: <span className={theme === 'dark' ? "text-white" : "text-gray-900"}>{targetProjectForContract?.projectName}</span>
                 </p>
               </div>
 
               <form onSubmit={handleContractSubmit} className="p-6 space-y-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العقد' : 'Contract Name'}</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">اسم العقد</label>
                   <input 
                     required
                     type="text" 
@@ -684,7 +684,7 @@ export function Projects() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم العقد' : 'Contract Number'}</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase">رقم العقد</label>
                   <input 
                     required
                     type="text" 
@@ -706,7 +706,7 @@ export function Projects() {
                     className="flex-1 bg-purple-600 hover:bg-purple-500 disabled:bg-purple-800 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-purple-900/20 text-white"
                   >
                     {isSubmitting && <Loader2 className="animate-spin" size={18} />}
-                    {language === 'ar' ? 'تأكيد الإضافة' : 'Confirm Contract'}
+                    تأكيد الإضافة
                   </button>
                   <button 
                     type="button"
@@ -717,7 +717,7 @@ export function Projects() {
                       "bg-gray-100 hover:bg-gray-200 text-gray-700"
                     )}
                   >
-                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                    إلغاء
                   </button>
                 </div>
               </form>
@@ -901,13 +901,13 @@ export function Projects() {
                     )}
                   >
                     <FileText size={14} />
-                    {language === 'ar' ? 'إضافة عقد' : 'Add Contract'}
+                    إضافة عقد
                   </button>
                   <button 
                     onClick={() => setSelectedProject(project)}
                     className="text-blue-500 hover:text-blue-400 text-xs font-bold flex items-center gap-1 transition-colors"
                   >
-                    {language === 'ar' ? 'تفاصيل المشروع' : 'Project Details'}
+                    تفاصيل المشروع
                     <ExternalLink size={14} />
                   </button>
                 </div>
