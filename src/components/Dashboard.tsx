@@ -122,7 +122,13 @@ export function Dashboard() {
       setChartData(sortedChartData);
 
       const pendingBilling = totalRevenue - totalCollected;
-      const totalBudget = boqItems.reduce((sum, i: any) => sum + (i.tenderAmount || 0), 0);
+      const totalBudget = projectsData.reduce((sum, p: any) => {
+        const calculatedBoqValue = boqItems
+          .filter((item: any) => item.projectId === p.id)
+          .reduce((s: number, item: any) => s + (item.tenderAmount || 0), 0);
+        const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (p.boqValue || 0);
+        return sum + boqValue + (p.voValue || 0);
+      }, 0);
 
       setStats({
         totalBudget,
@@ -273,13 +279,15 @@ export function Dashboard() {
           <p className="text-gray-400 mt-1">{language === 'ar' ? 'متابعة الأداء المالي والتدفق النقدي لكافة المشاريع' : 'Monitor financial performance and cash flow across all projects'}</p>
         </div>
         <div className="flex gap-3">
-          <button 
+          <button
+            type="button"
             onClick={handleExportPDF}
             className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors", theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : "bg-white border border-gray-200 hover:bg-gray-50")}
           >
             {language === 'ar' ? 'تصدير تقرير PDF' : 'Export PDF'}
           </button>
-          <button 
+          <button
+            type="button"
             onClick={handleRefresh}
             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-sm font-medium transition-colors text-white flex items-center gap-2"
           >
@@ -442,7 +450,7 @@ export function Dashboard() {
               ))
             )}
           </div>
-          <button className="w-full mt-6 py-2 text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
+          <button type="button" className="w-full mt-6 py-2 text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
             {language === 'ar' ? 'عرض كافة القيود ←' : 'View all entries ←'}
           </button>
         </div>
