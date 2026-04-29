@@ -51,6 +51,7 @@ export interface Account {
   id: string;
   accountCode: string;
   accountName: string;
+  accountNameEn?: string;
   parentCode: string;
   type: 'asset' | 'liability' | 'equity' | 'revenue' | 'expense';
   isGroup: boolean;
