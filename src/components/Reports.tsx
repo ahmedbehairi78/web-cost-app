@@ -276,6 +276,87 @@ export function Reports() {
     }), { opDebit: 0, opCredit: 0, movDebit: 0, movCredit: 0, clDebit: 0, clCredit: 0 });
   }, [trialBalance]);
 
+  // GL-based P&L — filtered by selected project, grouped by account prefix
+  const glPnL = React.useMemo(() => {
+    const tx = transactions.filter(
+      t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId)
+    );
+
+    const sumByPrefix = (prefix: string, nature: 'debit' | 'credit') =>
+      tx.reduce((sum, t) =>
+        sum + (t.entries || [])
+          .filter((e: JournalEntry) => e.accountCode.startsWith(prefix))
+          .reduce((s: number, e: JournalEntry) =>
+            nature === 'debit' ? s + (e.debit - e.credit) : s + (e.credit - e.debit), 0),
+        0);
+
+    // Per leaf-account balances for detail lines
+    const leafBalances: Record<string, number> = {};
+    accounts
+      .filter(a => !a.isGroup && /^[45]/.test(a.accountCode || ''))
+      .forEach(acc => {
+        const code = acc.accountCode || '';
+        leafBalances[code] = tx.reduce((sum, t) => {
+          const entry = (t.entries || []).find((e: JournalEntry) => e.accountCode === code);
+          return sum + (entry ? entry.debit - entry.credit : 0);
+        }, 0);
+      });
+
+    const revenue = sumByPrefix('4', 'credit');
+    const cogs    = sumByPrefix('51', 'debit');
+    const opex    = sumByPrefix('52', 'debit');
+    const finex   = sumByPrefix('53', 'debit');
+    const gross   = revenue - cogs;
+    const ebit    = gross - opex;
+    const net     = ebit - finex;
+    return { revenue, cogs, opex, finex, gross, ebit, net, leafBalances };
+  }, [transactions, accounts, selectedProjectId]);
+
+  // Balance sheet account balances — always company-wide (not project-filtered)
+  const balanceSheet = React.useMemo(() => {
+    const allTx = transactions.filter(t => !t.isDeleted);
+
+    const accBal = (code: string, nature: 'debit' | 'credit') => {
+      const net = allTx.reduce((sum, t) => {
+        const entry = (t.entries || []).find((e: JournalEntry) => e.accountCode === code);
+        return sum + (entry ? entry.debit - entry.credit : 0);
+      }, 0);
+      return nature === 'debit' ? net : -net;
+    };
+
+    const sectionBal = (prefix: string, nature: 'debit' | 'credit') =>
+      accounts
+        .filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled')
+        .reduce((sum, acc) => sum + accBal(acc.accountCode || '', nature), 0);
+
+    // All-transactions net profit for equity section
+    const allRevenue = transactions.filter(t => !t.isDeleted).reduce((sum, t) =>
+      sum + (t.entries || []).filter((e: JournalEntry) => e.accountCode.startsWith('4'))
+        .reduce((s: number, e: JournalEntry) => s + (e.credit - e.debit), 0), 0);
+    const allCosts = transactions.filter(t => !t.isDeleted).reduce((sum, t) =>
+      sum + (t.entries || []).filter((e: JournalEntry) => e.accountCode.startsWith('5'))
+        .reduce((s: number, e: JournalEntry) => s + (e.debit - e.credit), 0), 0);
+    const netProfitForBS = allRevenue - allCosts;
+
+    const currentAssets    = sectionBal('11', 'debit');
+    const nonCurrentAssets = sectionBal('12', 'debit');
+    const totalAssets      = currentAssets + nonCurrentAssets;
+    const currentLiab      = sectionBal('21', 'credit');
+    const nonCurrentLiab   = sectionBal('22', 'credit');
+    const totalLiab        = currentLiab + nonCurrentLiab;
+    const equityAccounts   = sectionBal('3', 'credit');
+    const totalEquity      = equityAccounts + netProfitForBS;
+    const totalLE          = totalLiab + totalEquity;
+
+    return {
+      currentAssets, nonCurrentAssets, totalAssets,
+      currentLiab, nonCurrentLiab, totalLiab,
+      equityAccounts, netProfitForBS, totalEquity, totalLE,
+      isBalanced: Math.abs(totalAssets - totalLE) < 1,
+      accBal, sectionBal,
+    };
+  }, [transactions, accounts]);
+
   const exportToExcel = () => {
     let data: Record<string, unknown>[] = [];
     let filename = 'report.xlsx';
@@ -552,58 +633,224 @@ export function Reports() {
         <div className={cn("border rounded-2xl overflow-hidden shadow-2xl print:border-none print:shadow-none", theme === 'dark' ? "bg-[#151619] border-gray-800" : "bg-white border-gray-200")}>
           
           {/* Income Statement View */}
-          {activeReport === 'income' && (
-            <div className="p-8">
-              <div className="flex items-center gap-3 mb-8">
-                <Calculator className="text-blue-500" size={32} />
-                <h3 className="text-2xl font-black">{language === 'ar' ? 'قائمة الدخل التقديرية للمشاريع' : 'Estimated Project Income Statement'}</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-green-900/10 border-green-900/30" : "bg-green-50 border-green-200")}>
-                  <p className="text-sm text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي الإيرادات (أساس الاستحقاق)' : 'Total Revenue (Accrual)'}</p>
-                  <p className="text-3xl font-black text-green-500">{totalRevenue.toLocaleString()} <span className="text-sm font-normal">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-                </div>
-                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-red-900/10 border-red-900/30" : "bg-red-50 border-red-200")}>
-                  <p className="text-sm text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'إجمالي التكاليف المباشرة' : 'Total Direct Costs'}</p>
-                  <p className="text-3xl font-black text-red-500">{totalCosts.toLocaleString()} <span className="text-sm font-normal">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-                </div>
-                <div className={cn("p-6 rounded-2xl border", theme === 'dark' ? "bg-blue-900/10 border-blue-900/30" : "bg-blue-50 border-blue-200")}>
-                  <p className="text-sm text-gray-500 font-bold uppercase mb-2">{language === 'ar' ? 'صافي ربح المشاريع' : 'Net Project Profit'}</p>
-                  <p className="text-3xl font-black text-blue-500">{totalGrossProfit.toLocaleString()} <span className="text-sm font-normal">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-                </div>
-              </div>
+          {activeReport === 'income' && (() => {
+            const baseRevenue = glPnL.revenue || totalRevenue;
+            const pct = (v: number) => baseRevenue > 0 ? ((v / baseRevenue) * 100).toFixed(1) + '%' : '—';
+            const fmt = (v: number, cost = false) =>
+              v === 0 ? '—' : cost ? `(${Math.abs(v).toLocaleString()})` : v.toLocaleString();
 
-              <table className="w-full text-right border-collapse">
-                <thead>
-                  <tr className={cn("border-b-2", theme === 'dark' ? "border-gray-800" : "border-gray-200")}>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'المشروع' : 'Project'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الإيرادات' : 'Revenue'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'التكاليف' : 'Costs'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'الربح' : 'Profit'}</th>
-                    <th className="px-6 py-4 text-sm font-black text-gray-400 uppercase">{language === 'ar' ? 'هامش الربح' : 'Margin'}</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/50">
-                  {projectStats.map((stat) => (
-                    <tr key={stat.id} className="hover:bg-gray-900/20 transition-colors">
-                      <td className="px-6 py-4 font-bold">{stat.name}</td>
-                      <td className="px-6 py-4 font-mono">{stat.billings.toLocaleString()}</td>
-                      <td className="px-6 py-4 font-mono text-red-400">{stat.costs.toLocaleString()}</td>
-                      <td className={cn("px-6 py-4 font-mono font-bold", stat.profit >= 0 ? "text-green-500" : "text-red-500")}>
-                        {stat.profit.toLocaleString()}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className={cn("px-3 py-1 rounded-full text-xs font-bold", stat.profit >= 0 ? "bg-green-900/20 text-green-400" : "bg-red-900/20 text-red-400")}>
-                          {((stat.profit / (stat.billings || 1)) * 100).toFixed(1)}%
-                        </span>
-                      </td>
-                    </tr>
+            // Rows of leaf accounts for a given prefix
+            const leafRows = (prefix: string, isCost: boolean) =>
+              accounts
+                .filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix))
+                .map(acc => {
+                  const bal = glPnL.leafBalances[acc.accountCode] || 0;
+                  if (bal === 0) return null;
+                  return (
+                    <div key={acc.id} className={cn('flex justify-between items-center px-8 py-2 border-b text-sm', theme === 'dark' ? 'border-gray-800/30 hover:bg-white/[0.02]' : 'border-gray-100 hover:bg-gray-50/60')}>
+                      <span className={cn('ps-4', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>{acc.accountName}</span>
+                      <span className={cn('font-mono tabular-nums', isCost ? 'text-red-400' : 'text-emerald-400')}>{fmt(bal, isCost)}</span>
+                    </div>
+                  );
+                });
+
+            const SectionHeader = ({ label, color }: { label: string; color: string }) => (
+              <div className={cn('px-6 py-2.5 border-b font-black text-xs uppercase tracking-widest flex items-center gap-2', color)}>
+                {label}
+              </div>
+            );
+            const SubHeader = ({ label }: { label: string }) => (
+              <div className={cn('px-8 py-1.5 border-b text-[11px] font-bold uppercase tracking-wider text-gray-500 ps-12', theme === 'dark' ? 'border-gray-800/30 bg-gray-900/20' : 'border-gray-100 bg-gray-50/50')}>
+                ▸ {label}
+              </div>
+            );
+            const TotalRow = ({ label, value, color }: { label: string; value: string; color: string }) => (
+              <div className={cn('flex justify-between items-center px-6 py-3 font-bold border-b text-sm', theme === 'dark' ? 'bg-gray-900/30 border-gray-800' : 'bg-gray-50 border-gray-200')}>
+                <span>{label}</span>
+                <span className={cn('font-mono tabular-nums', color)}>{value}</span>
+              </div>
+            );
+            const ProfitRow = ({ label, sub, value, pctVal, color, borderColor, bg }: { label: string; sub: string; value: number; pctVal: string; color: string; borderColor: string; bg: string }) => (
+              <div className={cn('flex justify-between items-center px-6 py-4 font-black border-b-4', bg, borderColor)}>
+                <div className="flex items-center gap-3">
+                  <span className={cn('text-base', color)}>{label}</span>
+                  <span className="text-xs font-normal opacity-50">{sub}</span>
+                </div>
+                <div className="text-end">
+                  <div className={cn('font-mono tabular-nums text-lg', color)}>{value.toLocaleString()}</div>
+                  <div className="text-xs font-normal opacity-50">{pctVal} {language === 'ar' ? 'هامش' : 'margin'}</div>
+                </div>
+              </div>
+            );
+
+            const has511 = accounts.some(a => !a.isGroup && (a.accountCode || '').startsWith('511') && (glPnL.leafBalances[a.accountCode] || 0) !== 0);
+            const has512 = accounts.some(a => !a.isGroup && (a.accountCode || '').startsWith('512') && (glPnL.leafBalances[a.accountCode] || 0) !== 0);
+            const has521 = accounts.some(a => !a.isGroup && (a.accountCode || '').startsWith('521') && (glPnL.leafBalances[a.accountCode] || 0) !== 0);
+            const has522 = accounts.some(a => !a.isGroup && (a.accountCode || '').startsWith('522') && (glPnL.leafBalances[a.accountCode] || 0) !== 0);
+            const has531 = accounts.some(a => !a.isGroup && (a.accountCode || '').startsWith('531') && (glPnL.leafBalances[a.accountCode] || 0) !== 0);
+
+            return (
+              <div className="p-8" dir={dir}>
+                {/* Title */}
+                <div className="text-center mb-8">
+                  <h3 className="text-2xl font-black">{language === 'ar' ? 'قائمة الدخل' : 'Income Statement'}</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {language === 'ar' ? 'للفترة المنتهية في ' : 'For the period ending '}
+                    {new Date().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
+                  </p>
+                  {selectedProjectId !== 'all' && (
+                    <span className="mt-2 inline-block px-3 py-1 text-xs font-bold rounded-full bg-blue-600/10 text-blue-400 border border-blue-600/20">
+                      {projects.find(p => p.id === selectedProjectId)?.projectName}
+                    </span>
+                  )}
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+                  {[
+                    { label: language === 'ar' ? 'مجموع الإيرادات'   : 'Total Revenue',    value: baseRevenue,   color: 'text-emerald-500', bg: theme === 'dark' ? 'bg-emerald-900/10 border-emerald-900/30' : 'bg-emerald-50 border-emerald-200' },
+                    { label: language === 'ar' ? 'مجمل الربح'        : 'Gross Profit',      value: glPnL.gross,   color: glPnL.gross  >= 0 ? 'text-blue-500'   : 'text-red-500', bg: glPnL.gross  >= 0 ? (theme === 'dark' ? 'bg-blue-900/10 border-blue-900/30'     : 'bg-blue-50 border-blue-200')     : (theme === 'dark' ? 'bg-red-900/10 border-red-900/30'   : 'bg-red-50 border-red-200'),   pct: pct(glPnL.gross)  },
+                    { label: language === 'ar' ? 'ربح التشغيل (EBIT)': 'Operating Profit',  value: glPnL.ebit,    color: glPnL.ebit   >= 0 ? 'text-violet-500' : 'text-red-500', bg: glPnL.ebit   >= 0 ? (theme === 'dark' ? 'bg-violet-900/10 border-violet-900/30' : 'bg-violet-50 border-violet-200') : (theme === 'dark' ? 'bg-red-900/10 border-red-900/30'   : 'bg-red-50 border-red-200'),   pct: pct(glPnL.ebit)   },
+                    { label: language === 'ar' ? 'صافي الربح'        : 'Net Profit',        value: glPnL.net,     color: glPnL.net    >= 0 ? 'text-amber-500' : 'text-red-500', bg: glPnL.net    >= 0 ? (theme === 'dark' ? 'bg-amber-900/10 border-amber-900/30'   : 'bg-amber-50 border-amber-200')   : (theme === 'dark' ? 'bg-red-900/10 border-red-900/30'   : 'bg-red-50 border-red-200'),   pct: pct(glPnL.net)    },
+                  ].map((k, i) => (
+                    <div key={i} className={cn('p-5 rounded-2xl border', k.bg)}>
+                      <p className="text-xs font-bold uppercase text-gray-500 mb-2">{k.label}</p>
+                      <p className={cn('text-xl font-black tabular-nums', k.color)}>{k.value.toLocaleString()}</p>
+                      {k.pct && <p className="text-xs text-gray-400 mt-1 font-mono">{k.pct} {language === 'ar' ? 'هامش' : 'margin'}</p>}
+                    </div>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+                </div>
+
+                {/* P&L Statement */}
+                <div className={cn('rounded-2xl border overflow-hidden mb-10', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+
+                  {/* ── REVENUE ── */}
+                  <SectionHeader label={language === 'ar' ? 'الإيرادات' : 'Revenue'} color={theme === 'dark' ? 'bg-emerald-900/10 border-emerald-900/20 text-emerald-400' : 'bg-emerald-50 border-emerald-100 text-emerald-700'} />
+                  {leafRows('41', false)}
+                  {leafRows('42', false)}
+                  {glPnL.revenue === 0 && totalRevenue > 0 && (
+                    <div className={cn('flex justify-between items-center px-8 py-2 border-b text-sm ps-12', theme === 'dark' ? 'border-gray-800/30' : 'border-gray-100')}>
+                      <span className="text-gray-400">{language === 'ar' ? 'إيرادات المستخلصات (استحقاق)' : 'Billing Revenue (Accrual)'}</span>
+                      <span className="font-mono text-emerald-400">{totalRevenue.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <TotalRow label={language === 'ar' ? 'مجموع الإيرادات' : 'Total Revenue'} value={baseRevenue.toLocaleString()} color="text-emerald-500" />
+
+                  {/* ── CONTRACT COSTS ── */}
+                  <SectionHeader label={language === 'ar' ? 'تكاليف العقود' : 'Contract Costs'} color={theme === 'dark' ? 'bg-red-900/10 border-red-900/20 text-red-400' : 'bg-red-50 border-red-100 text-red-700'} />
+                  {has511 && <SubHeader label={language === 'ar' ? 'تكاليف مباشرة' : 'Direct Costs'} />}
+                  {leafRows('511', true)}
+                  {has512 && <SubHeader label={language === 'ar' ? 'تكاليف غير مباشرة للموقع' : 'Indirect Site Costs'} />}
+                  {leafRows('512', true)}
+                  <TotalRow label={language === 'ar' ? 'مجموع تكاليف العقود' : 'Total Contract Costs'} value={fmt(glPnL.cogs, true)} color="text-red-500" />
+
+                  {/* GROSS PROFIT */}
+                  <ProfitRow
+                    label={language === 'ar' ? 'مجمل ربح العقود' : 'Gross Profit'}
+                    sub="Gross Profit"
+                    value={glPnL.gross}
+                    pctVal={pct(glPnL.gross)}
+                    color={glPnL.gross >= 0 ? 'text-blue-500' : 'text-red-500'}
+                    borderColor={glPnL.gross >= 0 ? 'border-blue-500' : 'border-red-500'}
+                    bg={glPnL.gross >= 0 ? (theme === 'dark' ? 'bg-blue-900/10' : 'bg-blue-50') : (theme === 'dark' ? 'bg-red-900/10' : 'bg-red-50')}
+                  />
+
+                  {/* ── OPERATING EXPENSES ── */}
+                  {(glPnL.opex > 0 || has521 || has522) && (
+                    <>
+                      <SectionHeader label={language === 'ar' ? 'المصروفات التشغيلية' : 'Operating Expenses'} color={theme === 'dark' ? 'bg-orange-900/10 border-orange-900/20 text-orange-400' : 'bg-orange-50 border-orange-100 text-orange-700'} />
+                      {leafRows('521', true)}
+                      {leafRows('522', true)}
+                      <TotalRow label={language === 'ar' ? 'مجموع المصروفات التشغيلية' : 'Total Operating Expenses'} value={fmt(glPnL.opex, true)} color="text-orange-500" />
+                    </>
+                  )}
+
+                  {/* EBIT */}
+                  <ProfitRow
+                    label={language === 'ar' ? 'ربح التشغيل' : 'Operating Profit'}
+                    sub="EBIT"
+                    value={glPnL.ebit}
+                    pctVal={pct(glPnL.ebit)}
+                    color={glPnL.ebit >= 0 ? 'text-violet-500' : 'text-red-500'}
+                    borderColor={glPnL.ebit >= 0 ? 'border-violet-500' : 'border-red-500'}
+                    bg={glPnL.ebit >= 0 ? (theme === 'dark' ? 'bg-violet-900/10' : 'bg-violet-50') : (theme === 'dark' ? 'bg-red-900/10' : 'bg-red-50')}
+                  />
+
+                  {/* ── FINANCIAL EXPENSES ── */}
+                  {(glPnL.finex > 0 || has531) && (
+                    <>
+                      <SectionHeader label={language === 'ar' ? 'المصروفات التمويلية' : 'Financial Expenses'} color={theme === 'dark' ? 'bg-rose-900/10 border-rose-900/20 text-rose-400' : 'bg-rose-50 border-rose-100 text-rose-700'} />
+                      {leafRows('531', true)}
+                      <TotalRow label={language === 'ar' ? 'مجموع المصروفات التمويلية' : 'Total Financial Expenses'} value={fmt(glPnL.finex, true)} color="text-rose-500" />
+                    </>
+                  )}
+
+                  {/* NET PROFIT */}
+                  <div className={cn('flex justify-between items-center px-6 py-5 font-black',
+                    glPnL.net >= 0
+                      ? (theme === 'dark' ? 'bg-amber-900/10 text-amber-400' : 'bg-amber-50 text-amber-700')
+                      : (theme === 'dark' ? 'bg-red-900/10 text-red-400'    : 'bg-red-50 text-red-700')
+                  )}>
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">★</span>
+                      <span className="text-xl">{language === 'ar' ? 'صافي الربح للفترة' : 'Net Profit for the Period'}</span>
+                    </div>
+                    <div className="text-end">
+                      <div className="font-mono tabular-nums text-2xl">{glPnL.net.toLocaleString()}</div>
+                      <div className="text-xs font-normal opacity-60">{pct(glPnL.net)} {language === 'ar' ? 'هامش' : 'margin'}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Project Breakdown Table */}
+                <div>
+                  <h4 className="font-bold text-base mb-4 flex items-center gap-2">
+                    <Building2 className="text-blue-500" size={18} />
+                    {language === 'ar' ? 'تفصيل حسب المشروع (بيانات المستخلصات)' : 'Project Breakdown (Billing Data)'}
+                  </h4>
+                  <table className="w-full border-collapse text-sm">
+                    <thead>
+                      <tr className={cn('border-b-2', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+                        <th className="px-4 py-3 font-black text-gray-400 uppercase text-start">{language === 'ar' ? 'المشروع' : 'Project'}</th>
+                        <th className="px-4 py-3 font-black text-gray-400 uppercase text-end">{language === 'ar' ? 'الإيرادات' : 'Revenue'}</th>
+                        <th className="px-4 py-3 font-black text-gray-400 uppercase text-end">{language === 'ar' ? 'التكاليف' : 'Costs'}</th>
+                        <th className="px-4 py-3 font-black text-gray-400 uppercase text-end">{language === 'ar' ? 'الربح' : 'Profit'}</th>
+                        <th className="px-4 py-3 font-black text-gray-400 uppercase text-end">{language === 'ar' ? 'هامش' : 'Margin'}</th>
+                      </tr>
+                    </thead>
+                    <tbody className={cn('divide-y', theme === 'dark' ? 'divide-gray-800/40' : 'divide-gray-100')}>
+                      {projectStats.map(stat => (
+                        <tr key={stat.id} className={cn('transition-colors', theme === 'dark' ? 'hover:bg-white/[0.02]' : 'hover:bg-gray-50')}>
+                          <td className="px-4 py-3 font-bold">{stat.name}</td>
+                          <td className="px-4 py-3 font-mono tabular-nums text-end text-emerald-400">{stat.billings.toLocaleString()}</td>
+                          <td className="px-4 py-3 font-mono tabular-nums text-end text-red-400">({stat.costs.toLocaleString()})</td>
+                          <td className={cn('px-4 py-3 font-mono tabular-nums text-end font-bold', stat.profit >= 0 ? 'text-blue-400' : 'text-red-500')}>{stat.profit.toLocaleString()}</td>
+                          <td className="px-4 py-3 text-end">
+                            <span className={cn('px-2 py-1 rounded-full text-xs font-bold', stat.profit >= 0 ? 'bg-blue-900/20 text-blue-400' : 'bg-red-900/20 text-red-400')}>
+                              {((stat.profit / (stat.billings || 1)) * 100).toFixed(1)}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className={cn('border-t-2 font-black', theme === 'dark' ? 'border-gray-800 bg-gray-900/30' : 'border-gray-200 bg-gray-50')}>
+                        <td className="px-4 py-3">{language === 'ar' ? 'الإجمالي' : 'Total'}</td>
+                        <td className="px-4 py-3 font-mono tabular-nums text-end text-emerald-400">{totalRevenue.toLocaleString()}</td>
+                        <td className="px-4 py-3 font-mono tabular-nums text-end text-red-400">({totalCosts.toLocaleString()})</td>
+                        <td className={cn('px-4 py-3 font-mono tabular-nums text-end', totalGrossProfit >= 0 ? 'text-blue-400' : 'text-red-500')}>{totalGrossProfit.toLocaleString()}</td>
+                        <td className="px-4 py-3 text-end">
+                          <span className={cn('px-2 py-1 rounded-full text-xs font-bold', totalGrossProfit >= 0 ? 'bg-blue-900/20 text-blue-400' : 'bg-red-900/20 text-red-400')}>
+                            {((totalGrossProfit / (totalRevenue || 1)) * 100).toFixed(1)}%
+                          </span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Budget vs Actual View */}
           {activeReport === 'budget' && (
@@ -740,103 +987,162 @@ export function Reports() {
           )}
 
           {/* Balance Sheet View */}
-          {activeReport === 'balance' && (
-            <div className="p-8">
-              <div className="flex items-center gap-3 mb-8">
-                <Calculator className="text-blue-500" size={32} />
-                <h3 className="text-2xl font-black">{language === 'ar' ? 'الميزانية العمومية' : 'Balance Sheet'}</h3>
-              </div>
+          {activeReport === 'balance' && (() => {
+            const bs = balanceSheet;
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                {/* Assets */}
-                <div className="space-y-6">
-                  <h4 className="text-xl font-bold border-b pb-2 text-blue-500">{language === 'ar' ? 'الأصول' : 'Assets'}</h4>
-                  <div className="space-y-4">
-                    {accounts.filter(a => a.type === 'asset' && !a.isGroup).map(acc => {
-                      const balance = transactions.reduce((sum, t) => {
-                        const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
-                        return sum + (entry ? entry.debit - entry.credit : 0);
-                      }, 0);
-                      return (
-                        <div key={`asset-${acc.id}`} className="flex justify-between items-center">
-                          <span className="text-gray-400">{acc.accountName}</span>
-                          <span className="font-mono font-bold">{balance.toLocaleString()}</span>
-                        </div>
-                      );
-                    })}
-                    <div className="pt-4 border-t flex justify-between items-center font-black text-lg">
+            // Render leaf accounts within a L3 prefix group
+            const BSLeafRows = ({ prefix, nature }: { prefix: string; nature: 'debit' | 'credit' }) => {
+              const rows = accounts
+                .filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled')
+                .map(acc => {
+                  const bal = bs.accBal(acc.accountCode || '', nature);
+                  if (bal === 0) return null;
+                  return (
+                    <div key={acc.id} className="flex justify-between items-center py-1.5 text-sm ps-4">
+                      <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}>{acc.accountName}</span>
+                      <span className="font-mono tabular-nums">{bal.toLocaleString()}</span>
+                    </div>
+                  );
+                });
+              return <>{rows}</>;
+            };
+
+            // Render an L3 sub-group: header + leaf rows + optional subtotal
+            const BSGroup = ({ prefix, nature, label }: { prefix: string; nature: 'debit' | 'credit'; label: string }) => {
+              const leafAccounts = accounts.filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled');
+              const total = leafAccounts.reduce((s, a) => s + bs.accBal(a.accountCode || '', nature), 0);
+              if (total === 0 && leafAccounts.every(a => bs.accBal(a.accountCode || '', nature) === 0)) return null;
+              return (
+                <div className="mb-3">
+                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1 pb-1 border-b border-dashed border-gray-700/30">{label}</div>
+                  <BSLeafRows prefix={prefix} nature={nature} />
+                  {leafAccounts.length > 1 && total !== 0 && (
+                    <div className="flex justify-between items-center py-1 text-sm font-semibold border-t border-gray-700/20 mt-1 pt-1">
+                      <span className="text-gray-400 text-xs">{language === 'ar' ? 'مجموع' : 'Sub-total'}</span>
+                      <span className="font-mono tabular-nums text-xs">{total.toLocaleString()}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            };
+
+            const SectionTitle = ({ label, color }: { label: string; color: string }) => (
+              <div className={cn('text-base font-black pb-2 mb-3 border-b-2', color)}>{label}</div>
+            );
+            const SectionTotal = ({ label, value, color }: { label: string; value: number; color: string }) => (
+              <div className={cn('flex justify-between items-center pt-3 mt-3 border-t font-black text-base', color)}>
+                <span>{label}</span>
+                <span className="font-mono tabular-nums">{value.toLocaleString()}</span>
+              </div>
+            );
+
+            // Build L3 group labels from accounts array
+            const l3Label = (code: string, fallback: string) =>
+              accounts.find(a => a.accountCode === code)?.accountName || fallback;
+
+            return (
+              <div className="p-8" dir={dir}>
+                {/* Title */}
+                <div className="text-center mb-8">
+                  <h3 className="text-2xl font-black">{language === 'ar' ? 'الميزانية العمومية' : 'Balance Sheet'}</h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    {language === 'ar' ? 'بتاريخ ' : 'As of '}
+                    {new Date().toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US')}
+                  </p>
+                </div>
+
+                {/* Balance indicator */}
+                <div className={cn('flex items-center justify-center gap-3 mb-8 px-6 py-3 rounded-xl border w-fit mx-auto',
+                  bs.isBalanced
+                    ? (theme === 'dark' ? 'bg-green-900/10 border-green-900/30 text-green-400' : 'bg-green-50 border-green-200 text-green-700')
+                    : (theme === 'dark' ? 'bg-red-900/10 border-red-900/30 text-red-400'   : 'bg-red-50 border-red-200 text-red-700')
+                )}>
+                  <div className={cn('w-2.5 h-2.5 rounded-full animate-pulse', bs.isBalanced ? 'bg-green-500' : 'bg-red-500')} />
+                  <span className="font-bold text-sm uppercase tracking-wider">
+                    {bs.isBalanced
+                      ? (language === 'ar' ? 'الميزانية متوازنة' : 'Balanced')
+                      : (language === 'ar' ? `فرق: ${Math.abs(bs.totalAssets - bs.totalLE).toLocaleString()}` : `Out of balance by ${Math.abs(bs.totalAssets - bs.totalLE).toLocaleString()}`)}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+
+                  {/* ════ LEFT: ASSETS ════ */}
+                  <div>
+                    {/* Current Assets */}
+                    <SectionTitle label={language === 'ar' ? 'الأصول المتداولة' : 'Current Assets'} color="text-blue-500 border-blue-500/40" />
+                    <BSGroup prefix="111" nature="debit" label={l3Label('111', language === 'ar' ? 'النقدية والبنوك' : 'Cash & Banks')} />
+                    <BSGroup prefix="112" nature="debit" label={l3Label('112', language === 'ar' ? 'العملاء والذمم المدينة' : 'Receivables')} />
+                    <BSGroup prefix="113" nature="debit" label={l3Label('113', language === 'ar' ? 'مدفوعات مقدمة' : 'Advances')} />
+                    <BSGroup prefix="114" nature="debit" label={l3Label('114', language === 'ar' ? 'حسابات ضريبية مدينة' : 'Tax Receivables')} />
+                    <BSGroup prefix="115" nature="debit" label={l3Label('115', language === 'ar' ? 'ذمم مدينة أخرى' : 'Other Receivables')} />
+                    <SectionTotal label={language === 'ar' ? 'مجموع الأصول المتداولة' : 'Total Current Assets'} value={bs.currentAssets} color="text-blue-500" />
+
+                    <div className="mt-8">
+                      {/* Non-Current Assets */}
+                      <SectionTitle label={language === 'ar' ? 'الأصول غير المتداولة' : 'Non-Current Assets'} color="text-blue-400 border-blue-400/30" />
+                      <BSGroup prefix="121" nature="debit" label={l3Label('121', language === 'ar' ? 'الأصول الثابتة' : 'Fixed Assets')} />
+                      <BSGroup prefix="122" nature="debit" label={l3Label('122', language === 'ar' ? 'أصول أخرى' : 'Other Assets')} />
+                      <SectionTotal label={language === 'ar' ? 'مجموع الأصول غير المتداولة' : 'Total Non-Current Assets'} value={bs.nonCurrentAssets} color="text-blue-400" />
+                    </div>
+
+                    {/* Grand Total Assets */}
+                    <div className={cn('flex justify-between items-center mt-6 pt-4 border-t-4 font-black text-lg', 'border-blue-600 text-blue-500')}>
                       <span>{language === 'ar' ? 'إجمالي الأصول' : 'Total Assets'}</span>
-                      <span className="text-blue-500">
-                        {accounts.filter(a => a.type === 'asset' && !a.isGroup).reduce((total, acc) => {
-                          return total + transactions.reduce((sum, t) => {
-                            const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
-                            return sum + (entry ? entry.debit - entry.credit : 0);
-                          }, 0);
-                        }, 0).toLocaleString()}
-                      </span>
+                      <span className="font-mono tabular-nums">{bs.totalAssets.toLocaleString()}</span>
+                    </div>
+                  </div>
+
+                  {/* ════ RIGHT: LIABILITIES & EQUITY ════ */}
+                  <div>
+                    {/* Current Liabilities */}
+                    <SectionTitle label={language === 'ar' ? 'الخصوم المتداولة' : 'Current Liabilities'} color="text-red-500 border-red-500/40" />
+                    <BSGroup prefix="211" nature="credit" label={l3Label('211', language === 'ar' ? 'ذمم دائنة تجارية' : 'Trade Payables')} />
+                    <BSGroup prefix="212" nature="credit" label={l3Label('212', language === 'ar' ? 'محتجزات الضمان' : 'Retention Payables')} />
+                    <BSGroup prefix="213" nature="credit" label={l3Label('213', language === 'ar' ? 'دفعات مقدمة من العملاء' : 'Customer Advances')} />
+                    <BSGroup prefix="214" nature="credit" label={l3Label('214', language === 'ar' ? 'التزامات ضريبية' : 'Tax Liabilities')} />
+                    <BSGroup prefix="215" nature="credit" label={l3Label('215', language === 'ar' ? 'مستحقات أخرى' : 'Other Payables')} />
+                    <SectionTotal label={language === 'ar' ? 'مجموع الخصوم المتداولة' : 'Total Current Liabilities'} value={bs.currentLiab} color="text-red-500" />
+
+                    <div className="mt-8">
+                      {/* Non-Current Liabilities */}
+                      <SectionTitle label={language === 'ar' ? 'الخصوم غير المتداولة' : 'Non-Current Liabilities'} color="text-red-400 border-red-400/30" />
+                      <BSGroup prefix="221" nature="credit" label={l3Label('221', language === 'ar' ? 'قروض طويلة الأجل' : 'Long-term Loans')} />
+                      <SectionTotal label={language === 'ar' ? 'مجموع الخصوم غير المتداولة' : 'Total Non-Current Liabilities'} value={bs.nonCurrentLiab} color="text-red-400" />
+                    </div>
+
+                    <div className="mt-8">
+                      {/* Equity */}
+                      <SectionTitle label={language === 'ar' ? 'حقوق الملكية' : 'Equity'} color="text-emerald-500 border-emerald-500/40" />
+                      <BSGroup prefix="311" nature="credit" label={l3Label('311', language === 'ar' ? 'رأس المال' : 'Share Capital')} />
+                      <BSGroup prefix="312" nature="credit" label={l3Label('312', language === 'ar' ? 'الاحتياطيات' : 'Reserves')} />
+                      <BSGroup prefix="313" nature="credit" label={l3Label('313', language === 'ar' ? 'الأرباح المحتجزة' : 'Retained Earnings')} />
+                      {/* Current period net profit */}
+                      <div className={cn('flex justify-between items-center py-1.5 text-sm ps-4 italic', bs.netProfitForBS >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                        <span>{language === 'ar' ? 'صافي ربح الفترة الحالية' : 'Current Period Net Profit'}</span>
+                        <span className="font-mono tabular-nums">{bs.netProfitForBS.toLocaleString()}</span>
+                      </div>
+                      <SectionTotal label={language === 'ar' ? 'مجموع حقوق الملكية' : 'Total Equity'} value={bs.totalEquity} color="text-emerald-500" />
+                    </div>
+
+                    {/* Grand Total L&E */}
+                    <div className={cn('flex justify-between items-center mt-6 pt-4 border-t-4 font-black text-lg', 'border-emerald-600 text-emerald-500')}>
+                      <span>{language === 'ar' ? 'إجمالي الخصوم وحقوق الملكية' : 'Total Liabilities & Equity'}</span>
+                      <span className="font-mono tabular-nums">{bs.totalLE.toLocaleString()}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* Liabilities & Equity */}
-                <div className="space-y-12">
-                  <div className="space-y-6">
-                    <h4 className="text-xl font-bold border-b pb-2 text-red-500">{language === 'ar' ? 'الخصوم' : 'Liabilities'}</h4>
-                    <div className="space-y-4">
-                      {accounts.filter(a => a.type === 'liability' && !a.isGroup).map(acc => {
-                        const balance = transactions.reduce((sum, t) => {
-                          const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
-                          return sum + (entry ? entry.credit - entry.debit : 0);
-                        }, 0);
-                        return (
-                          <div key={`liab-${acc.id}`} className="flex justify-between items-center">
-                            <span className="text-gray-400">{acc.accountName}</span>
-                            <span className="font-mono font-bold">{balance.toLocaleString()}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <div className="space-y-6">
-                    <h4 className="text-xl font-bold border-b pb-2 text-green-500">{language === 'ar' ? 'حقوق الملكية' : 'Equity'}</h4>
-                    <div className="space-y-4">
-                      {accounts.filter(a => a.type === 'equity' && !a.isGroup).map(acc => {
-                        const balance = transactions.reduce((sum, t) => {
-                          const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
-                          return sum + (entry ? entry.credit - entry.debit : 0);
-                        }, 0);
-                        return (
-                          <div key={`equity-${acc.id}`} className="flex justify-between items-center">
-                            <span className="text-gray-400">{acc.accountName}</span>
-                            <span className="font-mono font-bold">{balance.toLocaleString()}</span>
-                          </div>
-                        );
-                      })}
-                      {/* Net Income */}
-                      <div className="flex justify-between items-center italic text-gray-400">
-                        <span>{language === 'ar' ? 'صافي الدخل (الفترة الحالية)' : 'Net Income (Current Period)'}</span>
-                        <span className="font-mono">{totalGrossProfit.toLocaleString()}</span>
-                      </div>
-                      <div className="pt-4 border-t flex justify-between items-center font-black text-lg">
-                        <span>{language === 'ar' ? 'إجمالي الخصوم وحقوق الملكية' : 'Total Liabilities & Equity'}</span>
-                        <span className="text-green-500">
-                          {(
-                            accounts.filter(a => (a.type === 'liability' || a.type === 'equity') && !a.isGroup).reduce((total, acc) => {
-                              return total + transactions.reduce((sum, t) => {
-                                const entry = t.entries.find((e: JournalEntry) => e.accountCode === acc.accountCode);
-                                return sum + (entry ? entry.credit - entry.debit : 0);
-                              }, 0);
-                            }, 0) + totalGrossProfit
-                          ).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
+                {/* Working capital note */}
+                <div className={cn('mt-8 p-4 rounded-xl border text-sm flex justify-between items-center', theme === 'dark' ? 'bg-gray-900/30 border-gray-800' : 'bg-gray-50 border-gray-200')}>
+                  <span className="text-gray-400 font-bold">{language === 'ar' ? 'رأس المال العامل (الأصول المتداولة − الخصوم المتداولة)' : 'Working Capital (Current Assets − Current Liabilities)'}</span>
+                  <span className={cn('font-mono font-black tabular-nums', (bs.currentAssets - bs.currentLiab) >= 0 ? 'text-blue-400' : 'text-red-400')}>
+                    {(bs.currentAssets - bs.currentLiab).toLocaleString()}
+                  </span>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Analytical Trial Balance View */}
           {activeReport === 'trial' && (

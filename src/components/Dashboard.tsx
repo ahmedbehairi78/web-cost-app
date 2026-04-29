@@ -157,7 +157,7 @@ export function Dashboard() {
       console.error("Dashboard transactions listener error:", err);
     });
 
-    const unsubBOQ = onSnapshot(query(collection(db, 'boq_items'), where('isDeleted', '==', false)), (snapshot) => {
+    const unsubBOQ = onSnapshot(collection(db, 'boq_items'), (snapshot) => {
       boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
