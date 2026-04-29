@@ -309,7 +309,11 @@ export function GLJournalEntries({
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'الحساب' : 'Account'}</label>
                           <select required className={cn(inputCls('py-2 px-3'), 'appearance-none')} value={entry.accountCode} onChange={(e) => handleEntryChange(idx, 'accountCode', e.target.value)}>
                             <option value="">{language === 'ar' ? 'اختر الحساب' : 'Select Account'}</option>
-                            {accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(a => <option key={a.id} value={a.accountCode}>{a.accountCode} - {a.accountName}</option>)}
+                            {accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(a => (
+                              <option key={a.id} value={a.accountCode}>
+                                {a.accountCode} - {language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName)}
+                              </option>
+                            ))}
                           </select>
                         </div>
                         <div className="md:col-span-3 space-y-1">

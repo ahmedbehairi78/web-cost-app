@@ -128,7 +128,11 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
                 className={cn('w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-white' : 'bg-gray-50 border-gray-200')}
               >
                 <option value="">{language === 'ar' ? '--- اختر عهدة ---' : '--- Select a Custody ---'}</option>
-                {custodyAccounts.map(acc => <option key={acc.id} value={acc.accountCode}>{acc.accountCode} - {acc.accountName}</option>)}
+                {custodyAccounts.map(acc => (
+                  <option key={acc.id} value={acc.accountCode}>
+                    {acc.accountCode} - {language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName)}
+                  </option>
+                ))}
               </select>
             </div>
             <div>
@@ -172,7 +176,11 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
                       </div>
                       <select className={inputCls} value={item.accountCode} onChange={(e) => handleItemChange(idx, 'accountCode', e.target.value)}>
                         <option value="">{language === 'ar' ? 'اختر حساب المصروف' : 'Select Expense'}</option>
-                        {accounts.filter(a => !a.isGroup && a.status !== 'disabled' && a.type === 'expense').map(acc => <option key={acc.id} value={acc.accountCode}>{acc.accountCode} - {acc.accountName}</option>)}
+                        {accounts.filter(a => !a.isGroup && a.status !== 'disabled' && a.type === 'expense').map(acc => (
+                          <option key={acc.id} value={acc.accountCode}>
+                            {acc.accountCode} - {language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName)}
+                          </option>
+                        ))}
                       </select>
                     </div>
                     <div className="md:col-span-2 space-y-1">

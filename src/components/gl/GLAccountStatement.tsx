@@ -89,7 +89,9 @@ export function GLAccountStatement({ transactions, accounts, theme, language, di
             >
               <option value="">{language === 'ar' ? '--- اختر حساباً ---' : '--- Select an Account ---'}</option>
               {accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(acc => (
-                <option key={acc.id} value={acc.accountCode}>{acc.accountCode} - {acc.accountName}</option>
+                <option key={acc.id} value={acc.accountCode}>
+                  {acc.accountCode} - {language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName)}
+                </option>
               ))}
             </select>
           </div>

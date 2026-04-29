@@ -94,8 +94,9 @@ export function Purchases() {
 
   const [newAccountData, setNewAccountData] = useState({
     accountName: '',
+    accountNameEn: '',
     accountCode: '',
-    parentCode: '5', // Default to Expenses
+    parentCode: '511',
   });
 
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -183,7 +184,7 @@ export function Purchases() {
       });
       setFormData({ ...formData, expenseAccountId: docRef.id });
       setShowAccountModal(false);
-      setNewAccountData({ accountName: '', accountCode: '', parentCode: '5' });
+      setNewAccountData({ accountName: '', accountNameEn: '', accountCode: '', parentCode: '511' });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'chart_of_accounts');
     } finally {
