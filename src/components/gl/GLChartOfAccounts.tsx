@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Search, ChevronRight, ChevronDown, Edit2, Trash2, FileDown, FileUp, Loader2 } from 'lucide-react';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -151,6 +151,26 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
       { accountCode: '5313', accountName: 'خسائر فروق العملة',                       accountNameEn: 'Foreign Currency Losses',              parentCode: '531', type: 'expense',   isGroup: false, statementType: PL },
     ];
     for (const acc of defaults) await addDoc(collection(db, 'chart_of_accounts'), { ...acc, status: 'active' });
+  };
+
+  const resetAndSeed = async () => {
+    setIsSubmitting(true);
+    try {
+      const snap = await getDocs(collection(db, 'chart_of_accounts'));
+      // delete in batches of 400 (Firestore limit is 500)
+      const chunks: typeof snap.docs[] = [];
+      for (let i = 0; i < snap.docs.length; i += 400) chunks.push(snap.docs.slice(i, i + 400));
+      for (const chunk of chunks) {
+        const batch = writeBatch(db);
+        chunk.forEach(d => batch.delete(doc(db, 'chart_of_accounts', d.id)));
+        await batch.commit();
+      }
+      await seedAccounts();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'chart_of_accounts');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleExportExcel = async () => {
@@ -312,11 +332,17 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
             <button onClick={() => setIsAccountModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
               {language === 'ar' ? 'إضافة حساب' : 'Add Account'}
             </button>
-            {accounts.length === 0 && (
-              <button onClick={seedAccounts} className="bg-gray-800 hover:bg-gray-700 px-4 py-2 rounded-md text-xs font-medium transition-colors">
-                {language === 'ar' ? 'توليد الشجرة الافتراضية' : 'Seed Default COA'}
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={resetAndSeed}
+              disabled={isSubmitting}
+              className="bg-gray-800 hover:bg-gray-700 disabled:opacity-50 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2"
+            >
+              {isSubmitting && <Loader2 className="animate-spin" size={12} />}
+              {accounts.length === 0
+                ? (language === 'ar' ? 'توليد الشجرة الافتراضية' : 'Seed Default COA')
+                : (language === 'ar' ? 'إعادة تهيئة الشجرة' : 'Reset & Reseed')}
+            </button>
           </div>
         </div>
         <div className="overflow-y-auto max-h-[calc(100vh-350px)]">
