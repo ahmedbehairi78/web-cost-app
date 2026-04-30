@@ -161,7 +161,7 @@ export function Reports() {
       setLoading(false);
     });
 
-    const unsubBoqItems = onSnapshot(collection(db, 'boq_items'), (snap) => {
+    const unsubBoqItems = onSnapshot(query(collection(db, 'boq_items'), where('isDeleted', '!=', true)), (snap) => {
       setBoqItems(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)));
     }, (err) => {
       console.error("Reports boq_items listener error:", err);
@@ -190,11 +190,12 @@ export function Reports() {
   }, [selectedProjectId]);
 
   // Data Processing
-  const filteredProjects = selectedProjectId === 'all' 
-    ? projects 
-    : projects.filter(p => p.id === selectedProjectId);
+  const filteredProjects = React.useMemo(
+    () => selectedProjectId === 'all' ? projects : projects.filter(p => p.id === selectedProjectId),
+    [projects, selectedProjectId]
+  );
 
-  const projectStats = filteredProjects.map(p => {
+  const projectStats = React.useMemo(() => filteredProjects.map(p => {
     const ledgerCosts = transactions
       .filter(t => t.projectId === p.id && !t.isDeleted &&
         (selectedContractId === 'all' || t.costCenterId === selectedContractId))
@@ -218,7 +219,7 @@ export function Reports() {
     const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (p.boqValue || 0);
     const voValue = p.voValue || 0;
     const budget = (boqValue + voValue) || p.totalContractValue || 0;
-    
+
     return {
       id: p.id,
       name: p.projectName,
@@ -232,12 +233,14 @@ export function Reports() {
       variancePct: budget > 0 ? ((budget - ledgerCosts) / budget) * 100 : 0,
       progress: budget > 0 ? (projectRevenue / budget) * 100 : 0
     };
-  });
+  }), [filteredProjects, transactions, billings, boqItems, selectedContractId]);
 
-  const totalRevenue = projectStats.reduce((sum, s) => sum + s.billings, 0);
-  const totalCosts = projectStats.reduce((sum, s) => sum + s.costs, 0);
-  const totalGrossProfit = totalRevenue - totalCosts;
-  const totalBudget = projectStats.reduce((sum, s) => sum + s.budget, 0);
+  const { totalRevenue, totalCosts, totalGrossProfit, totalBudget } = React.useMemo(() => ({
+    totalRevenue: projectStats.reduce((sum, s) => sum + s.billings, 0),
+    totalCosts: projectStats.reduce((sum, s) => sum + s.costs, 0),
+    totalGrossProfit: projectStats.reduce((sum, s) => sum + s.profit, 0),
+    totalBudget: projectStats.reduce((sum, s) => sum + s.budget, 0),
+  }), [projectStats]);
 
   // Analytical Trial Balance Calculation
   const trialBalance = React.useMemo(() => {

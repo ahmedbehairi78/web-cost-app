@@ -27,7 +27,7 @@ import {
   ZAxis,
   Legend
 } from 'recharts';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -154,14 +154,14 @@ export function Dashboard() {
       console.error("Dashboard projects listener error:", err);
     });
 
-    const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false)), (snapshot) => {
+    const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false), orderBy('date', 'desc')), (snapshot) => {
       transData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
       console.error("Dashboard transactions listener error:", err);
     });
 
-    const unsubBOQ = onSnapshot(collection(db, 'boq_items'), (snapshot) => {
+    const unsubBOQ = onSnapshot(query(collection(db, 'boq_items'), where('isDeleted', '!=', true)), (snapshot) => {
       boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       handleStatsUpdate(projectsData, transData, boqItems);
     }, (err) => {
