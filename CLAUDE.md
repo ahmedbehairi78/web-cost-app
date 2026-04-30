@@ -29,7 +29,9 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 |------|---------|
 | `src/firebase.ts` | Firebase init, emulator wiring, `handleFirestoreError` |
 | `src/services/accountingService.ts` | GL journal entries, IPC recording, Chart of Accounts seeding |
-| `src/context/LanguageContext.tsx` | i18n (ar/en) + theme (dark/soft/light) |
+| `src/context/LanguageContext.tsx` | i18n (ar/en) + theme (dark/soft/light) — all UI strings must have both variants |
+| `src/lib/utils.ts` | `cn()` for class merging, `normalizeDate()` for date normalization |
+| `src/types.ts` | Shared types: `UserPermissions`, `ALL_PERMISSIONS`, `DEFAULT_PERMISSIONS` |
 | `firestore.rules` | Security rules |
 | `firestore.indexes.json` | Composite indexes for all `where + orderBy` queries |
 
@@ -40,10 +42,11 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 | `Projects.tsx` | `projects` |
 | `BOQ.tsx` | `boq_items`, `contracts`, `billing` (progress) |
 | `Billing.tsx` | `billing`, `boq_items`, `contracts` |
-| `GeneralLedger.tsx` | `transactions`, `chart_of_accounts` |
+| `GeneralLedger.tsx` | `transactions`, `chart_of_accounts`, `contracts`, `projects` |
 | `Purchases.tsx` | `purchase_transactions`, `suppliers` |
-| `Reports.tsx` | reads all collections |
+| `Reports.tsx` | reads all collections + `contracts` for contract filter |
 | `Settings.tsx` | `settings/company_info`, `chart_of_accounts` |
+| `Dashboard.tsx` | `projects`, `transactions`, `boq_items` |
 
 ### Data Integrity Rules
 
@@ -51,6 +54,36 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 - **Draft revert**: Uses `writeBatch` to atomically soft-delete the GL entry and clear `transactionId` on the billing doc in one operation.
 - **Soft deletes**: All deletions set `isDeleted: true`. Never hard-delete.
 - **BOQ progress**: Derived from `billing` docs with `status IN ['submitted','approved','paid']`. Filtered via `useMemo` to exclude phantom entries from deleted BOQ items.
+
+### Accounting — Account Codes
+
+Account codes are defined in `AccountCodes` enum in `src/services/accountingService.ts`. **Always use the enum constants, never hardcode strings.**
+
+| Constant | Code | Description |
+|----------|------|-------------|
+| `BANK` | 1111 | البنك |
+| `RECEIVABLES` | 1121 | العملاء - مستخلصات تحت التحصيل |
+| `RETENTION_GUARANTEE` | 1122 | محتجزات الضمان |
+| `REVENUE` | 4111 | إيرادات عقود المقاولات |
+| `EXPENSE_MATERIALS` | 5111 | مواد البناء |
+| `EXPENSE_LABOUR` | 5112 | عمالة مباشرة |
+
+- Revenue accounts start with `4`, expense accounts start with `5`.
+- Collection transactions: debit `BANK (1111)` + credit `RECEIVABLES (1121)`.
+
+### Permissions
+
+- `ALL_PERMISSIONS` — full access (admins only).
+- `DEFAULT_PERMISSIONS` — `dashboard: true` only; assigned to new users with no pre-registration. Admin must grant further access via Settings.
+- Pre-registered users: admin creates a doc in `user_permissions/{email}` before first login.
+
+### Date Handling
+
+Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field from Firestore — it handles `string | Date | Timestamp` uniformly and returns `YYYY-MM-DD`. Only convert to a locale string at display time.
+
+### Contracts as Cost Centers
+
+`transactions.costCenterId` stores the contract ID for IPC, purchase invoices, and custody settlements. Use this field to filter GL data by contract. Reports module exposes a contract selector that appears automatically when a project with multiple contracts is selected.
 
 ## Workflow
 
@@ -68,6 +101,8 @@ Set `VITE_USE_EMULATORS=true` (done automatically by `npm run emulate`) to conne
 
 ## Known Constraints
 
-- All `where(...) + orderBy(...)` combos require composite indexes — see `firestore.indexes.json`
-- `firestoreDatabaseId` in `firebase-applet-config.json` targets a named (non-default) Firestore database
-- Arabic (`ar`) is the primary language; all UI strings must have both `ar` and `en` variants
+- All `where(...) + orderBy(...)` combos require composite indexes — see `firestore.indexes.json`. Adding a new `orderBy` without a matching index will throw at runtime.
+- `firestoreDatabaseId` in `firebase-applet-config.json` targets a named (non-default) Firestore database.
+- Arabic (`ar`) is the primary language; all UI strings must use `t('key')` from `useLanguage()` — never hardcode Arabic/English text in JSX.
+- `boq_items` and `contracts` collections use `isDeleted != true` (inequality) rather than `== false` — keep consistent to avoid index conflicts.
+- `GeneralLedger.tsx` uses paginated transaction loading (`limit(transactionLimit)` + "Load More"). Do not remove this pattern.
