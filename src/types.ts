@@ -22,6 +22,19 @@ export const ALL_PERMISSIONS: UserPermissions = {
   settings: true,
 };
 
+// Minimal permissions for new users awaiting admin approval
+export const DEFAULT_PERMISSIONS: UserPermissions = {
+  dashboard: true,
+  ledger: false,
+  projects: false,
+  boq: false,
+  billing: false,
+  costs: false,
+  suppliers: false,
+  reports: false,
+  settings: false,
+};
+
 export const MODULES: { id: keyof UserPermissions; ar: string; en: string }[] = [
   { id: 'dashboard', ar: 'لوحة التحكم', en: 'Dashboard' },
   { id: 'ledger', ar: 'الأستاذ العام', en: 'General Ledger' },

@@ -21,7 +21,7 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { Loader2 } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { cn } from './lib/utils';
-import { type UserPermissions, ALL_PERMISSIONS } from './types';
+import { type UserPermissions, ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from './types';
 
 export default function App() {
   const { dir, language, theme } = useLanguage();
@@ -46,7 +46,7 @@ export default function App() {
             const role = permSnap.exists() ? permSnap.data().role : 'user';
             const permissions = permSnap.exists()
               ? permSnap.data().permissions
-              : ALL_PERMISSIONS;
+              : DEFAULT_PERMISSIONS;
 
             await setDoc(userRef, {
               email: firebaseUser.email,

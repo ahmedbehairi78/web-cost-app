@@ -33,11 +33,13 @@ import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import { type Transaction, type BOQItem, type Project } from '../types';
+import { AccountCodes } from '../services/accountingService';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 export function Dashboard() {
   const { t, language, theme } = useLanguage();
+  const languageRef = React.useRef(language);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalBudget: 0,
@@ -48,6 +50,8 @@ export function Dashboard() {
   const [chartData, setChartData] = useState<{ name: string; revenue: number; cost: number; collections: number }[]>([]);
   const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  useEffect(() => { languageRef.current = language; }, [language]);
 
   useEffect(() => {
     setLoading(true);
@@ -67,7 +71,7 @@ export function Dashboard() {
 
         const date = new Date(t.date);
         const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const monthName = date.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US', { month: 'short', year: '2-digit' });
+        const monthName = date.toLocaleDateString(languageRef.current === 'ar' ? 'ar-EG' : 'en-US', { month: 'short', year: '2-digit' });
 
         if (!monthlyMap[monthYear]) {
           monthlyMap[monthYear] = { name: monthName, revenue: 0, cost: 0, collections: 0 };
@@ -80,21 +84,21 @@ export function Dashboard() {
             totalSpent += val;
             monthlyMap[monthYear].cost += val;
           }
-          // Revenue (Account code 41)
-          if (e.accountCode === '41') {
+          // Revenue (all accounts starting with '4')
+          if (e.accountCode?.startsWith('4')) {
             const val = (e.credit || 0);
             totalRevenue += val;
             monthlyMap[monthYear].revenue += val;
           }
         });
 
-        // Collection logic
-        const hasCashDebit = t.entries.some((e: any) => e.accountCode === '1101' && e.debit > 0);
-        const hasBankCredit = t.entries.some((e: any) => e.accountCode === '1102' && e.credit > 0);
-        
-        if (hasCashDebit && hasBankCredit) {
-          const cashEntry = t.entries.find((e: any) => e.accountCode === '1101');
-          const val = (cashEntry?.debit || 0);
+        // Collection logic: Bank debited + Receivables credited = payment received from client
+        const hasBankDebit = t.entries.some((e: any) => e.accountCode === AccountCodes.BANK && e.debit > 0);
+        const hasReceivablesCredit = t.entries.some((e: any) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);
+
+        if (hasBankDebit && hasReceivablesCredit) {
+          const bankEntry = t.entries.find((e: any) => e.accountCode === AccountCodes.BANK && e.debit > 0);
+          const val = (bankEntry?.debit || 0);
           totalCollected += val;
           monthlyMap[monthYear].collections += val;
         }
@@ -168,8 +172,8 @@ export function Dashboard() {
 
     return () => {
       unsubs.forEach(unsub => unsub());
-    }; 
-  }, [language, refreshKey]);
+    };
+  }, [refreshKey]);
 
   const handleRefresh = () => {
     setLoading(true);
