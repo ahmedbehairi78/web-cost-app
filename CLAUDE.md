@@ -27,7 +27,7 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 
 | File | Purpose |
 |------|---------|
-| `src/firebase.ts` | Firebase init, emulator wiring, `handleFirestoreError` |
+| `src/firebase.ts` | Firebase init (offline persistence), emulator wiring, `handleFirestoreError` |
 | `src/services/accountingService.ts` | GL journal entries, IPC recording, Chart of Accounts seeding |
 | `src/context/LanguageContext.tsx` | i18n (ar/en) + theme (dark/soft/light) — all UI strings must have both variants |
 | `src/lib/utils.ts` | `cn()` for class merging, `normalizeDate()` for date normalization |
@@ -51,9 +51,11 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 ### Data Integrity Rules
 
 - **Billing → GL**: Every non-draft IPC write goes through `accountingService.recordIPC()` which creates/updates a `transactions` doc and stores its ID as `billing.transactionId`.
-- **Draft revert**: Uses `writeBatch` to atomically soft-delete the GL entry and clear `transactionId` on the billing doc in one operation.
+- **Draft revert**: Uses `writeBatch` to atomically soft-delete the GL entry and clear `transactionId` on the billing doc in one operation (`Billing.tsx`).
+- **Supplier creation**: Uses `writeBatch` to atomically create the supplier doc and its `chart_of_accounts` entry in one operation (`Purchases.tsx → handleSaveSupplier`).
 - **Soft deletes**: All deletions set `isDeleted: true`. Never hard-delete.
 - **BOQ progress**: Derived from `billing` docs with `status IN ['submitted','approved','paid']`. Filtered via `useMemo` to exclude phantom entries from deleted BOQ items.
+- **Batched Writes rule**: Any operation that writes to more than one collection must use `writeBatch` to guarantee atomicity.
 
 ### Accounting — Account Codes
 
@@ -98,6 +100,13 @@ feature branch → PR → /review → merge to main
 ## Firebase Emulators
 
 Set `VITE_USE_EMULATORS=true` (done automatically by `npm run emulate`) to connect the app to local emulators instead of production. Emulator UI is at http://localhost:4000.
+
+## Offline Persistence
+
+Firestore offline persistence is enabled in production via `initializeFirestore` with `persistentLocalCache + persistentMultipleTabManager` in `src/firebase.ts`. This allows users to review cached data during connectivity loss.
+
+- **Emulators**: persistence is intentionally disabled (emulators don't support IndexedDB) — `getFirestore` is used instead when `VITE_USE_EMULATORS=true`.
+- **Multi-tab**: supported — all open tabs share the same IndexedDB cache.
 
 ## Known Constraints
 
