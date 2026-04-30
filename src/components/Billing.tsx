@@ -16,7 +16,7 @@ import html2pdf from 'html2pdf.js';
 import { collection, onSnapshot, query, where, orderBy, addDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
-import { cn } from '../lib/utils';
+import { cn, normalizeDate } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { IPCFormModal } from './billing/IPCFormModal';
@@ -347,7 +347,7 @@ export function Billing() {
       setEditingIPC(ipc);
       setFormData({
         billingNumber: ipc.billingNumber,
-        date: typeof ipc.date === 'string' ? ipc.date : ipc.date instanceof Date ? ipc.date.toISOString().split('T')[0] : ipc.date.toDate().toISOString().split('T')[0],
+        date: normalizeDate(ipc.date),
         items: ipc.items,
         vatPct: (ipc.vatAmount / ipc.worksValueExVat) * 100 || 14,
         execGuaranteePct: (ipc.execGuaranteeAmount / ipc.worksValueExVat) * 100 || 10,

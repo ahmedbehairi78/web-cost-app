@@ -98,6 +98,19 @@ const translations: Record<Language, Record<string, string>> = {
     error_loading: 'خطأ في تحميل البيانات',
     saved_successfully: 'تم الحفظ بنجاح',
     deleted_successfully: 'تم الحذف بنجاح',
+    // Dashboard
+    aggregating_data: 'جاري تجميع البيانات المالية...',
+    portfolio_overview: 'نظرة عامة على المحفظة',
+    portfolio_subtitle: 'متابعة الأداء المالي والتدفق النقدي لكافة المشاريع',
+    export_pdf: 'تصدير تقرير PDF',
+    refresh_data: 'تحديث البيانات',
+    currency: 'ج.م',
+    chart_costs: 'التكاليف',
+    chart_revenue: 'الإيرادات',
+    chart_collections: 'المتحصلات',
+    recent_entries: 'أحدث القيود المحاسبية',
+    no_entries: 'لا توجد قيود حالياً',
+    view_all_entries: 'عرض كافة القيود ←',
   },
   en: {
     dashboard: 'Dashboard',
@@ -183,6 +196,19 @@ const translations: Record<Language, Record<string, string>> = {
     error_loading: 'Error loading data',
     saved_successfully: 'Saved successfully',
     deleted_successfully: 'Deleted successfully',
+    // Dashboard
+    aggregating_data: 'Aggregating financial data...',
+    portfolio_overview: 'Portfolio Overview',
+    portfolio_subtitle: 'Monitor financial performance and cash flow across all projects',
+    export_pdf: 'Export PDF',
+    refresh_data: 'Refresh Data',
+    currency: 'EGP',
+    chart_costs: 'Costs',
+    chart_revenue: 'Revenue',
+    chart_collections: 'Collections',
+    recent_entries: 'Recent Journal Entries',
+    no_entries: 'No entries yet',
+    view_all_entries: 'View all entries ←',
   }
 };
 

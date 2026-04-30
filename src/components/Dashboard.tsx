@@ -265,7 +265,7 @@ export function Dashboard() {
     return (
       <div className="h-full flex flex-col items-center justify-center text-gray-500 p-8 text-center">
         <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-        <p>{language === 'ar' ? 'جاري تجميع البيانات المالية...' : 'Aggregating financial data...'}</p>
+        <p>{t('aggregating_data')}</p>
       </div>
     );
   }
@@ -279,8 +279,8 @@ export function Dashboard() {
     )}>
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">{language === 'ar' ? 'نظرة عامة على المحفظة' : 'Portfolio Overview'}</h2>
-          <p className="text-gray-400 mt-1">{language === 'ar' ? 'متابعة الأداء المالي والتدفق النقدي لكافة المشاريع' : 'Monitor financial performance and cash flow across all projects'}</p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('portfolio_overview')}</h2>
+          <p className="text-gray-400 mt-1">{t('portfolio_subtitle')}</p>
         </div>
         <div className="flex gap-3">
           <button
@@ -288,7 +288,7 @@ export function Dashboard() {
             onClick={handleExportPDF}
             className={cn("px-4 py-2 rounded-md text-sm font-medium transition-colors", theme === 'dark' ? "bg-gray-800 hover:bg-gray-700" : "bg-white border border-gray-200 hover:bg-gray-50")}
           >
-            {language === 'ar' ? 'تصدير تقرير PDF' : 'Export PDF'}
+            {t('export_pdf')}
           </button>
           <button
             type="button"
@@ -296,7 +296,7 @@ export function Dashboard() {
             className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-sm font-medium transition-colors text-white flex items-center gap-2"
           >
             {loading && <Loader2 className="animate-spin" size={16} />}
-            {language === 'ar' ? 'تحديث البيانات' : 'Refresh Data'}
+            {t('refresh_data')}
           </button>
         </div>
       </header>
@@ -329,7 +329,7 @@ export function Dashboard() {
             </div>
             <div className="mt-4">
               <p className="text-sm text-gray-400 font-medium">{stat.label}</p>
-              <h3 className="text-2xl font-bold mt-1">{stat.value.toLocaleString()} <span className="text-xs font-normal text-gray-500">{language === 'ar' ? 'ج.م' : 'EGP'}</span></h3>
+              <h3 className="text-2xl font-bold mt-1">{stat.value.toLocaleString()} <span className="text-xs font-normal text-gray-500">{t('currency')}</span></h3>
             </div>
           </motion.div>
         ))}
@@ -346,7 +346,7 @@ export function Dashboard() {
           <div className="flex justify-end items-center mb-6">
             <h3 className="text-lg font-bold flex items-center gap-2 flex-row-reverse" dir="rtl">
               <BarChart3 className="text-blue-500" size={20} />
-              {language === 'ar' ? 'تحليل التدفق النقدي' : t('cash_flow_analysis')}
+              {t('cash_flow_analysis')}
             </h3>
           </div>
           <div className="h-[350px] w-full min-h-[350px]">
@@ -389,21 +389,21 @@ export function Dashboard() {
                   iconType="circle"
                 />
                 <Bar 
-                  name={language === 'ar' ? 'التكاليف' : 'Costs'} 
+                  name={t('chart_costs')}
                   dataKey="cost" 
                   fill="#ef4444" 
                   radius={[4, 4, 0, 0]} 
                   barSize={12}
                 />
                 <Bar 
-                  name={language === 'ar' ? 'الإيرادات' : 'Revenue'} 
+                  name={t('chart_revenue')}
                   dataKey="revenue" 
                   fill="#3b82f6" 
                   radius={[4, 4, 0, 0]} 
                   barSize={12}
                 />
                 <Bar 
-                  name={language === 'ar' ? 'المتحصلات' : 'Collections'} 
+                  name={t('chart_collections')}
                   dataKey="collections" 
                   fill="#10b981" 
                   radius={[4, 4, 0, 0]} 
@@ -423,7 +423,7 @@ export function Dashboard() {
         )}>
           <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
             <Clock className="text-blue-500" size={20} />
-            {language === 'ar' ? 'أحدث القيود المحاسبية' : 'Recent Journal Entries'}
+            {t('recent_entries')}
           </h3>
           <div className="space-y-4">
             {recentTransactions.length === 0 ? (
@@ -431,7 +431,7 @@ export function Dashboard() {
                 "p-8 text-center text-gray-500 border border-dashed rounded-lg",
                 theme === 'dark' ? "border-gray-800" : "border-gray-200"
               )}>
-                {language === 'ar' ? 'لا توجد قيود حالياً' : 'No entries yet'}
+                {t('no_entries')}
               </div>
             ) : (
               recentTransactions.map((t) => (
@@ -455,7 +455,7 @@ export function Dashboard() {
             )}
           </div>
           <button type="button" className="w-full mt-6 py-2 text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
-            {language === 'ar' ? 'عرض كافة القيود ←' : 'View all entries ←'}
+            {t('view_all_entries')}
           </button>
         </div>
       </div>
