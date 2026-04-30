@@ -10,6 +10,7 @@ import {
   BarChart3,
   BookOpen,
   LogOut,
+  Languages,
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -37,7 +38,7 @@ const ALL_MENU_ITEMS = [
 ] as const;
 
 export function Sidebar({ activeTab, setActiveTab, permissions, isAdmin }: SidebarProps) {
-  const { t, language, dir, theme } = useLanguage();
+  const { t, language, setLanguage, dir, theme } = useLanguage();
 
   // Admins always see all modules; regular users see only permitted ones
   const menuItems = isAdmin
@@ -102,10 +103,26 @@ export function Sidebar({ activeTab, setActiveTab, permissions, isAdmin }: Sideb
 
       <div
         className={cn(
-          'p-4 border-t',
+          'p-4 border-t space-y-2',
           theme === 'dark' ? 'border-gray-800' : theme === 'soft' ? 'border-[#cfd8dc]' : 'border-gray-200'
         )}
       >
+        <button
+          type="button"
+          onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+          className={cn(
+            'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200',
+            language === 'ar' ? 'text-right' : 'text-left',
+            theme === 'dark'
+              ? 'text-gray-400 hover:bg-gray-800 hover:text-white'
+              : theme === 'soft'
+                ? 'text-[#546e7a] hover:bg-[#eceff1] hover:text-[#37474f]'
+                : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+          )}
+        >
+          <Languages size={20} />
+          <span className="font-medium">{language === 'ar' ? 'English' : 'العربية'}</span>
+        </button>
         <button
           type="button"
           onClick={() => signOut(auth)}

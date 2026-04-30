@@ -3,10 +3,8 @@ import {
   Database,
   Users,
   Monitor,
-  Languages,
   Printer,
   Save,
-  Globe,
   Palette,
   FileText,
   CheckCircle2,
@@ -463,7 +461,7 @@ function UsersSection({ language, theme, t }: UsersSectionProps) {
 
 // ─── Main Settings Component ───────────────────────────────────────────────────
 export function Settings() {
-  const { language, setLanguage, theme, setTheme, dir, t } = useLanguage();
+  const { language, theme, setTheme, dir, t } = useLanguage();
   const [activeSection, setActiveSection] = useState('database');
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -528,7 +526,6 @@ export function Settings() {
     { id: 'database', label: t('database_settings'), icon: Database },
     { id: 'users',    label: t('user_settings'),    icon: Users },
     { id: 'display',  label: t('display_settings'),  icon: Monitor },
-    { id: 'language', label: t('language_settings'), icon: Languages },
     { id: 'print',    label: t('print_settings'),    icon: Printer },
   ];
 
@@ -646,27 +643,6 @@ export function Settings() {
                       <span className="font-bold text-sm">{mode.label}</span>
                     </button>
                   ))}
-                </div>
-              </motion.div>
-            )}
-
-            {activeSection === 'language' && (
-              <motion.div key="language" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-green-900/20 rounded-lg text-green-500"><Globe size={24} /></div>
-                  <h3 className="text-xl font-bold">{t('language_settings')}</h3>
-                </div>
-                <div className="space-y-2">
-                  <label htmlFor="system-language" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'لغة النظام' : 'System Language'}</label>
-                  <select
-                    id="system-language"
-                    value={language}
-                    onChange={(e) => setLanguage(e.target.value as 'ar' | 'en')}
-                    className={inputCls}
-                  >
-                    <option value="ar">العربية (Arabic)</option>
-                    <option value="en">English</option>
-                  </select>
                 </div>
               </motion.div>
             )}
