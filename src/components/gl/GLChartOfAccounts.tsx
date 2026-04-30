@@ -21,6 +21,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
     new Set(['1', '11', '12', '2', '21', '22', '3', '31', '4', '41', '42', '5', '51', '52', '53'])
   );
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggleGroup = (code: string) => {
@@ -288,7 +289,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
               >
                 {acc.status === 'disabled' ? (language === 'ar' ? 'تفعيل' : 'Activate') : (language === 'ar' ? 'تعطيل' : 'Disable')}
               </button>
-              <button type="button" title={language === 'ar' ? 'تعديل' : 'Edit'} className="text-gray-500 hover:text-white"><Edit2 size={13} /></button>
+              <button type="button" title={language === 'ar' ? 'تعديل' : 'Edit'} onClick={(e) => { e.stopPropagation(); setEditingAccount(acc); setIsAccountModalOpen(true); }} className="text-gray-500 hover:text-white"><Edit2 size={13} /></button>
               <button type="button" title={language === 'ar' ? 'حذف' : 'Delete'} className="text-gray-500 hover:text-red-500"><Trash2 size={13} /></button>
             </div>
           </div>
@@ -358,10 +359,11 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
 
       <AccountModal
         isOpen={isAccountModalOpen}
-        onClose={() => setIsAccountModalOpen(false)}
+        onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); }}
         accounts={accounts}
         theme={theme}
         language={language}
+        editingAccount={editingAccount}
       />
     </>
   );

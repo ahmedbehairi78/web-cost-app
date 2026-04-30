@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Loader2 } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { accountingService, Account } from '../../services/accountingService';
 
 interface Props {
   isOpen: boolean;
@@ -11,6 +12,7 @@ interface Props {
   accounts: { id: string; accountCode: string; accountName: string; accountNameEn?: string; isGroup: boolean }[];
   theme: string;
   language: string;
+  editingAccount?: Account | null;
 }
 
 const EMPTY_FORM = {
@@ -20,7 +22,7 @@ const EMPTY_FORM = {
   parentCode: '',
   type: 'asset' as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
   isGroup: false,
-  status: 'active' as const,
+  status: 'active' as 'active' | 'disabled',
 };
 
 function deriveStatementType(code: string) {
@@ -30,23 +32,48 @@ function deriveStatementType(code: string) {
   return undefined;
 }
 
-export function AccountModal({ isOpen, onClose, accounts, theme, language }: Props) {
+export function AccountModal({ isOpen, onClose, accounts, theme, language, editingAccount }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
+
+  useEffect(() => {
+    if (editingAccount) {
+      setForm({
+        accountCode:   editingAccount.accountCode,
+        accountName:   editingAccount.accountName,
+        accountNameEn: editingAccount.accountNameEn || '',
+        parentCode:    editingAccount.parentCode,
+        type:          editingAccount.type,
+        isGroup:       editingAccount.isGroup,
+        status:        editingAccount.status || 'active',
+      });
+    } else {
+      setForm(EMPTY_FORM);
+    }
+  }, [editingAccount, isOpen]);
+
+  const isEditMode = Boolean(editingAccount);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'chart_of_accounts'), {
-        ...form,
-        statementType: deriveStatementType(form.accountCode),
-        createdAt: serverTimestamp(),
-      });
+      if (isEditMode && editingAccount) {
+        await accountingService.updateAccount(editingAccount.id, {
+          ...form,
+          statementType: deriveStatementType(form.accountCode),
+        });
+      } else {
+        await addDoc(collection(db, 'chart_of_accounts'), {
+          ...form,
+          statementType: deriveStatementType(form.accountCode),
+          createdAt: serverTimestamp(),
+        });
+      }
       setForm(EMPTY_FORM);
       onClose();
     } catch (error) {
-      handleFirestoreError(error, OperationType.CREATE, 'chart_of_accounts');
+      handleFirestoreError(error, isEditMode ? OperationType.UPDATE : OperationType.CREATE, 'chart_of_accounts');
     } finally {
       setIsSubmitting(false);
     }
@@ -68,7 +95,11 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language }: Pro
             className={cn('border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl', theme === 'dark' ? 'bg-[#1a1b1e] border-gray-800' : theme === 'soft' ? 'bg-white border-[#cfd8dc]' : 'bg-white border-gray-200')}
           >
             <div className={cn('p-6 border-b flex justify-between items-center', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-              <h3 className="text-lg font-bold">{language === 'ar' ? 'إضافة حساب جديد' : 'Add New Account'}</h3>
+              <h3 className="text-lg font-bold">
+                {isEditMode
+                  ? (language === 'ar' ? 'تعديل الحساب' : 'Edit Account')
+                  : (language === 'ar' ? 'إضافة حساب جديد' : 'Add New Account')}
+              </h3>
               <button type="button" onClick={onClose} className="text-gray-500 hover:text-white"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -84,7 +115,6 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language }: Pro
                 />
               </div>
 
-              {/* Bilingual name fields side by side */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <label className="text-xs text-gray-400 uppercase">
@@ -171,7 +201,9 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language }: Pro
                   className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-2 rounded-lg font-bold transition-colors text-white flex items-center justify-center gap-2"
                 >
                   {isSubmitting && <Loader2 className="animate-spin" size={16} />}
-                  {language === 'ar' ? 'حفظ الحساب' : 'Save Account'}
+                  {isEditMode
+                    ? (language === 'ar' ? 'حفظ التعديلات' : 'Save Changes')
+                    : (language === 'ar' ? 'حفظ الحساب' : 'Save Account')}
                 </button>
                 <button
                   type="button"

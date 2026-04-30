@@ -87,6 +87,7 @@ export function Reports() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [showCharts, setShowCharts] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [periodStart, setPeriodStart] = useState(() => `${new Date().getFullYear()}-01-01`);
   
   const reportRef = useRef<HTMLDivElement>(null);
 
@@ -220,50 +221,48 @@ export function Reports() {
   const trialBalance = React.useMemo(() => {
     // 1. Get all unique account codes from COA and Transactions
     const coaCodes = accounts.map(a => a.accountCode || a.code).filter(Boolean);
-    const txCodes = transactions
-      .filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId))
+    const allTx = transactions.filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId));
+    const txCodes = allTx
       .flatMap(t => (t.entries || []))
       .map(e => e.accountCode)
       .filter(Boolean);
     
     const allUniqueCodes = Array.from(new Set([...coaCodes, ...txCodes]));
 
-    // 2. Map data for each code
+    // 2. Split transactions into before-period (opening) and in-period (movements)
+    const beforePeriodTx = allTx.filter(t => t.date < periodStart);
+    const inPeriodTx     = allTx.filter(t => t.date >= periodStart);
+
+    // 3. Map data for each code
     const list = allUniqueCodes.map(code => {
       const coaAcc = accounts.find(a => (a.accountCode || a.code) === code);
-      const name = coaAcc ? (coaAcc.accountName || (language === 'ar' ? coaAcc.nameAr : coaAcc.nameEn)) : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
-      
-      const accEntries = transactions
-        .filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId))
-        .flatMap(t => (t.entries || []))
-        .filter(e => e.accountCode === code);
-      
-      const debitMovements = accEntries.reduce((sum, e) => sum + (Number(e.debit) || 0), 0);
-      const creditMovements = accEntries.reduce((sum, e) => sum + (Number(e.credit) || 0), 0);
+      const name = coaAcc
+        ? (language === 'ar'
+            ? (coaAcc.accountName || coaAcc.nameAr || code)
+            : (coaAcc.accountNameEn || coaAcc.accountName || coaAcc.nameEn || code))
+        : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
 
-      // In a full implementation, opening balances would be fetched from a dedicated collection or previous period
-      const openingDebit = 0; 
-      const openingCredit = 0;
+      const entriesBefore = beforePeriodTx.flatMap(t => (t.entries || [])).filter(e => e.accountCode === code);
+      const entriesIn     = inPeriodTx.flatMap(t => (t.entries || [])).filter(e => e.accountCode === code);
 
-      const netBalance = (openingDebit + debitMovements) - (openingCredit + creditMovements);
-      
-      return {
-        code,
-        name,
-        openingDebit,
-        openingCredit,
-        debitMovements,
-        creditMovements,
-        closingDebit: netBalance > 0 ? netBalance : 0,
-        closingCredit: netBalance < 0 ? Math.abs(netBalance) : 0
-      };
+      const openingNet    = entriesBefore.reduce((s, e) => s + (Number(e.debit) || 0) - (Number(e.credit) || 0), 0);
+      const openingDebit  = openingNet > 0 ? openingNet : 0;
+      const openingCredit = openingNet < 0 ? Math.abs(openingNet) : 0;
+
+      const debitMovements  = entriesIn.reduce((s, e) => s + (Number(e.debit)  || 0), 0);
+      const creditMovements = entriesIn.reduce((s, e) => s + (Number(e.credit) || 0), 0);
+
+      const closingNet    = openingNet + debitMovements - creditMovements;
+      const closingDebit  = closingNet > 0 ? closingNet : 0;
+      const closingCredit = closingNet < 0 ? Math.abs(closingNet) : 0;
+
+      return { code, name, openingDebit, openingCredit, debitMovements, creditMovements, closingDebit, closingCredit };
     })
-    // Filter out accounts with zero activity and zero opening as requested ("يتضمن كل الحسابات التي لها قيود")
     .filter(item => item.openingDebit !== 0 || item.openingCredit !== 0 || item.debitMovements !== 0 || item.creditMovements !== 0)
     .sort((a, b) => a.code.localeCompare(b.code));
 
     return list;
-  }, [accounts, transactions, language]);
+  }, [accounts, transactions, language, selectedProjectId, periodStart]);
 
   const trialBalanceTotals = React.useMemo(() => {
     return trialBalance.reduce((acc, item) => ({
@@ -1147,9 +1146,25 @@ export function Reports() {
           {/* Analytical Trial Balance View */}
           {activeReport === 'trial' && (
             <div className="p-8">
-              <div className="flex items-center gap-3 mb-8">
+              <div className="flex flex-wrap items-center gap-4 mb-8">
                 <BarChart3 className="text-blue-500" size={32} />
-                <h3 className="text-2xl font-black">{language === 'ar' ? 'ميزان المراجعة التحليلي' : 'Analytical Trial Balance'}</h3>
+                <h3 className="text-2xl font-black flex-1">{language === 'ar' ? 'ميزان المراجعة التحليلي' : 'Analytical Trial Balance'}</h3>
+                <div className="flex items-center gap-3">
+                  <label className="text-xs font-bold text-gray-400 uppercase whitespace-nowrap">
+                    {language === 'ar' ? 'بداية الفترة' : 'Period Start'}
+                  </label>
+                  <input
+                    type="date"
+                    value={periodStart}
+                    onChange={(e) => setPeriodStart(e.target.value)}
+                    className={cn('border rounded-lg py-1.5 px-3 text-sm outline-none focus:border-blue-500 transition-colors', theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900')}
+                  />
+                  <span className={cn('text-[11px] px-2 py-1 rounded font-bold', theme === 'dark' ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-700')}>
+                    {language === 'ar'
+                      ? `الحركة من ${periodStart} حتى اليوم`
+                      : `Movements from ${periodStart} onward`}
+                  </span>
+                </div>
               </div>
 
               <div className="overflow-x-auto">

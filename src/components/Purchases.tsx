@@ -821,8 +821,10 @@ export function Purchases() {
                     onChange={(e) => setFormData({...formData, expenseAccountId: e.target.value})}
                   >
                     <option value="">{t('select_account')}</option>
-                    {accounts.filter(a => a.type === 'expense').map(a => (
-                      <option key={a.id} value={a.id}>{a.accountCode} - {a.accountName}</option>
+                    {accounts.filter(a => a.type === 'expense' && !a.isGroup && a.status !== 'disabled').map(a => (
+                      <option key={a.id} value={a.id}>
+                        {a.accountCode} - {language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName)}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -928,21 +930,42 @@ export function Purchases() {
                 </button>
               </div>
               <form onSubmit={handleSaveAccount} className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'اسم الحساب' : 'Account Name'}</label>
-                  <input 
-                    required
-                    type="text" 
-                    className={cn("w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                    value={newAccountData.accountName}
-                    onChange={(e) => setNewAccountData({...newAccountData, accountName: e.target.value})}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400 uppercase">
+                      {language === 'ar' ? 'الاسم العربي' : 'Arabic Name'}<span className="text-red-500 mr-1">*</span>
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      dir="rtl"
+                      placeholder="مثال: مواد خرسانة"
+                      className={cn("w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      value={newAccountData.accountName}
+                      onChange={(e) => setNewAccountData({...newAccountData, accountName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs text-gray-400 uppercase">
+                      {language === 'ar' ? 'الاسم الإنجليزي' : 'English Name'}<span className="text-red-500 mr-1">*</span>
+                    </label>
+                    <input
+                      required
+                      type="text"
+                      dir="ltr"
+                      placeholder="e.g. Concrete Materials"
+                      className={cn("w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                      value={newAccountData.accountNameEn}
+                      onChange={(e) => setNewAccountData({...newAccountData, accountNameEn: e.target.value})}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'كود الحساب' : 'Account Code'}</label>
-                  <input 
+                  <input
                     required
-                    type="text" 
+                    type="text"
+                    placeholder="e.g. 5116"
                     className={cn("w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
                     value={newAccountData.accountCode}
                     onChange={(e) => setNewAccountData({...newAccountData, accountCode: e.target.value})}
@@ -950,15 +973,17 @@ export function Purchases() {
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الحساب الأب' : 'Parent Account'}</label>
-                  <select 
+                  <select
                     required
                     className={cn("w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
                     value={newAccountData.parentCode}
                     onChange={(e) => setNewAccountData({...newAccountData, parentCode: e.target.value})}
                   >
-                    <option value="5">{language === 'ar' ? '5 - المصروفات' : '5 - Expenses'}</option>
-                    <option value="51">{language === 'ar' ? '51 - تكاليف مباشرة - مواد' : '51 - Direct Costs - Materials'}</option>
-                    <option value="52">{language === 'ar' ? '52 - تكاليف مباشرة - عمالة' : '52 - Direct Costs - Labour'}</option>
+                    <option value="511">{language === 'ar' ? '511 - تكاليف مباشرة' : '511 - Direct Costs'}</option>
+                    <option value="512">{language === 'ar' ? '512 - تكاليف غير مباشرة للموقع' : '512 - Indirect Site Costs'}</option>
+                    <option value="521">{language === 'ar' ? '521 - إدارية وعمومية' : '521 - General & Administrative'}</option>
+                    <option value="522">{language === 'ar' ? '522 - تسويق وبيع' : '522 - Marketing & Sales'}</option>
+                    <option value="531">{language === 'ar' ? '531 - تكاليف التمويل' : '531 - Financing Costs'}</option>
                   </select>
                 </div>
                 <div className="pt-4 flex gap-3">
