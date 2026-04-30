@@ -5,6 +5,7 @@ import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { accountingService, Account } from '../../services/accountingService';
+import { SearchableSelect } from '../ui/SearchableSelect';
 
 interface Props {
   isOpen: boolean;
@@ -150,18 +151,18 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
 
               <div className="space-y-1">
                 <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الحساب الأب' : 'Parent Account'}</label>
-                <select
-                  className={cn(inputCls, 'appearance-none')}
+                <SearchableSelect
                   value={form.parentCode}
-                  onChange={(e) => setForm({ ...form, parentCode: e.target.value })}
-                >
-                  <option value="">{language === 'ar' ? 'بدون (حساب رئيسي)' : 'None (Main Account)'}</option>
-                  {accounts.filter(a => a.isGroup).map(a => (
-                    <option key={a.id} value={a.accountCode}>
-                      {a.accountCode} — {language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName)}
-                    </option>
-                  ))}
-                </select>
+                  onChange={(v) => setForm({ ...form, parentCode: v })}
+                  theme={theme}
+                  dir={language === 'ar' ? 'rtl' : 'ltr'}
+                  placeholder={language === 'ar' ? 'بدون (حساب رئيسي)' : 'None (Main Account)'}
+                  options={accounts.filter(a => a.isGroup).map(a => ({
+                    value: a.accountCode,
+                    secondary: a.accountCode,
+                    label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
+                  }))}
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-4">

@@ -4,6 +4,7 @@ import { cn } from '../../lib/utils';
 import { handleFirestoreError, OperationType } from '../../firebase';
 import { accountingService, Account } from '../../services/accountingService';
 import { AccountModal } from './AccountModal';
+import { SearchableSelect } from '../ui/SearchableSelect';
 
 interface Transaction {
   id: string;
@@ -122,18 +123,18 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
                 <label className="block text-xs font-bold text-gray-500 uppercase">{language === 'ar' ? 'اختر العهدة' : 'Select Custody Account'}</label>
                 <button type="button" onClick={() => setIsAccountModalOpen(true)} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1 transition-colors"><Plus size={12} />{language === 'ar' ? 'حساب جديد' : 'New Account'}</button>
               </div>
-              <select
+              <SearchableSelect
                 value={selectedCustodyAccount}
-                onChange={(e) => setSelectedCustodyAccount(e.target.value)}
-                className={cn('w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-white' : 'bg-gray-50 border-gray-200')}
-              >
-                <option value="">{language === 'ar' ? '--- اختر عهدة ---' : '--- Select a Custody ---'}</option>
-                {custodyAccounts.map(acc => (
-                  <option key={acc.id} value={acc.accountCode}>
-                    {acc.accountCode} - {language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName)}
-                  </option>
-                ))}
-              </select>
+                onChange={setSelectedCustodyAccount}
+                theme={theme}
+                dir={dir}
+                placeholder={language === 'ar' ? '--- اختر عهدة ---' : '--- Select a Custody ---'}
+                options={custodyAccounts.map(acc => ({
+                  value: acc.accountCode,
+                  secondary: acc.accountCode,
+                  label: language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName),
+                }))}
+              />
             </div>
             <div>
               <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{language === 'ar' ? 'رصيد العهدة الحالي' : 'Current Custody Balance'}</label>
@@ -174,14 +175,22 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
                         <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'مصروف' : 'Expense Account'}</label>
                         <button type="button" onClick={() => setIsAccountModalOpen(true)} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"><Plus size={10} />{language === 'ar' ? 'جديد' : 'New'}</button>
                       </div>
-                      <select className={inputCls} value={item.accountCode} onChange={(e) => handleItemChange(idx, 'accountCode', e.target.value)}>
-                        <option value="">{language === 'ar' ? 'اختر حساب المصروف' : 'Select Expense'}</option>
-                        {accounts.filter(a => !a.isGroup && a.status !== 'disabled' && a.type === 'expense').map(acc => (
-                          <option key={acc.id} value={acc.accountCode}>
-                            {acc.accountCode} - {language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName)}
-                          </option>
-                        ))}
-                      </select>
+                      <SearchableSelect
+                        value={item.accountCode}
+                        onChange={(v) => {
+                          const acc = accounts.find(a => a.accountCode === v);
+                          handleItemChange(idx, 'accountCode', v);
+                          if (acc) handleItemChange(idx, 'accountName', language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName));
+                        }}
+                        theme={theme}
+                        dir={dir}
+                        placeholder={language === 'ar' ? 'اختر حساب المصروف' : 'Select Expense'}
+                        options={accounts.filter(a => !a.isGroup && a.status !== 'disabled' && a.type === 'expense').map(acc => ({
+                          value: acc.accountCode,
+                          secondary: acc.accountCode,
+                          label: language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName),
+                        }))}
+                      />
                     </div>
                     <div className="md:col-span-2 space-y-1">
                       <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'المبلغ' : 'Amount'}</label>

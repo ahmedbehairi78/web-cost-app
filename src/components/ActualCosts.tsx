@@ -18,6 +18,7 @@ import { accountingService } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
+import { SearchableSelect } from './ui/SearchableSelect';
 
 export function ActualCosts() {
   const { t, language, theme, dir } = useLanguage();
@@ -231,31 +232,26 @@ export function ActualCosts() {
               <form onSubmit={handleSubmit} className="p-8 space-y-4">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase">{t('project')}</label>
-                  <select 
-                    required
+                  <SearchableSelect
                     value={formData.projectId}
-                    onChange={(e) => setFormData({...formData, projectId: e.target.value})}
-                    className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                  >
-                    <option value="">{language === 'ar' ? 'اختر المشروع' : 'Select Project'}</option>
-                    {projects.map(p => (
-                      <option key={p.id} value={p.id}>{p.projectName}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFormData({...formData, projectId: v})}
+                    theme={theme}
+                    dir={dir}
+                    placeholder={language === 'ar' ? 'اختر المشروع' : 'Select Project'}
+                    options={projects.map(p => ({ value: p.id, label: p.projectName }))}
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-400 uppercase">{t('suppliers')}</label>
-                  <select 
+                  <SearchableSelect
                     value={formData.supplierId}
-                    onChange={(e) => setFormData({...formData, supplierId: e.target.value})}
-                    className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
-                  >
-                    <option value="">{language === 'ar' ? 'اختر المورد (اختياري)' : 'Select Supplier (Optional)'}</option>
-                    {suppliers.map(s => (
-                      <option key={s.id} value={s.id}>{s.name}</option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFormData({...formData, supplierId: v})}
+                    theme={theme}
+                    dir={dir}
+                    placeholder={language === 'ar' ? 'اختر المورد (اختياري)' : 'Select Supplier (Optional)'}
+                    options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+                  />
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">

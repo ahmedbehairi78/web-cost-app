@@ -26,6 +26,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
+import { SearchableSelect } from './ui/SearchableSelect';
 
 interface PurchaseTransaction {
   id: string;
@@ -631,15 +632,14 @@ export function Purchases() {
                         {language === 'ar' ? 'إضافة مقاول' : 'Add Subcontractor'}
                       </button>
                     </div>
-                    <select 
-                      required
-                      className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                    <SearchableSelect
                       value={formData.supplierId}
-                      onChange={(e) => setFormData({...formData, supplierId: e.target.value})}
-                    >
-                      <option value="">{language === 'ar' ? 'اختر المورد/المقاول' : 'Select Supplier/Subcontractor'}</option>
-                      {suppliers.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
+                      onChange={(v) => setFormData({...formData, supplierId: v})}
+                      theme={theme}
+                      dir={dir}
+                      placeholder={language === 'ar' ? 'اختر المورد/المقاول' : 'Select Supplier/Subcontractor'}
+                      options={suppliers.map(s => ({ value: s.id, label: s.name }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{t('invoice_date')}</label>
@@ -656,28 +656,25 @@ export function Purchases() {
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{t('project')}</label>
-                    <select 
-                      required
-                      className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                    <SearchableSelect
                       value={formData.projectId}
-                      onChange={(e) => setFormData({...formData, projectId: e.target.value})}
-                    >
-                      <option value="">{language === 'ar' ? 'اختر المشروع' : 'Select Project'}</option>
-                      {projects.map(p => <option key={p.id} value={p.id}>{p.projectName}</option>)}
-                    </select>
+                      onChange={(v) => setFormData({...formData, projectId: v, contractId: ''})}
+                      theme={theme}
+                      dir={dir}
+                      placeholder={language === 'ar' ? 'اختر المشروع' : 'Select Project'}
+                      options={projects.map(p => ({ value: p.id, label: p.projectName }))}
+                    />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{t('contract')}</label>
-                    <select 
-                      required
-                      className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                    <SearchableSelect
                       value={formData.contractId}
-                      onChange={(e) => setFormData({...formData, contractId: e.target.value})}
-                      disabled={!formData.projectId}
-                    >
-                      <option value="">{language === 'ar' ? 'اختر العقد' : 'Select Contract'}</option>
-                      {contracts.filter(c => c.projectId === formData.projectId).map(c => <option key={c.id} value={c.id}>{c.contractName}</option>)}
-                    </select>
+                      onChange={(v) => setFormData({...formData, contractId: v})}
+                      theme={theme}
+                      dir={dir}
+                      placeholder={language === 'ar' ? 'اختر العقد' : 'Select Contract'}
+                      options={contracts.filter(c => c.projectId === formData.projectId).map(c => ({ value: c.id, label: c.contractName }))}
+                    />
                   </div>
                 </div>
 
@@ -814,19 +811,18 @@ export function Purchases() {
                       {language === 'ar' ? 'إضافة حساب' : 'Add Account'}
                     </button>
                   </div>
-                  <select 
-                    required
-                    className={cn("w-full border rounded-xl py-3 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}
+                  <SearchableSelect
                     value={formData.expenseAccountId}
-                    onChange={(e) => setFormData({...formData, expenseAccountId: e.target.value})}
-                  >
-                    <option value="">{t('select_account')}</option>
-                    {accounts.filter(a => a.type === 'expense' && !a.isGroup && a.status !== 'disabled').map(a => (
-                      <option key={a.id} value={a.id}>
-                        {a.accountCode} - {language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName)}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(v) => setFormData({...formData, expenseAccountId: v})}
+                    theme={theme}
+                    dir={dir}
+                    placeholder={t('select_account')}
+                    options={accounts.filter(a => a.type === 'expense' && !a.isGroup && a.status !== 'disabled').map(a => ({
+                      value: a.id,
+                      secondary: a.accountCode,
+                      label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
+                    }))}
+                  />
                 </div>
 
                 <div className="space-y-2">

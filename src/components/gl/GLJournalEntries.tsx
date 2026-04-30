@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { accountingService, Account } from '../../services/accountingService';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
+import { SearchableSelect } from '../ui/SearchableSelect';
 
 interface Transaction {
   id: string;
@@ -292,10 +293,17 @@ export function GLJournalEntries({
                     <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'مركز التكلفة (العقد)' : 'Cost Center (Contract)'}</label>
                     <button type="button" onClick={() => setIsContractModalOpen(true)} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"><Plus size={12} />{language === 'ar' ? 'عقد جديد' : 'New Contract'}</button>
                   </div>
-                  <select required className={cn(inputCls(), 'appearance-none')} value={entryForm.costCenterId} onChange={(e) => setEntryForm({ ...entryForm, costCenterId: e.target.value })}>
-                    <option value="">{language === 'ar' ? 'اختر العقد' : 'Select Contract'}</option>
-                    {contracts.map(c => { const p = projects.find(p => p.id === c.projectId); return <option key={c.id} value={c.id}>{c.contractName} ({c.contractNumber}) - {p?.projectName || '...'}</option>; })}
-                  </select>
+                  <SearchableSelect
+                    value={entryForm.costCenterId}
+                    onChange={(v) => setEntryForm({ ...entryForm, costCenterId: v })}
+                    theme={theme}
+                    dir={dir}
+                    placeholder={language === 'ar' ? 'اختر العقد' : 'Select Contract'}
+                    options={contracts.map(c => {
+                      const p = projects.find(pr => pr.id === c.projectId);
+                      return { value: c.id, secondary: c.contractNumber, label: `${c.contractName} — ${p?.projectName || ''}` };
+                    })}
+                  />
                 </div>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
@@ -307,14 +315,22 @@ export function GLJournalEntries({
                       <div key={entry.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
                         <div className="md:col-span-5 space-y-1">
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'الحساب' : 'Account'}</label>
-                          <select required className={cn(inputCls('py-2 px-3'), 'appearance-none')} value={entry.accountCode} onChange={(e) => handleEntryChange(idx, 'accountCode', e.target.value)}>
-                            <option value="">{language === 'ar' ? 'اختر الحساب' : 'Select Account'}</option>
-                            {accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(a => (
-                              <option key={a.id} value={a.accountCode}>
-                                {a.accountCode} - {language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName)}
-                              </option>
-                            ))}
-                          </select>
+                          <SearchableSelect
+                            value={entry.accountCode}
+                            onChange={(v) => {
+                              const acc = accounts.find(a => a.accountCode === v);
+                              handleEntryChange(idx, 'accountCode', v);
+                              if (acc) handleEntryChange(idx, 'accountName', language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName));
+                            }}
+                            theme={theme}
+                            dir={dir}
+                            placeholder={language === 'ar' ? 'اختر الحساب' : 'Select Account'}
+                            options={accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(a => ({
+                              value: a.accountCode,
+                              secondary: a.accountCode,
+                              label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
+                            }))}
+                          />
                         </div>
                         <div className="md:col-span-3 space-y-1">
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'مدين' : 'Debit'}</label>
@@ -375,10 +391,14 @@ export function GLJournalEntries({
                     <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'المشروع المرتبط' : 'Linked Project'}</label>
                     <button type="button" onClick={() => setIsProjectModalOpen(true)} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"><Plus size={12} />{language === 'ar' ? 'مشروع جديد' : 'New Project'}</button>
                   </div>
-                  <select required className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500 appearance-none" value={contractForm.projectId} onChange={(e) => setContractForm({ ...contractForm, projectId: e.target.value })}>
-                    <option value="">{language === 'ar' ? 'اختر المشروع' : 'Select Project'}</option>
-                    {projects.map(p => <option key={p.id} value={p.id}>{p.projectName} ({p.projectCode})</option>)}
-                  </select>
+                  <SearchableSelect
+                    value={contractForm.projectId}
+                    onChange={(v) => setContractForm({ ...contractForm, projectId: v })}
+                    theme={theme}
+                    dir={dir}
+                    placeholder={language === 'ar' ? 'اختر المشروع' : 'Select Project'}
+                    options={projects.map(p => ({ value: p.id, secondary: p.projectCode, label: p.projectName }))}
+                  />
                 </div>
                 <div className="pt-4 flex gap-3">
                   <button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-2 rounded-lg font-bold transition-colors text-white">{isSubmitting ? '...' : (language === 'ar' ? 'حفظ العقد' : 'Save Contract')}</button>

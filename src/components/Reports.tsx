@@ -6,6 +6,7 @@ import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
 import { JournalEntry } from '../services/accountingService';
+import { SearchableSelect } from './ui/SearchableSelect';
 import { 
   TrendingUp,
   PieChart as PieChartIcon,
@@ -484,18 +485,20 @@ export function Reports() {
           
           <div className="flex flex-wrap items-center gap-3">
             {/* Project Selector */}
-            <div className={cn("flex items-center gap-2 px-4 py-2 rounded-xl border", theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200")}>
-              <Building2 className="text-blue-500" size={18} />
-              <select 
+            <div className="flex items-center gap-2">
+              <Building2 className="text-blue-500 shrink-0" size={18} />
+              <SearchableSelect
                 value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="bg-transparent text-sm font-bold outline-none cursor-pointer"
-              >
-                <option value="all">{language === 'ar' ? 'جميع المشاريع' : 'All Projects'}</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.projectName}</option>
-                ))}
-              </select>
+                onChange={setSelectedProjectId}
+                theme={theme}
+                dir={dir}
+                className="w-56"
+                placeholder={language === 'ar' ? 'جميع المشاريع' : 'All Projects'}
+                options={[
+                  { value: 'all', label: language === 'ar' ? 'جميع المشاريع' : 'All Projects' },
+                  ...projects.map(p => ({ value: p.id, label: p.projectName })),
+                ]}
+              />
             </div>
 
             <button 
