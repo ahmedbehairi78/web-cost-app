@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Calculator, Printer } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Account } from '../../services/accountingService';
+import { SearchableSelect } from '../ui/SearchableSelect';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
@@ -82,18 +83,20 @@ export function GLAccountStatement({ transactions, accounts, theme, language, di
         <div className="flex flex-col md:flex-row md:items-center gap-4">
           <div className="flex-1">
             <label className="block text-xs font-bold text-gray-500 uppercase mb-2">{language === 'ar' ? 'اختر الحساب' : 'Select Account'}</label>
-            <select
+            <SearchableSelect
               value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-              className={cn('w-full px-4 py-2 rounded-lg border focus:ring-2 focus:ring-blue-500 outline-none transition-all', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-white' : 'bg-gray-50 border-gray-200')}
-            >
-              <option value="">{language === 'ar' ? '--- اختر حساباً ---' : '--- Select an Account ---'}</option>
-              {accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(acc => (
-                <option key={acc.id} value={acc.accountCode}>
-                  {acc.accountCode} - {language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName)}
-                </option>
-              ))}
-            </select>
+              onChange={setSelectedAccount}
+              theme={theme}
+              dir={dir}
+              placeholder={language === 'ar' ? '--- اختر حساباً ---' : '--- Select an Account ---'}
+              options={accounts
+                .filter(a => !a.isGroup && a.status !== 'disabled')
+                .map(acc => ({
+                  value: acc.accountCode,
+                  secondary: acc.accountCode,
+                  label: language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName),
+                }))}
+            />
           </div>
           <div className="flex gap-2 self-end">
             <button onClick={handleExportPDF} className="px-4 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-sm font-bold transition-colors flex items-center gap-2">
