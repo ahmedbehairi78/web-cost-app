@@ -68,11 +68,20 @@ interface Billing {
 interface BOQItem {
   id: string;
   projectId: string;
+  contractId?: string;
   tenderAmount: number;
   startDate?: string;
   expectedDuration?: number;
   itemCode: string;
   description: string;
+}
+
+interface Contract {
+  id: string;
+  projectId: string;
+  contractName: string;
+  contractNumber: string;
+  isDeleted?: boolean;
 }
 
 export function Reports() {
@@ -88,6 +97,8 @@ export function Reports() {
   const [accounts, setAccounts] = useState<any[]>([]);
   const [showCharts, setShowCharts] = useState(true);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
+  const [selectedContractId, setSelectedContractId] = useState<string>('all');
+  const [contracts, setContracts] = useState<Contract[]>([]);
   const [periodStart, setPeriodStart] = useState(() => `${new Date().getFullYear()}-01-01`);
   
   const reportRef = useRef<HTMLDivElement>(null);
@@ -156,16 +167,27 @@ export function Reports() {
       console.error("Reports boq_items listener error:", err);
     });
 
-    return () => { 
-      unsubProjects(); 
-      unsubCosts(); 
-      unsubBillings(); 
+    const unsubContracts = onSnapshot(query(collection(db, 'contracts'), where('isDeleted', '!=', true)), (snap) => {
+      setContracts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Contract)));
+    }, (err) => {
+      console.error("Reports contracts listener error:", err);
+    });
+
+    return () => {
+      unsubProjects();
+      unsubCosts();
+      unsubBillings();
       unsubPurchaseTransactions();
       unsubTransactions();
       unsubAccounts();
       unsubBoqItems();
+      unsubContracts();
     };
   }, []);
+
+  useEffect(() => {
+    setSelectedContractId('all');
+  }, [selectedProjectId]);
 
   // Data Processing
   const filteredProjects = selectedProjectId === 'all' 
@@ -173,10 +195,9 @@ export function Reports() {
     : projects.filter(p => p.id === selectedProjectId);
 
   const projectStats = filteredProjects.map(p => {
-    // Costs from General Ledger (transactions) - includes ActualCosts, Purchases, and manual JVs
-    // We sum all accounts starting with '5' (Expenses) associated with this project
     const ledgerCosts = transactions
-      .filter(t => t.projectId === p.id)
+      .filter(t => t.projectId === p.id && !t.isDeleted &&
+        (selectedContractId === 'all' || t.costCenterId === selectedContractId))
       .reduce((sum, t) => {
         const expenseEntries = (t.entries || []).filter((e: JournalEntry) =>
           e.accountCode.startsWith('5')
@@ -184,14 +205,14 @@ export function Reports() {
         return sum + expenseEntries.reduce((s: number, e: JournalEntry) => s + (e.debit - e.credit), 0);
       }, 0);
 
-    // Billings/Revenues (Accrual Basis: using gross works value before deductions)
     const projectRevenue = billings
-      .filter(b => b.projectId === p.id && b.status !== 'draft')
+      .filter(b => b.projectId === p.id && b.status !== 'draft' &&
+        (selectedContractId === 'all' || (b as any).contractId === selectedContractId))
       .reduce((sum, b) => sum + (b.worksValueExVat || 0), 0);
-    
-    // Automatically calculate BOQ Value from BOQ Items if they exist, otherwise fallback to project field
+
     const calculatedBoqValue = boqItems
-      .filter(item => item.projectId === p.id)
+      .filter(item => item.projectId === p.id &&
+        (selectedContractId === 'all' || item.contractId === selectedContractId))
       .reduce((sum, item) => sum + (item.tenderAmount || 0), 0);
 
     const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (p.boqValue || 0);
@@ -222,7 +243,11 @@ export function Reports() {
   const trialBalance = React.useMemo(() => {
     // 1. Get all unique account codes from COA and Transactions
     const coaCodes = accounts.map(a => a.accountCode || a.code).filter(Boolean);
-    const allTx = transactions.filter(t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId));
+    const allTx = transactions.filter(t =>
+      !t.isDeleted &&
+      (selectedProjectId === 'all' || t.projectId === selectedProjectId) &&
+      (selectedContractId === 'all' || t.costCenterId === selectedContractId)
+    );
     const txCodes = allTx
       .flatMap(t => (t.entries || []))
       .map(e => e.accountCode)
@@ -263,7 +288,7 @@ export function Reports() {
     .sort((a, b) => a.code.localeCompare(b.code));
 
     return list;
-  }, [accounts, transactions, language, selectedProjectId, periodStart]);
+  }, [accounts, transactions, language, selectedProjectId, selectedContractId, periodStart]);
 
   const trialBalanceTotals = React.useMemo(() => {
     return trialBalance.reduce((acc, item) => ({
@@ -276,10 +301,12 @@ export function Reports() {
     }), { opDebit: 0, opCredit: 0, movDebit: 0, movCredit: 0, clDebit: 0, clCredit: 0 });
   }, [trialBalance]);
 
-  // GL-based P&L — filtered by selected project, grouped by account prefix
+  // GL-based P&L — filtered by selected project and contract
   const glPnL = React.useMemo(() => {
-    const tx = transactions.filter(
-      t => !t.isDeleted && (selectedProjectId === 'all' || t.projectId === selectedProjectId)
+    const tx = transactions.filter(t =>
+      !t.isDeleted &&
+      (selectedProjectId === 'all' || t.projectId === selectedProjectId) &&
+      (selectedContractId === 'all' || t.costCenterId === selectedContractId)
     );
 
     const sumByPrefix = (prefix: string, nature: 'debit' | 'credit') =>
@@ -310,7 +337,7 @@ export function Reports() {
     const ebit    = gross - opex;
     const net     = ebit - finex;
     return { revenue, cogs, opex, finex, gross, ebit, net, leafBalances };
-  }, [transactions, accounts, selectedProjectId]);
+  }, [transactions, accounts, selectedProjectId, selectedContractId]);
 
   // Balance sheet account balances — always company-wide (not project-filtered)
   const balanceSheet = React.useMemo(() => {
@@ -406,7 +433,7 @@ export function Reports() {
       filename = 'Analytical_Trial_Balance.xlsx';
     } else if (activeReport === 'time') {
       data = boqItems
-        .filter(item => selectedProjectId === 'all' || item.projectId === selectedProjectId)
+        .filter(item => (selectedProjectId === 'all' || item.projectId === selectedProjectId) && (selectedContractId === 'all' || item.contractId === selectedContractId))
         .map(item => {
           const startDate = item.startDate ? new Date(item.startDate) : null;
           const duration = item.expectedDuration || 0;
@@ -500,6 +527,32 @@ export function Reports() {
                 ]}
               />
             </div>
+
+            {/* Contract Selector — shown only when a project with multiple contracts is selected */}
+            {(() => {
+              const projectContracts = contracts.filter(c => c.projectId === selectedProjectId);
+              if (selectedProjectId === 'all' || projectContracts.length === 0) return null;
+              return (
+                <div className="flex items-center gap-2">
+                  <FileText className="text-purple-500 shrink-0" size={18} />
+                  <SearchableSelect
+                    value={selectedContractId}
+                    onChange={setSelectedContractId}
+                    theme={theme}
+                    dir={dir}
+                    className="w-56"
+                    placeholder={language === 'ar' ? 'جميع العقود' : 'All Contracts'}
+                    options={[
+                      { value: 'all', label: language === 'ar' ? 'جميع العقود' : 'All Contracts' },
+                      ...projectContracts.map(c => ({
+                        value: c.id,
+                        label: c.contractName || c.contractNumber,
+                      })),
+                    ]}
+                  />
+                </div>
+              );
+            })()}
 
             <button 
               onClick={() => setShowCharts(!showCharts)}
@@ -703,6 +756,11 @@ export function Reports() {
                   {selectedProjectId !== 'all' && (
                     <span className="mt-2 inline-block px-3 py-1 text-xs font-bold rounded-full bg-blue-600/10 text-blue-400 border border-blue-600/20">
                       {projects.find(p => p.id === selectedProjectId)?.projectName}
+                    </span>
+                  )}
+                  {selectedContractId !== 'all' && (
+                    <span className="mt-1 inline-block px-3 py-1 text-xs font-bold rounded-full bg-purple-600/10 text-purple-400 border border-purple-600/20">
+                      {contracts.find(c => c.id === selectedContractId)?.contractName || contracts.find(c => c.id === selectedContractId)?.contractNumber}
                     </span>
                   )}
                 </div>
@@ -1309,7 +1367,7 @@ export function Reports() {
                   </thead>
                   <tbody className="divide-y divide-gray-800/50">
                     {boqItems
-                      .filter(item => selectedProjectId === 'all' || item.projectId === selectedProjectId)
+                      .filter(item => (selectedProjectId === 'all' || item.projectId === selectedProjectId) && (selectedContractId === 'all' || item.contractId === selectedContractId))
                       .map((item) => {
                         const startDate = item.startDate ? new Date(item.startDate) : null;
                         const duration = item.expectedDuration || 0;
