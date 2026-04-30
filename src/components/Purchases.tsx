@@ -19,7 +19,7 @@ import {
   Upload,
   Trash2
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, writeBatch, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
@@ -218,22 +218,26 @@ export function Purchases() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      // 1. Add to suppliers collection
-      const supplierRef = await addDoc(collection(db, 'suppliers'), {
+      const batch = writeBatch(db);
+
+      const supplierRef = doc(collection(db, 'suppliers'));
+      batch.set(supplierRef, {
         ...newSupplierData,
         isDeleted: false,
         createdAt: serverTimestamp()
       });
 
-      // 2. Add to chart of accounts
-      await addDoc(collection(db, 'chart_of_accounts'), {
+      const accountRef = doc(collection(db, 'chart_of_accounts'));
+      batch.set(accountRef, {
         accountName: newSupplierData.name,
-        accountCode: `210${Math.floor(Math.random() * 1000)}`, // Simple auto-code for now
-        parentCode: '21', // Suppliers
+        accountCode: `210${Math.floor(Math.random() * 1000)}`,
+        parentCode: '21',
         type: 'liability',
         isGroup: false,
         createdAt: serverTimestamp()
       });
+
+      await batch.commit();
 
       setFormData({ ...formData, supplierId: supplierRef.id });
       setShowSupplierModal(false);

@@ -1,6 +1,14 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
-import { getFirestore, doc, getDocFromServer, connectFirestoreEmulator } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  doc,
+  getDocFromServer,
+  connectFirestoreEmulator,
+} from 'firebase/firestore';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -12,10 +20,18 @@ const firebaseConfig = {
 };
 
 const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID;
+const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 
 // Initialize Firebase SDK
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, databaseId);
+
+// Enable offline persistence in production; emulators don't support IndexedDB persistence
+export const db = useEmulators
+  ? getFirestore(app, databaseId)
+  : initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    }, databaseId);
+
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 

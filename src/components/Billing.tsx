@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import html2pdf from 'html2pdf.js';
-import { collection, onSnapshot, query, where, orderBy, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, updateDoc, writeBatch, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { cn, normalizeDate } from '../lib/utils';
@@ -451,8 +451,6 @@ export function Billing() {
           transactionId: editingIPC?.transactionId
         });
       } else if (editingIPC?.transactionId) {
-        // If it was already in GL and we are reverting to draft, we should ideally mark it as deleted in GL
-        await accountingService.deleteTransaction(editingIPC.transactionId);
         transactionId = "";
       }
 
@@ -476,8 +474,15 @@ export function Billing() {
       };
 
       if (editingIPC) {
-        const { updateDoc, doc } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
+        // Revert to draft: atomically soft-delete the GL entry and clear transactionId
+        if (finalStatus === 'draft' && editingIPC.transactionId) {
+          const batch = writeBatch(db);
+          batch.update(doc(db, 'transactions', editingIPC.transactionId), { isDeleted: true });
+          batch.update(doc(db, 'billing', editingIPC.id), billingData);
+          await batch.commit();
+        } else {
+          await updateDoc(doc(db, 'billing', editingIPC.id), billingData);
+        }
       } else {
         await addDoc(collection(db, 'billing'), billingData);
       }
