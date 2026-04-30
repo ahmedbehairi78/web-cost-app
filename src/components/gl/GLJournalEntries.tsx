@@ -36,13 +36,17 @@ interface Props {
   theme: string;
   language: string;
   dir: string;
+  fiscalYear: number;
+  onFiscalYearChange: (year: number) => void;
 }
 
 export function GLJournalEntries({
   transactions, transactionLimit, onLoadMore,
   accounts, contracts, projects, contractsMap, projectsMap,
-  theme, language, dir
+  theme, language, dir, fiscalYear, onFiscalYearChange
 }: Props) {
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: currentYear - 2020 + 2 }, (_, i) => 2020 + i);
   const [selectedTransaction, setSelectedTransaction] = useState<Transaction | null>(null);
   const [isEntryModalOpen, setIsEntryModalOpen] = useState(false);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
@@ -95,11 +99,12 @@ export function GLJournalEntries({
     }
     setIsSubmitting(true);
     try {
+      const selectedContract = contracts.find(c => c.id === entryForm.costCenterId);
       await accountingService.createTransaction({
         date: entryForm.date,
         description: entryForm.description,
         costCenterId: entryForm.costCenterId,
-        projectId: entryForm.costCenterId,
+        projectId: selectedContract?.projectId || '',
         entries: entryForm.entries.map(e => ({
           accountCode: e.accountCode,
           accountName: accounts.find(a => a.accountCode === e.accountCode)?.accountName || '',
@@ -212,8 +217,20 @@ export function GLJournalEntries({
 
       <div className={cn('border rounded-xl overflow-hidden shadow-2xl transition-colors', theme === 'dark' ? 'bg-[#151619] border-gray-800' : theme === 'soft' ? 'bg-white border-[#cfd8dc]' : 'bg-white border-gray-200')}>
         <div className={cn('p-4 border-b flex items-center justify-between transition-colors', theme === 'dark' ? 'bg-gray-900/50 border-gray-800' : theme === 'soft' ? 'bg-[#eceff1] border-[#cfd8dc]' : 'bg-gray-50 border-gray-200')}>
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-xs"><Calendar size={14} /><span>{language === 'ar' ? 'آخر 30 يوم' : 'Last 30 Days'}</span></div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-xs">
+              <Calendar size={14} />
+              <select
+                value={fiscalYear}
+                onChange={(e) => onFiscalYearChange(Number(e.target.value))}
+                title={language === 'ar' ? 'اختر السنة المالية' : 'Select fiscal year'}
+                className="bg-transparent outline-none text-xs cursor-pointer"
+              >
+                {yearOptions.map(y => (
+                  <option key={y} value={y} className="bg-gray-900">{language === 'ar' ? `السنة ${y}` : `Year ${y}`}</option>
+                ))}
+              </select>
+            </div>
             <div className="flex items-center gap-2 bg-gray-800 px-3 py-1.5 rounded-lg text-xs"><Filter size={14} /><span>{language === 'ar' ? 'تصفية' : 'Filter'}</span></div>
           </div>
           <div className="flex items-center gap-2">

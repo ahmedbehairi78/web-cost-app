@@ -33,6 +33,7 @@ export function GeneralLedger() {
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionLimit, setTransactionLimit] = useState(50);
+  const [fiscalYear, setFiscalYear] = useState(new Date().getFullYear());
   const [loading, setLoading] = useState(true);
 
   const contractsMap = useMemo(() => {
@@ -65,12 +66,19 @@ export function GeneralLedger() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'contracts')
     );
     const unsubTransactions = onSnapshot(
-      query(collection(db, 'transactions'), where('isDeleted', '==', false), orderBy('date', 'desc'), limit(transactionLimit)),
+      query(
+        collection(db, 'transactions'),
+        where('isDeleted', '==', false),
+        where('date', '>=', `${fiscalYear}-01-01`),
+        where('date', '<=', `${fiscalYear}-12-31`),
+        orderBy('date', 'desc'),
+        limit(transactionLimit)
+      ),
       (snap) => { setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as Transaction))); setLoading(false); },
       (err) => handleFirestoreError(err, OperationType.LIST, 'transactions')
     );
     return () => { unsubAccounts(); unsubProjects(); unsubContracts(); unsubTransactions(); };
-  }, [transactionLimit]);
+  }, [transactionLimit, fiscalYear]);
 
   const tabs: { id: SubTab; icon: React.ReactNode; label: string }[] = [
     { id: 'coa',     icon: <FolderTree size={16} />, label: language === 'ar' ? 'شجرة الحسابات' : 'Chart of Accounts' },
@@ -111,6 +119,8 @@ export function GeneralLedger() {
           theme={theme}
           language={language}
           dir={dir}
+          fiscalYear={fiscalYear}
+          onFiscalYearChange={(y) => { setFiscalYear(y); setTransactionLimit(50); }}
         />
       )}
       {activeSubTab === 'ledger' && (

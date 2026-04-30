@@ -56,6 +56,8 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 - **Soft deletes**: All deletions set `isDeleted: true`. Never hard-delete.
 - **BOQ progress**: Derived from `billing` docs with `status IN ['submitted','approved','paid']`. Filtered via `useMemo` to exclude phantom entries from deleted BOQ items.
 - **Batched Writes rule**: Any operation that writes to more than one collection must use `writeBatch` to guarantee atomicity.
+- **projectId vs costCenterId**: On `transactions`, `costCenterId` = contract ID and `projectId` = actual project ID. Never set `projectId` to a contract ID. In `GLJournalEntries`, derive `projectId` from `contracts.find(c => c.id === costCenterId)?.projectId`.
+- **Budget alert**: `Purchases.tsx` computes `boqBudgetByContract` and `spentByContract` via `useMemo` (no extra Firestore reads). A yellow warning banner appears when `spent + newAmount > BOQ budget` for the selected contract — non-blocking, user can still save.
 
 ### Accounting — Account Codes
 
@@ -107,6 +109,10 @@ Firestore offline persistence is enabled in production via `initializeFirestore`
 
 - **Emulators**: persistence is intentionally disabled (emulators don't support IndexedDB) — `getFirestore` is used instead when `VITE_USE_EMULATORS=true`.
 - **Multi-tab**: supported — all open tabs share the same IndexedDB cache.
+
+## Fiscal Year Filter
+
+`GeneralLedger.tsx` holds a `fiscalYear` state (default: current year). The transactions Firestore query uses `where('date', '>=', '{year}-01-01')` + `where('date', '<=', '{year}-12-31')` to scope all loaded entries to the selected year. Changing the year resets `transactionLimit` to 50. The year selector UI lives in `GLJournalEntries.tsx` header. The existing `(isDeleted ASC, date DESC)` composite index covers this query — no new index needed.
 
 ## Known Constraints
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   Search, 
@@ -17,7 +17,8 @@ import {
   ArrowRight,
   Download,
   Upload,
-  Trash2
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, writeBatch, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -464,10 +465,42 @@ export function Purchases() {
     });
   };
 
-  const filteredTransactions = transactions.filter(tx => 
+  const filteredTransactions = transactions.filter(tx =>
     tx.supplierName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     tx.referenceNumber.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  // BOQ budget per contract: sum of tenderAmount for all non-deleted items
+  const boqBudgetByContract = useMemo(() => {
+    const map = new Map<string, number>();
+    boqItems.forEach(item => {
+      if (item.contractId && item.isDeleted !== true) {
+        map.set(item.contractId, (map.get(item.contractId) || 0) + (item.tenderAmount || 0));
+      }
+    });
+    return map;
+  }, [boqItems]);
+
+  // Total already spent per contract from existing purchase transactions
+  const spentByContract = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.forEach(tx => {
+      if (tx.contractId) {
+        map.set(tx.contractId, (map.get(tx.contractId) || 0) + (tx.amount || 0));
+      }
+    });
+    return map;
+  }, [transactions]);
+
+  // New amount being entered (invoice = direct amount, IPC = sum of item amounts)
+  const newEntryAmount = modalType === 'invoice'
+    ? formData.amount
+    : formData.items.reduce((s, i) => s + i.amount, 0);
+
+  const contractBudget = boqBudgetByContract.get(formData.contractId) || 0;
+  const contractSpent = spentByContract.get(formData.contractId) || 0;
+  const budgetExceeded = contractBudget > 0 && !!formData.contractId && (contractSpent + newEntryAmount) > contractBudget;
+  const overByAmount = contractSpent + newEntryAmount - contractBudget;
 
   const handleOpenModal = (type: 'invoice' | 'ipc') => {
     setModalType(type);
@@ -681,6 +714,22 @@ export function Purchases() {
                     />
                   </div>
                 </div>
+
+                {budgetExceeded && (
+                  <div className="flex items-start gap-3 bg-yellow-500/10 border border-yellow-500/40 rounded-xl px-4 py-3">
+                    <AlertTriangle size={18} className="text-yellow-400 shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-bold text-yellow-400">
+                        {language === 'ar' ? 'تحذير: تجاوز ميزانية العقد' : 'Warning: Contract Budget Exceeded'}
+                      </p>
+                      <p className="text-yellow-300/80 text-xs mt-0.5">
+                        {language === 'ar'
+                          ? `الإجمالي بعد التسجيل سيتجاوز الميزانية بمقدار ${overByAmount.toLocaleString('ar-EG', { minimumFractionDigits: 2 })} — يمكنك المتابعة مع الأخذ بعين الاعتبار.`
+                          : `Total after this entry will exceed budget by ${overByAmount.toLocaleString('en-US', { minimumFractionDigits: 2 })} — you may still proceed.`}
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 {modalType === 'invoice' ? (
                   <div className="grid grid-cols-2 gap-6">
