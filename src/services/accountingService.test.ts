@@ -164,7 +164,7 @@ describe('recordIPC', () => {
     await accountingService.recordIPC(baseParams);
 
     const payload = mockAddDoc.mock.calls[0][1];
-    const vatEntry = payload.entries.find((e: { accountCode: string }) => e.accountCode === AccountCodes.VAT_TAX);
+    const vatEntry = payload.entries.find((e: { accountCode: string }) => e.accountCode === AccountCodes.VAT_OUTPUT);
     expect(vatEntry?.credit).toBe(14_000);
   });
 

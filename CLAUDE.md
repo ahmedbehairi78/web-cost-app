@@ -63,17 +63,38 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 
 Account codes are defined in `AccountCodes` enum in `src/services/accountingService.ts`. **Always use the enum constants, never hardcode strings.**
 
+The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) are used in actual journal entries. Levels 1–4 are group accounts (`isGroup: true`).
+
 | Constant | Code | Description |
 |----------|------|-------------|
-| `BANK` | 1111 | البنك |
-| `RECEIVABLES` | 1121 | العملاء - مستخلصات تحت التحصيل |
-| `RETENTION_GUARANTEE` | 1122 | محتجزات الضمان |
-| `REVENUE` | 4111 | إيرادات عقود المقاولات |
-| `EXPENSE_MATERIALS` | 5111 | مواد البناء |
-| `EXPENSE_LABOUR` | 5112 | عمالة مباشرة |
+| `BANK` | 11101001 | البنك التجاري الدولي |
+| `RECEIVABLES` | 11201001 | العملاء - مستخلصات تحت التحصيل |
+| `RETENTION_GUARANTEE` | 11202001 | محتجزات الضمان - عملاء |
+| `VAT_INPUT` | 11401001 | ضريبة القيمة المضافة - مدخلات (مشتريات) |
+| `WHT_RECEIVABLE` | 11401002 | ضريبة الخصم والإضافة - مدين (محتجز من العميل) |
+| `SOCIAL_INSURANCE_RECEIVABLE` | 11402001 | التأمينات الاجتماعية - مدين |
+| `MANPOWER_LEVY_RECEIVABLE` | 11403001 | القوى العاملة - مدين |
+| `SUPPLIERS` | 21101001 | الموردون |
+| `SUBCONTRACTORS` | 21102001 | مقاولو الباطن |
+| `RETENTION_PAYABLE` | 21201001 | محتجزات الضمان - مقاولون |
+| `ADVANCE_PAYMENT` | 21301001 | دفعات مقدمة من العملاء |
+| `VAT_OUTPUT` | 21401001 | ضريبة القيمة المضافة - مخرجات (إيرادات) |
+| `WHT_PAYABLE` | 21402001 | مصلحة الضرائب - خصم وإضافة (دائن) |
+| `SOCIAL_INSURANCE_PAYABLE` | 21403001 | التأمينات الاجتماعية - دائن |
+| `MANPOWER_LEVY_PAYABLE` | 21404001 | القوى العاملة - دائن |
+| `REVENUE` | 41101001 | إيرادات عقود المقاولات |
+| `EXPENSE_MATERIALS` | 51101001 | مواد البناء |
+| `EXPENSE_LABOUR` | 51102001 | عمالة مباشرة |
+| `EXPENSE_SUBCONTRACTOR` | 51103001 | مقاولو الباطن - تكاليف |
+| `EXPENSE_EQUIPMENT` | 51104001 | معدات وآلات |
+| `EXPENSE_ADMIN` | 52101001 | رواتب وأجور إدارية |
+| `BANK_CHARGES` | 53102001 | رسوم بنكية |
 
+**قواعد مهمة:**
 - Revenue accounts start with `4`, expense accounts start with `5`.
-- Collection transactions: debit `BANK (1111)` + credit `RECEIVABLES (1121)`.
+- VAT و WHT والتأمينات والقوى العاملة **مقسّمة** إلى كودين: مدين (أصل) ودائن (خصم). استخدم الكود الصحيح بحسب جهة القيد.
+- Collection transactions: debit `BANK (11101001)` + credit `RECEIVABLES (11201001)`.
+- ملف الـ seed الكامل لشجرة الحسابات (5 مستويات): `src/data/chartOfAccountsSeed.ts`. يحتوي على `seedChartOfAccounts()` لتهيئة Firestore.
 
 ### Permissions
 

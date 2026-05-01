@@ -13,31 +13,35 @@ import {
 import { db, auth } from '../firebase';
 
 export enum AccountCodes {
-  // ─── الأصول ───────────────────────────────────
-  BANK                  = '1111', // البنك
-  RECEIVABLES           = '1121', // العملاء - مستخلصات تحت التحصيل
-  RETENTION_GUARANTEE   = '1122', // محتجزات الضمان - عملاء
-  ADVANCE_TO_SUPPLIERS  = '1131', // مقدمات للموردين
-  WHT_TAX               = '1142', // مصلحة الضرائب - خصم وإضافة
-  SOCIAL_INSURANCE      = '1143', // التأمينات الاجتماعية
-  MANPOWER_LEVY         = '1144', // القوى العاملة
-  // ─── الخصوم ───────────────────────────────────
-  SUPPLIERS             = '2111', // الموردون
-  SUBCONTRACTORS        = '2112', // مقاولو الباطن
-  RETENTION_PAYABLE     = '2121', // محتجزات الضمان - مقاولون
-  ADVANCE_PAYMENT       = '2131', // دفعات مقدمة من العملاء
-  VAT_TAX               = '2141', // ضريبة القيمة المضافة - مخرجات
-  // ─── الإيرادات ────────────────────────────────
-  REVENUE               = '4111', // إيرادات عقود المقاولات
-  // ─── تكاليف العقود (51xx) ─────────────────────
-  EXPENSE_MATERIALS     = '5111', // مواد البناء
-  EXPENSE_LABOUR        = '5112', // عمالة مباشرة
-  EXPENSE_SUBCONTRACTOR = '5113', // مقاولو الباطن - تكاليف
-  EXPENSE_EQUIPMENT     = '5114', // معدات وآلات
-  // ─── مصروفات تشغيلية (52xx) ───────────────────
-  EXPENSE_ADMIN         = '5211', // رواتب وأجور إدارية
-  // ─── مصروفات تمويلية (53xx) ───────────────────
-  BANK_CHARGES          = '5312', // رسوم بنكية
+  // ─── الأصول المتداولة ─────────────────────────────────────
+  BANK                       = '11101001', // البنك التجاري الدولي
+  RECEIVABLES                = '11201001', // العملاء - مستخلصات تحت التحصيل
+  RETENTION_GUARANTEE        = '11202001', // محتجزات الضمان - عملاء
+  ADVANCE_TO_SUPPLIERS       = '11301001', // مقدمات للموردين
+  VAT_INPUT                  = '11401001', // ضريبة القيمة المضافة - مدخلات (مشتريات)
+  WHT_RECEIVABLE             = '11401002', // ضريبة الخصم والإضافة - مدخلات (محتجز من العميل)
+  SOCIAL_INSURANCE_RECEIVABLE = '11402001', // التأمينات الاجتماعية - مدين
+  MANPOWER_LEVY_RECEIVABLE   = '11403001', // القوى العاملة - مدين
+  // ─── الخصوم المتداولة ────────────────────────────────────
+  SUPPLIERS                  = '21101001', // الموردون
+  SUBCONTRACTORS             = '21102001', // مقاولو الباطن
+  RETENTION_PAYABLE          = '21201001', // محتجزات الضمان - مقاولون
+  ADVANCE_PAYMENT            = '21301001', // دفعات مقدمة من العملاء
+  VAT_OUTPUT                 = '21401001', // ضريبة القيمة المضافة - مخرجات (إيرادات)
+  WHT_PAYABLE                = '21402001', // مصلحة الضرائب - خصم وإضافة (دائن)
+  SOCIAL_INSURANCE_PAYABLE   = '21403001', // التأمينات الاجتماعية - دائن
+  MANPOWER_LEVY_PAYABLE      = '21404001', // القوى العاملة - دائن
+  // ─── الإيرادات ────────────────────────────────────────────
+  REVENUE                    = '41101001', // إيرادات عقود المقاولات
+  // ─── تكاليف العقود المباشرة ───────────────────────────────
+  EXPENSE_MATERIALS          = '51101001', // مواد البناء
+  EXPENSE_LABOUR             = '51102001', // عمالة مباشرة
+  EXPENSE_SUBCONTRACTOR      = '51103001', // مقاولو الباطن - تكاليف
+  EXPENSE_EQUIPMENT          = '51104001', // معدات وآلات
+  // ─── مصروفات تشغيلية ──────────────────────────────────────
+  EXPENSE_ADMIN              = '52101001', // رواتب وأجور إدارية
+  // ─── مصروفات تمويلية ──────────────────────────────────────
+  BANK_CHARGES               = '53102001', // رسوم بنكية
 }
 
 export interface JournalEntry {
@@ -181,12 +185,12 @@ export const accountingService = {
     transactionId?: string;
   }) {
     const entries: JournalEntry[] = [
-      // Debits
-      { accountCode: AccountCodes.RECEIVABLES, accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: params.netPayable, credit: 0 },
-      { accountCode: AccountCodes.RETENTION_GUARANTEE, accountName: 'ح/ محتجز ضمان الأعمال', debit: params.execGuarantee, credit: 0 },
-      { accountCode: AccountCodes.WHT_TAX, accountName: 'ح/ مصلحة الضرائب – خصم وإضافة', debit: params.whtAmount, credit: 0 },
-      { accountCode: AccountCodes.SOCIAL_INSURANCE, accountName: 'ح/ التامينات الاجتماعية – عمالة غير منتظمة', debit: params.labourInsurance, credit: 0 },
-      { accountCode: AccountCodes.MANPOWER_LEVY, accountName: 'ح/ القوى العاملة', debit: params.manpowerLevy, credit: 0 },
+      // Debits — حقوق مستحقة للشركة من العميل
+      { accountCode: AccountCodes.RECEIVABLES,             accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: params.netPayable,     credit: 0 },
+      { accountCode: AccountCodes.RETENTION_GUARANTEE,     accountName: 'ح/ محتجز ضمان الأعمال',                           debit: params.execGuarantee,  credit: 0 },
+      { accountCode: AccountCodes.WHT_RECEIVABLE,          accountName: 'ح/ مصلحة الضرائب – خصم وإضافة (مدين)',           debit: params.whtAmount,      credit: 0 },
+      { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية – عمالة غير منتظمة', debit: params.labourInsurance, credit: 0 },
+      { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE, accountName: 'ح/ القوى العاملة (مدين)',                        debit: params.manpowerLevy,   credit: 0 },
     ];
 
     // Add Advance Payment Recovery if exists
@@ -194,10 +198,10 @@ export const accountingService = {
       entries.push({ accountCode: AccountCodes.ADVANCE_PAYMENT, accountName: 'ح/ العملاء - دفعة مقدمة (استرداد)', debit: params.advancePaymentRecovery, credit: 0 });
     }
 
-    // Credits
+    // Credits — الإيرادات والضريبة المستحقة للحكومة
     entries.push(
-      { accountCode: AccountCodes.REVENUE, accountName: `ح/ إيرادات عقود المقاولات - ${params.contractName}`, debit: 0, credit: params.worksValue },
-      { accountCode: AccountCodes.VAT_TAX, accountName: 'ح/ مصلحة الضرائب – ضريبة القيمة المضافة', debit: 0, credit: params.vatAmount }
+      { accountCode: AccountCodes.REVENUE,     accountName: `ح/ إيرادات عقود المقاولات - ${params.contractName}`, debit: 0, credit: params.worksValue },
+      { accountCode: AccountCodes.VAT_OUTPUT,  accountName: 'ح/ ضريبة القيمة المضافة – مخرجات',                  debit: 0, credit: params.vatAmount }
     );
 
     const transactionData = {
@@ -260,13 +264,12 @@ export const accountingService = {
     transactionId?: string;
   }) {
     const entries: JournalEntry[] = [
-      // Debits
-      { accountCode: params.expenseAccountCode, accountName: params.expenseAccountName, debit: params.baseAmount, credit: 0 },
-      { accountCode: AccountCodes.VAT_TAX, accountName: 'مصلحة الضرائب - ضريبة القيمة المضافة', debit: params.vatAmount, credit: 0 },
-      
-      // Credits
-      { accountCode: AccountCodes.SUPPLIERS, accountName: `موردين - ${params.supplierName}`, debit: 0, credit: params.totalAmount },
-      { accountCode: AccountCodes.WHT_TAX, accountName: 'مصلحة الضرائب - خصم وإضافة', debit: 0, credit: params.whtAmount }
+      // Debits — تكلفة الشراء وضريبة المدخلات
+      { accountCode: params.expenseAccountCode, accountName: params.expenseAccountName,                              debit: params.baseAmount,  credit: 0 },
+      { accountCode: AccountCodes.VAT_INPUT,    accountName: 'ضريبة القيمة المضافة - مدخلات',                      debit: params.vatAmount,   credit: 0 },
+      // Credits — المورد والضريبة المخصومة
+      { accountCode: AccountCodes.SUPPLIERS,    accountName: `موردين - ${params.supplierName}`,                    debit: 0, credit: params.totalAmount },
+      { accountCode: AccountCodes.WHT_PAYABLE,  accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',                 debit: 0, credit: params.whtAmount }
     ];
 
     const transactionData = {
@@ -307,16 +310,15 @@ export const accountingService = {
     transactionId?: string;
   }) {
     const entries: JournalEntry[] = [
-      // Debits
-      { accountCode: AccountCodes.EXPENSE_SUBCONTRACTOR, accountName: `تكاليف مقاولو الباطن - ${params.supplierName}`, debit: params.worksValue, credit: 0 },
-      { accountCode: AccountCodes.VAT_TAX, accountName: 'مصلحة الضرائب - ضريبة القيمة المضافة', debit: params.vatAmount, credit: 0 },
-
-      // Credits
-      { accountCode: AccountCodes.SUBCONTRACTORS, accountName: `مقاولو الباطن - ${params.supplierName}`, debit: 0, credit: params.netPayable },
-      { accountCode: AccountCodes.RETENTION_PAYABLE, accountName: 'محتجز ضمان الأعمال - مقاولون', debit: 0, credit: params.execGuarantee },
-      { accountCode: AccountCodes.WHT_TAX, accountName: 'مصلحة الضرائب - خصم وإضافة', debit: 0, credit: params.whtAmount },
-      { accountCode: AccountCodes.SOCIAL_INSURANCE, accountName: 'التأمينات الاجتماعية', debit: 0, credit: params.labourInsurance },
-      { accountCode: AccountCodes.MANPOWER_LEVY, accountName: 'القوى العاملة', debit: 0, credit: params.manpowerLevy },
+      // Debits — تكلفة مقاول الباطن وضريبة المدخلات
+      { accountCode: AccountCodes.EXPENSE_SUBCONTRACTOR,      accountName: `تكاليف مقاولو الباطن - ${params.supplierName}`, debit: params.worksValue,      credit: 0 },
+      { accountCode: AccountCodes.VAT_INPUT,                  accountName: 'ضريبة القيمة المضافة - مدخلات',                debit: params.vatAmount,       credit: 0 },
+      // Credits — مستحقات مقاول الباطن والاستقطاعات
+      { accountCode: AccountCodes.SUBCONTRACTORS,             accountName: `مقاولو الباطن - ${params.supplierName}`,       debit: 0, credit: params.netPayable },
+      { accountCode: AccountCodes.RETENTION_PAYABLE,          accountName: 'محتجز ضمان الأعمال - مقاولون',                debit: 0, credit: params.execGuarantee },
+      { accountCode: AccountCodes.WHT_PAYABLE,                accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',          debit: 0, credit: params.whtAmount },
+      { accountCode: AccountCodes.SOCIAL_INSURANCE_PAYABLE,   accountName: 'التأمينات الاجتماعية (دائن)',                 debit: 0, credit: params.labourInsurance },
+      { accountCode: AccountCodes.MANPOWER_LEVY_PAYABLE,      accountName: 'القوى العاملة (دائن)',                        debit: 0, credit: params.manpowerLevy },
     ];
 
     if (params.advancePaymentRecovery > 0) {
