@@ -80,7 +80,7 @@ export function GLJournalEntries({
     next[idx] = { ...next[idx], [field]: value };
     if (field === 'accountCode') {
       const acc = accounts.find(a => a.accountCode === value);
-      if (acc) next[idx] = { ...next[idx], accountName: acc.accountName };
+      if (acc) next[idx] = { ...next[idx], accountName: language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName) };
     }
     setEntryForm({ ...entryForm, entries: next });
   };
@@ -334,11 +334,7 @@ export function GLJournalEntries({
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'الحساب' : 'Account'}</label>
                           <SearchableSelect
                             value={entry.accountCode}
-                            onChange={(v) => {
-                              const acc = accounts.find(a => a.accountCode === v);
-                              handleEntryChange(idx, 'accountCode', v);
-                              if (acc) handleEntryChange(idx, 'accountName', language === 'ar' ? acc.accountName : (acc.accountNameEn || acc.accountName));
-                            }}
+                            onChange={(v) => handleEntryChange(idx, 'accountCode', v)}
                             theme={theme}
                             dir={dir}
                             placeholder={language === 'ar' ? 'اختر الحساب' : 'Select Account'}
