@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, ChevronRight, ChevronDown, Edit2, Trash2, FileDown, FileUp, Loader2 } from 'lucide-react';
+import { Search, ChevronRight, ChevronDown, Edit2, Trash2, FileDown, FileUp, Loader2, Plus } from 'lucide-react';
 import { collection, addDoc, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
@@ -22,6 +22,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
   );
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [newAccountParent, setNewAccountParent] = useState<Account | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const toggleGroup = (code: string) => {
@@ -289,7 +290,13 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
               >
                 {acc.status === 'disabled' ? (language === 'ar' ? 'تفعيل' : 'Activate') : (language === 'ar' ? 'تعطيل' : 'Disable')}
               </button>
-              <button type="button" title={language === 'ar' ? 'تعديل' : 'Edit'} onClick={(e) => { e.stopPropagation(); setEditingAccount(acc); setIsAccountModalOpen(true); }} className="text-gray-500 hover:text-white"><Edit2 size={13} /></button>
+              <button
+                type="button"
+                title={language === 'ar' ? 'إضافة حساب فرعي' : 'Add Sub-Account'}
+                onClick={(e) => { e.stopPropagation(); setEditingAccount(null); setNewAccountParent(acc); setIsAccountModalOpen(true); }}
+                className="text-gray-500 hover:text-green-400"
+              ><Plus size={13} /></button>
+              <button type="button" title={language === 'ar' ? 'تعديل' : 'Edit'} onClick={(e) => { e.stopPropagation(); setNewAccountParent(null); setEditingAccount(acc); setIsAccountModalOpen(true); }} className="text-gray-500 hover:text-white"><Edit2 size={13} /></button>
               <button type="button" title={language === 'ar' ? 'حذف' : 'Delete'} className="text-gray-500 hover:text-red-500"><Trash2 size={13} /></button>
             </div>
           </div>
@@ -330,7 +337,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
               {isSubmitting && <Loader2 className="animate-spin" size={12} />}
               <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
             </label>
-            <button onClick={() => setIsAccountModalOpen(true)} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
+            <button onClick={() => { setEditingAccount(null); setNewAccountParent(null); setIsAccountModalOpen(true); }} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
               {language === 'ar' ? 'إضافة حساب' : 'Add Account'}
             </button>
             <button
@@ -359,11 +366,13 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
 
       <AccountModal
         isOpen={isAccountModalOpen}
-        onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); }}
+        onClose={() => { setIsAccountModalOpen(false); setEditingAccount(null); setNewAccountParent(null); }}
         accounts={accounts}
         theme={theme}
         language={language}
         editingAccount={editingAccount}
+        defaultParentCode={newAccountParent?.accountCode}
+        defaultType={newAccountParent?.type}
       />
     </>
   );

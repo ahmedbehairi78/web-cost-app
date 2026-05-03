@@ -14,6 +14,8 @@ interface Props {
   theme: string;
   language: string;
   editingAccount?: Account | null;
+  defaultParentCode?: string;
+  defaultType?: Account['type'];
 }
 
 const EMPTY_FORM = {
@@ -33,7 +35,7 @@ function deriveStatementType(code: string) {
   return undefined;
 }
 
-export function AccountModal({ isOpen, onClose, accounts, theme, language, editingAccount }: Props) {
+export function AccountModal({ isOpen, onClose, accounts, theme, language, editingAccount, defaultParentCode, defaultType }: Props) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
@@ -49,9 +51,13 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
         status:        editingAccount.status || 'active',
       });
     } else {
-      setForm(EMPTY_FORM);
+      setForm({
+        ...EMPTY_FORM,
+        parentCode: defaultParentCode || '',
+        type: defaultType || 'asset',
+      });
     }
-  }, [editingAccount, isOpen]);
+  }, [editingAccount, isOpen, defaultParentCode, defaultType]);
 
   const isEditMode = Boolean(editingAccount);
 
