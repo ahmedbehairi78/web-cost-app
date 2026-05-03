@@ -58,6 +58,8 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 - **Batched Writes rule**: Any operation that writes to more than one collection must use `writeBatch` to guarantee atomicity.
 - **projectId vs costCenterId**: On `transactions`, `costCenterId` = contract ID and `projectId` = actual project ID. Never set `projectId` to a contract ID. In `GLJournalEntries`, derive `projectId` from `contracts.find(c => c.id === costCenterId)?.projectId`.
 - **Budget alert**: `Purchases.tsx` computes `boqBudgetByContract` and `spentByContract` via `useMemo` (no extra Firestore reads). A yellow warning banner appears when `spent + newAmount > BOQ budget` for the selected contract — non-blocking, user can still save.
+- **Dashboard collection split**: `Dashboard.tsx` distinguishes two types of cash inflows. `totalCollected` (shown in التحصيلات النقدية card) includes both IPC collections (`RECEIVABLES` credit) and advance payments (`ADVANCE_PAYMENT` credit). `ipcCollected` tracks only IPC receipts. `pendingBilling = totalRevenue - ipcCollected` — advance payments must NOT reduce pending billing because they are a liability, not a reduction of IPC receivables. Cash/bank detection uses `startsWith('121')` to cover all banks (`12101xxx`) and cash funds (`12102xxx`).
+- **Sub-account shortcut**: In `GLChartOfAccounts.tsx`, hovering a row shows a green `+` button. Clicking it opens `AccountModal` with `defaultParentCode` and `defaultType` pre-filled from the parent account, so the user doesn't have to select the parent manually.
 
 ### Accounting — Account Codes
 
@@ -67,19 +69,21 @@ The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) a
 
 | Constant | Code | Description |
 |----------|------|-------------|
-| `BANK` | 11101001 | البنك التجاري الدولي |
-| `RECEIVABLES` | 11201001 | العملاء - مستخلصات تحت التحصيل |
-| `RETENTION_GUARANTEE` | 11202001 | محتجزات الضمان - عملاء |
-| `VAT_INPUT` | 11401001 | ضريبة القيمة المضافة - مدخلات (مشتريات) |
-| `WHT_RECEIVABLE` | 11401002 | ضريبة الخصم والإضافة - مدين (محتجز من العميل) |
-| `SOCIAL_INSURANCE_RECEIVABLE` | 11402001 | التأمينات الاجتماعية - مدين |
-| `MANPOWER_LEVY_RECEIVABLE` | 11403001 | القوى العاملة - مدين |
+| `BANK` | 12101001 | البنك التجاري الدولي |
+| `RECEIVABLES` | 12201001 | العملاء - مستخلصات تحت التحصيل |
+| `RETENTION_GUARANTEE` | 12202001 | محتجزات الضمان - عملاء |
+| `ADVANCE_TO_SUPPLIERS` | 12301001 | مقدمات للموردين |
+| `ADVANCE_TO_SUBCONTRACTORS` | 12302001 | مقدمات لمقاولي الباطن |
+| `VAT_INPUT` | 12401001 | ضريبة القيمة المضافة - مدخلات (مشتريات) |
+| `WHT_RECEIVABLE` | 12401002 | ضريبة الخصم والإضافة - مدين (محتجز من العميل) |
+| `SOCIAL_INSURANCE_RECEIVABLE` | 12402001 | التأمينات الاجتماعية - مدين |
+| `MANPOWER_LEVY_RECEIVABLE` | 12403001 | القوى العاملة - مدين |
 | `SUPPLIERS` | 21101001 | الموردون |
 | `SUBCONTRACTORS` | 21102001 | مقاولو الباطن |
 | `RETENTION_PAYABLE` | 21201001 | محتجزات الضمان - مقاولون |
-| `ADVANCE_PAYMENT` | 21301001 | دفعات مقدمة من العملاء |
+| `ADVANCE_PAYMENT` | 21301001 | دفعات مقدمة من العملاء (خصم — liability) |
 | `VAT_OUTPUT` | 21401001 | ضريبة القيمة المضافة - مخرجات (إيرادات) |
-| `WHT_PAYABLE` | 21402001 | مصلحة الضرائب - خصم وإضافة (دائن) |
+| `WHT_PAYABLE` | 21401002 | مصلحة الضرائب - خصم وإضافة (دائن) |
 | `SOCIAL_INSURANCE_PAYABLE` | 21403001 | التأمينات الاجتماعية - دائن |
 | `MANPOWER_LEVY_PAYABLE` | 21404001 | القوى العاملة - دائن |
 | `REVENUE` | 41101001 | إيرادات عقود المقاولات |
@@ -92,8 +96,10 @@ The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) a
 
 **قواعد مهمة:**
 - Revenue accounts start with `4`, expense accounts start with `5`.
-- VAT و WHT والتأمينات والقوى العاملة **مقسّمة** إلى كودين: مدين (أصل) ودائن (خصم). استخدم الكود الصحيح بحسب جهة القيد.
-- Collection transactions: debit `BANK (11101001)` + credit `RECEIVABLES (11201001)`.
+- Current assets (cash, receivables, prepayments, tax receivables) are under prefix `12xxxx`. Cash & bank accounts are `121xxxxx` (banks = `12101xxx`, cash funds = `12102xxx`).
+- VAT و WHT والتأمينات والقوى العاملة **مقسّمة** إلى كودين: مدين (أصل تحت `124`) ودائن (خصم تحت `214`). استخدم الكود الصحيح بحسب جهة القيد.
+- IPC collection transactions: debit `BANK (12101001)` + credit `RECEIVABLES (12201001)`.
+- Advance payment received: debit `BANK (12101001)` + credit `ADVANCE_PAYMENT (21301001)`.
 - ملف الـ seed الكامل لشجرة الحسابات (5 مستويات): `src/data/chartOfAccountsSeed.ts`. يحتوي على `seedChartOfAccounts()` لتهيئة Firestore.
 
 ### Permissions
@@ -142,3 +148,4 @@ Firestore offline persistence is enabled in production via `initializeFirestore`
 - Arabic (`ar`) is the primary language; all UI strings must use `t('key')` from `useLanguage()` — never hardcode Arabic/English text in JSX.
 - `boq_items` and `contracts` collections use `isDeleted != true` (inequality) rather than `== false` — keep consistent to avoid index conflicts.
 - `GeneralLedger.tsx` uses paginated transaction loading (`limit(transactionLimit)` + "Load More"). Do not remove this pattern.
+- **Journal entry `SearchableSelect` onChange**: Never call `handleEntryChange` twice from the same `onChange` handler — React batches both updates from the same stale closure and the second call wins, silently dropping the first field's value. Instead, make `handleEntryChange` handle related field side-effects internally (e.g., auto-fill `accountName` when `accountCode` changes).
