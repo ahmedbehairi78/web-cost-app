@@ -61,7 +61,8 @@ export function Dashboard() {
       setRecentTransactions(transData.slice(0, 5));
 
       let totalSpent = 0;
-      let totalCollected = 0;
+      let totalCollected = 0;   // all cash inflows (IPC + advances)
+      let ipcCollected = 0;     // IPC-only cash (used for pendingBilling)
       let totalRevenue = 0;
       const monthlyMap: { [key: string]: { name: string, revenue: number, cost: number, collections: number } } = {};
 
@@ -92,15 +93,19 @@ export function Dashboard() {
           }
         });
 
-        // Collection logic: Bank debited + Receivables credited = payment received from client
-        const hasBankDebit = t.entries.some((e: any) => e.accountCode === AccountCodes.BANK && e.debit > 0);
-        const hasReceivablesCredit = t.entries.some((e: any) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);
-
-        if (hasBankDebit && hasReceivablesCredit) {
-          const bankEntry = t.entries.find((e: any) => e.accountCode === AccountCodes.BANK && e.debit > 0);
-          const val = (bankEntry?.debit || 0);
-          totalCollected += val;
-          monthlyMap[monthYear].collections += val;
+        // Collection logic: any cash/bank account (121xxxxx) debited
+        const cashOrBankEntry = t.entries.find((e: any) => e.accountCode?.startsWith('121') && e.debit > 0);
+        if (cashOrBankEntry) {
+          const val = cashOrBankEntry.debit || 0;
+          const isIpcCollection = t.entries.some((e: any) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);
+          const isAdvancePayment = t.entries.some((e: any) => e.accountCode === AccountCodes.ADVANCE_PAYMENT && e.credit > 0);
+          if (isIpcCollection || isAdvancePayment) {
+            totalCollected += val;
+            monthlyMap[monthYear].collections += val;
+          }
+          if (isIpcCollection) {
+            ipcCollected += val;
+          }
         }
       });
 
@@ -125,7 +130,7 @@ export function Dashboard() {
       
       setChartData(sortedChartData);
 
-      const pendingBilling = totalRevenue - totalCollected;
+      const pendingBilling = totalRevenue - ipcCollected;
       const totalBudget = projectsData.reduce((sum, p: any) => {
         const calculatedBoqValue = boqItems
           .filter((item: any) => item.projectId === p.id)
