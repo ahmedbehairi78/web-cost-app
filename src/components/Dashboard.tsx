@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -28,162 +28,138 @@ import {
   Legend
 } from 'recharts';
 import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
-import { type Transaction, type BOQItem, type Project } from '../types';
+import { type Transaction, type BOQItem, type Project, type JournalEntry } from '../types';
 import { AccountCodes } from '../services/accountingService';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
 export function Dashboard() {
-  const { t, language, theme } = useLanguage();
-  const languageRef = React.useRef(language);
+  const { t, language, theme, locale } = useLanguage();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalBudget: 0,
-    totalSpent: 0,
-    totalCollected: 0,
-    pendingBilling: 0
-  });
-  const [chartData, setChartData] = useState<{ name: string; revenue: number; cost: number; collections: number }[]>([]);
-  const [recentTransactions, setRecentTransactions] = useState<Transaction[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [rawProjects, setRawProjects] = useState<Project[]>([]);
+  const [rawTransactions, setRawTransactions] = useState<Transaction[]>([]);
+  const [rawBoqItems, setRawBoqItems] = useState<BOQItem[]>([]);
 
-  useEffect(() => { languageRef.current = language; }, [language]);
+  const { stats, chartData, recentTransactions } = useMemo(() => {
+    let totalSpent = 0;
+    let totalCollected = 0;
+    let ipcCollected = 0;
+    let totalRevenue = 0;
+    const monthlyMap: Record<string, { name: string; revenue: number; cost: number; collections: number }> = {};
+
+    rawTransactions.forEach((tx: Transaction) => {
+      if (!tx.entries) return;
+      const date = new Date(tx.date);
+      const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = date.toLocaleDateString(locale, { month: 'short', year: '2-digit' });
+
+      if (!monthlyMap[monthYear]) {
+        monthlyMap[monthYear] = { name: monthName, revenue: 0, cost: 0, collections: 0 };
+      }
+
+      tx.entries.forEach((e: JournalEntry) => {
+        if (e.accountCode?.startsWith('5')) {
+          const val = e.debit || 0;
+          totalSpent += val;
+          monthlyMap[monthYear].cost += val;
+        }
+        if (e.accountCode?.startsWith('4')) {
+          const val = e.credit || 0;
+          totalRevenue += val;
+          monthlyMap[monthYear].revenue += val;
+        }
+      });
+
+      const cashOrBankEntry = tx.entries.find((e: JournalEntry) => e.accountCode?.startsWith('121') && e.debit > 0);
+      if (cashOrBankEntry) {
+        const val = cashOrBankEntry.debit || 0;
+        const isIpcCollection = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);
+        const isAdvancePayment = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.ADVANCE_PAYMENT && e.credit > 0);
+        if (isIpcCollection || isAdvancePayment) {
+          totalCollected += val;
+          monthlyMap[monthYear].collections += val;
+        }
+        if (isIpcCollection) {
+          ipcCollected += val;
+        }
+      }
+    });
+
+    const sortedMonths = Object.keys(monthlyMap).sort();
+    let runningRevenue = 0;
+    let runningCost = 0;
+    let runningCollections = 0;
+
+    const cumulativeData = sortedMonths.map(key => {
+      runningRevenue += monthlyMap[key].revenue;
+      runningCost += monthlyMap[key].cost;
+      runningCollections += monthlyMap[key].collections;
+      return {
+        name: monthlyMap[key].name,
+        revenue: runningRevenue,
+        cost: runningCost,
+        collections: runningCollections,
+      };
+    });
+
+    const pendingBilling = totalRevenue - ipcCollected;
+    const totalBudget = rawProjects.reduce((sum, p) => {
+      const pExt = p as Project & { boqValue?: number; voValue?: number };
+      const calculatedBoqValue = rawBoqItems
+        .filter((item: BOQItem) => item.projectId === p.id)
+        .reduce((s: number, item: BOQItem) => s + (item.tenderAmount || 0), 0);
+      const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (pExt.boqValue || 0);
+      return sum + boqValue + (pExt.voValue || 0);
+    }, 0);
+
+    return {
+      stats: { totalBudget, totalSpent, totalCollected, pendingBilling },
+      chartData: cumulativeData.slice(-6),
+      recentTransactions: rawTransactions.slice(0, 5),
+    };
+  }, [rawProjects, rawTransactions, rawBoqItems, locale]);
 
   useEffect(() => {
     setLoading(true);
     const unsubs: (() => void)[] = [];
 
-    const handleStatsUpdate = (projectsData: Project[], transData: Transaction[], boqItems: BOQItem[]) => {
-      setRecentTransactions(transData.slice(0, 5));
-
-      let totalSpent = 0;
-      let totalCollected = 0;   // all cash inflows (IPC + advances)
-      let ipcCollected = 0;     // IPC-only cash (used for pendingBilling)
-      let totalRevenue = 0;
-      const monthlyMap: { [key: string]: { name: string, revenue: number, cost: number, collections: number } } = {};
-
-      // Single pass over transactions for better performance
-      transData.forEach((t: any) => {
-        if (!t.entries) return;
-
-        const date = new Date(t.date);
-        const monthYear = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-        const monthName = date.toLocaleDateString(languageRef.current === 'ar' ? 'ar-EG' : 'en-US', { month: 'short', year: '2-digit' });
-
-        if (!monthlyMap[monthYear]) {
-          monthlyMap[monthYear] = { name: monthName, revenue: 0, cost: 0, collections: 0 };
-        }
-
-        t.entries.forEach((e: any) => {
-          // Expenses (Account codes starting with 5)
-          if (e.accountCode?.startsWith('5')) {
-            const val = (e.debit || 0);
-            totalSpent += val;
-            monthlyMap[monthYear].cost += val;
-          }
-          // Revenue (all accounts starting with '4')
-          if (e.accountCode?.startsWith('4')) {
-            const val = (e.credit || 0);
-            totalRevenue += val;
-            monthlyMap[monthYear].revenue += val;
-          }
-        });
-
-        // Collection logic: any cash/bank account (121xxxxx) debited
-        const cashOrBankEntry = t.entries.find((e: any) => e.accountCode?.startsWith('121') && e.debit > 0);
-        if (cashOrBankEntry) {
-          const val = cashOrBankEntry.debit || 0;
-          const isIpcCollection = t.entries.some((e: any) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);
-          const isAdvancePayment = t.entries.some((e: any) => e.accountCode === AccountCodes.ADVANCE_PAYMENT && e.credit > 0);
-          if (isIpcCollection || isAdvancePayment) {
-            totalCollected += val;
-            monthlyMap[monthYear].collections += val;
-          }
-          if (isIpcCollection) {
-            ipcCollected += val;
-          }
-        }
-      });
-
-      const sortedMonths = Object.keys(monthlyMap).sort();
-      let runningRevenue = 0;
-      let runningCost = 0;
-      let runningCollections = 0;
-
-      const cumulativeData = sortedMonths.map(key => {
-        runningRevenue += monthlyMap[key].revenue;
-        runningCost += monthlyMap[key].cost;
-        runningCollections += monthlyMap[key].collections;
-        return {
-          name: monthlyMap[key].name,
-          revenue: runningRevenue,
-          cost: runningCost,
-          collections: runningCollections
-        };
-      });
-
-      const sortedChartData = cumulativeData.slice(-6); // Last 6 months with cumulative totals
-      
-      setChartData(sortedChartData);
-
-      const pendingBilling = totalRevenue - ipcCollected;
-      const totalBudget = projectsData.reduce((sum, p: any) => {
-        const calculatedBoqValue = boqItems
-          .filter((item: any) => item.projectId === p.id)
-          .reduce((s: number, item: any) => s + (item.tenderAmount || 0), 0);
-        const boqValue = calculatedBoqValue > 0 ? calculatedBoqValue : (p.boqValue || 0);
-        return sum + boqValue + (p.voValue || 0);
-      }, 0);
-
-      setStats({
-        totalBudget,
-        totalSpent,
-        totalCollected,
-        pendingBilling
-      });
-      setLoading(false);
-    };
-
-    let projectsData: Project[] = [];
-    let transData: Transaction[] = [];
-    let boqItems: BOQItem[] = [];
-
     const unsubProjects = onSnapshot(query(collection(db, 'projects'), where('isDeleted', '==', false)), (snapshot) => {
-      projectsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project));
-      handleStatsUpdate(projectsData, transData, boqItems);
+      setRawProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Project)));
+      setLoading(false);
     }, (err) => {
-      console.error("Dashboard projects listener error:", err);
+      handleFirestoreError(err, OperationType.LIST, 'projects');
+      setLoading(false);
     });
 
     const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false), orderBy('date', 'desc')), (snapshot) => {
-      transData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-      handleStatsUpdate(projectsData, transData, boqItems);
+      setRawTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+      setLoading(false);
     }, (err) => {
-      console.error("Dashboard transactions listener error:", err);
+      handleFirestoreError(err, OperationType.LIST, 'transactions');
+      setLoading(false);
     });
 
     const unsubBOQ = onSnapshot(query(collection(db, 'boq_items'), where('isDeleted', '!=', true)), (snapshot) => {
-      boqItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
-      handleStatsUpdate(projectsData, transData, boqItems);
+      setRawBoqItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem)));
+      setLoading(false);
     }, (err) => {
-      console.error("Dashboard boq_items listener error:", err);
+      handleFirestoreError(err, OperationType.LIST, 'boq_items');
+      setLoading(false);
     });
 
     unsubs.push(unsubProjects, unsubTransactions, unsubBOQ);
-
-    return () => {
-      unsubs.forEach(unsub => unsub());
-    };
+    return () => { unsubs.forEach(unsub => unsub()); };
   }, [refreshKey]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setLoading(true);
     setRefreshKey(prev => prev + 1);
-  };
+  }, []);
 
   const handleExportPDF = () => {
     const isAr = language === 'ar';
@@ -197,7 +173,7 @@ export function Dashboard() {
     element.innerHTML = `
       <div style="text-align: center; margin-bottom: 40px;">
         <h1 style="font-size: 28px; color: #1e3a8a; margin-bottom: 10px;">${isAr ? 'تقرير ملخص المحفظة' : 'Portfolio Summary Report'}</h1>
-        <p style="color: #666;">${new Date().toLocaleDateString(isAr ? 'ar-EG' : 'en-US')}</p>
+        <p style="color: #666;">${new Date().toLocaleDateString(locale)}</p>
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px;">
@@ -232,11 +208,11 @@ export function Dashboard() {
             </tr>
           </thead>
           <tbody>
-            ${recentTransactions.map((tx: any) => `
+            ${recentTransactions.map((tx: Transaction) => `
               <tr>
                 <td style="border: 1px solid #e2e8f0; padding: 12px;">${tx.date}</td>
                 <td style="border: 1px solid #e2e8f0; padding: 12px;">${tx.description}</td>
-                <td style="border: 1px solid #e2e8f0; padding: 12px;">${(tx.entries?.reduce((sum: number, e: any) => sum + (e.debit || 0), 0) || 0).toLocaleString()} EGP</td>
+                <td style="border: 1px solid #e2e8f0; padding: 12px;">${(tx.entries?.reduce((sum: number, e: JournalEntry) => sum + (e.debit || 0), 0) || 0).toLocaleString()} EGP</td>
               </tr>
             `).join('')}
           </tbody>
@@ -452,7 +428,7 @@ export function Dashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-mono font-bold text-blue-400">
-                      {t.entries.reduce((sum: number, e: any) => sum + e.debit, 0).toLocaleString()}
+                      {t.entries.reduce((sum: number, e: JournalEntry) => sum + e.debit, 0).toLocaleString()}
                     </p>
                   </div>
                 </div>

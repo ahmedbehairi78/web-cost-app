@@ -21,6 +21,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, writeBatch, doc } from 'firebase/firestore';
+import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
@@ -75,6 +76,7 @@ export function Purchases() {
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [modalType, setModalType] = useState<'invoice' | 'ipc'>('invoice');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     supplierId: '',
@@ -84,8 +86,8 @@ export function Purchases() {
     date: new Date().toISOString().split('T')[0],
     referenceNumber: '',
     amount: 0,
-    vatPct: 14,
-    whtPct: 1,
+    vatPct: BILLING_DEFAULTS.VAT_PCT,
+    whtPct: BILLING_DEFAULTS.WHT_PCT,
     execGuaranteePct: 5,
     labourInsurancePct: 0,
     manpowerLevyPct: 0,
@@ -138,30 +140,40 @@ export function Purchases() {
     const qSuppliers = query(collection(db, 'suppliers'), where('isDeleted', '==', false));
     const unsubSuppliers = onSnapshot(qSuppliers, (snapshot) => {
       setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'suppliers');
     });
 
     // Listen to projects
     const qProjects = query(collection(db, 'projects'), where('isDeleted', '==', false));
     const unsubProjects = onSnapshot(qProjects, (snapshot) => {
       setProjects(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'projects');
     });
 
     // Listen to contracts
     const qContracts = query(collection(db, 'contracts'), where('isDeleted', '==', false));
     const unsubContracts = onSnapshot(qContracts, (snapshot) => {
       setContracts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'contracts');
     });
 
     // Listen to accounts
     const qAccounts = query(collection(db, 'chart_of_accounts'), where('isGroup', '==', false));
     const unsubAccounts = onSnapshot(qAccounts, (snapshot) => {
       setAccounts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'chart_of_accounts');
     });
 
     // Listen to BOQ items for IPCs
     const qBoq = query(collection(db, 'boq_items'));
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
       setBoqItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'boq_items');
     });
 
     return () => {
@@ -193,8 +205,6 @@ export function Purchases() {
       setIsSubmitting(false);
     }
   };
-
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (modalType === 'ipc' && formData.projectId && formData.contractId) {
@@ -228,13 +238,23 @@ export function Purchases() {
         createdAt: serverTimestamp()
       });
 
+      // Derive next sequential 8-digit code under the Suppliers group (21101)
+      const existingCodes = accounts
+        .filter(a => a.parentCode === '21101')
+        .map(a => parseInt(a.accountCode, 10))
+        .filter(n => !isNaN(n));
+      const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : 21101001;
+      const nextAccountCode = String(maxCode + 1);
+
       const accountRef = doc(collection(db, 'chart_of_accounts'));
       batch.set(accountRef, {
         accountName: newSupplierData.name,
-        accountCode: `210${Math.floor(Math.random() * 1000)}`,
-        parentCode: '21',
+        accountNameEn: newSupplierData.name,
+        accountCode: nextAccountCode,
+        parentCode: '21101',
         type: 'liability',
         isGroup: false,
+        supplierId: supplierRef.id,
         createdAt: serverTimestamp()
       });
 

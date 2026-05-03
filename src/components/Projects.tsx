@@ -120,6 +120,8 @@ export function Projects() {
         ...doc.data()
       })) as Contract[];
       setContracts(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'contracts');
     });
     return () => unsubscribe();
   }, []);

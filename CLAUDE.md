@@ -116,6 +116,101 @@ Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field 
 
 `transactions.costCenterId` stores the contract ID for IPC, purchase invoices, and custody settlements. Use this field to filter GL data by contract. Reports module exposes a contract selector that appears automatically when a project with multiple contracts is selected.
 
+## Coding Rules (enforced from review)
+
+### React Hooks
+- All `useState` / `useRef` / `useMemo` / `useCallback` declarations must appear at the **top** of the component, before any function definitions. Never declare a hook after code that references its setter.
+- Every `useEffect` that opens a Firestore listener must **return a cleanup** that calls all unsubscribe functions. Never leave a listener open on unmount.
+- Every `onSnapshot(query, callback)` must include an **error callback** as the third argument:
+  ```ts
+  onSnapshot(q, (snap) => { ... }, (err) => handleFirestoreError(err, OperationType.READ, 'collection'));
+  ```
+- Never call `handleEntryChange` twice from the same `onChange` handler (React stale-closure batching drops the first call). Handle related side-effects inside `handleEntryChange` itself.
+
+### Financial Precision
+- Journal balance tolerance is `0.005` (half-piastre). Do not loosen it.
+- All IPC percentage back-calculations must guard against `worksValueExVat === 0` using a safe division helper — never divide directly and rely on `|| fallback` (which misses `NaN`):
+  ```ts
+  const safePct = (num: number, denom: number, fallback: number) =>
+    denom > 0 ? (num / denom) * 100 : fallback;
+  ```
+- Billing default rates are in `src/constants/billingDefaults.ts` (`BILLING_DEFAULTS`). Never hardcode `14`, `10`, `1`, `5`, or `0.03` inline.
+
+### Account Code Generation
+- Supplier `chart_of_accounts` entries must use **8-digit sequential codes** under `parentCode: '21101'` (e.g. `21101002`, `21101003`…). Never use `Math.random()` to generate account codes — it produces duplicate and non-compliant codes.
+- Every `chart_of_accounts` entry created for a supplier must include a `supplierId` field linking back to the supplier doc.
+- Always use `AccountCodes` enum constants — never hardcode account code strings.
+
+### Soft Deletes & Batching
+- All deletions must use `isDeleted: true` (soft delete). Never call `deleteDoc()` directly on user data.
+- Bulk soft-deletes (e.g. clear BOQ) must use `writeBatch`, chunked at 500 ops. Never use `Promise.all(docs.map(deleteDoc))`.
+- Any operation writing to more than one collection must use `writeBatch`.
+
+### Authentication Guard
+- Before any Firestore write in `accountingService.ts`, assert `auth.currentUser` is not null. Throw immediately if the session has expired — do not silently write `undefined` to `createdBy`.
+
+### Type Safety
+- Never use `any` in hot-path loops (transaction/entry iterations in `Dashboard.tsx`). Use `Transaction` and `JournalEntry` types from `src/types.ts`.
+- `createdAt` fields in Firestore docs must be typed as `Timestamp | Date | string`, not `any`.
+
+### i18n
+- No hardcoded Arabic or English strings in JSX. Always use `t('key')` from `useLanguage()`.
+- No inline `language === 'ar' ? '...' : '...'` ternaries for translatable text. Move to translation maps.
+- Locale string (e.g. `'ar-EG'`) must come from `LanguageContext` (`locale` field) — never hardcoded.
+- `LanguageContext` must log `console.warn` for missing translation keys in dev (never silently return the raw key in production).
+
+### Performance
+- Expensive derived values (chart data, maps, totals) must be in `useMemo`. `onSnapshot` callbacks should only call `setState` — no computation inside.
+- `contractsMap` and `projectsMap` in `GeneralLedger.tsx` must be wrapped in `useMemo`.
+- `useCallback` is required for event handlers passed to table row components to prevent full-table re-renders.
+
+### Firebase Config
+- Validate all required `VITE_*` environment variables at startup in `firebase.ts`. Throw a clear error immediately if any are missing.
+
+---
+
+## Pending Work (Phased Fix Plan)
+
+### Phase 1 — Critical (data corruption risk)
+| # | File | Issue |
+|---|------|-------|
+| 1.1 | `Billing.tsx:352` | `NaN` in IPC percentages when `worksValueExVat === 0` — use `safePct()` helper |
+| 1.2 | `Purchases.tsx:234` | Random/wrong supplier account codes — use sequential 8-digit codes under `21101` |
+| 1.3 | `accountingService.ts:89` | Balance tolerance `0.1` → `0.005` + add debit/credit sign validation |
+| 1.4 | `accountingService.ts:94` | Duplicate transaction references — use full timestamp + random suffix |
+| 1.5 | `BOQ.tsx:302` | Bulk clear uses `deleteDoc` loop → replace with batched soft-delete (`isDeleted: true`) |
+
+### Phase 2 — High (correctness)
+| # | File | Issue |
+|---|------|-------|
+| 2.1 | `Purchases.tsx:197` | `useState` declared after usage — move all hooks to top of component |
+| 2.2 | All components | `onSnapshot` missing error callbacks — add third argument everywhere |
+| 2.3 | `accountingService.ts:100` | Silent `undefined` on `createdBy` — throw if `auth.currentUser` is null |
+| 2.4 | `Billing.tsx` | Extract billing percentage constants to `src/constants/billingDefaults.ts` |
+
+### Phase 3 — Performance
+| # | File | Issue |
+|---|------|-------|
+| 3.1 | `Dashboard.tsx:117` | Move chart data computation out of `onSnapshot` into `useMemo` |
+| 3.2 | `Dashboard.tsx:70` | Replace `any` types in transaction loops with `Transaction`/`JournalEntry` |
+| 3.3 | `BOQ.tsx`, `Billing.tsx` | Wrap row handlers in `useCallback`; wrap row components in `React.memo` |
+| 3.4 | `GeneralLedger.tsx:39` | Wrap `contractsMap` and `projectsMap` in `useMemo` |
+
+### Phase 4 — i18n
+| # | File | Issue |
+|---|------|-------|
+| 4.1 | All components | Replace inline `language === 'ar' ?` ternaries with `t('key')` |
+| 4.2 | `LanguageContext.tsx` | Add missing-key warning + expose `locale` field for date/number formatting |
+| 4.3 | `Dashboard.tsx:75` | Replace hardcoded `'ar-EG'` / `'en-US'` with `locale` from context |
+
+### Phase 5 — Hardening
+| # | File | Issue |
+|---|------|-------|
+| 5.1 | `Purchases.tsx:231` | Add `supplierId` field to supplier `chart_of_accounts` entry |
+| 5.2 | `firebase.ts` | Validate all required `VITE_*` env vars at startup; throw on missing |
+
+---
+
 ## Workflow
 
 ```
@@ -123,6 +218,7 @@ feature branch → PR → /review → merge to main
 ```
 
 - Always run `npm run lint` before committing
+- After each phase of the fix plan, test golden paths: create IPC, create purchase invoice, clear BOQ, open Dashboard
 - Firestore index changes require `firebase deploy --only firestore:indexes`
 - Use `npm run emulate` for local dev to avoid touching production data
 

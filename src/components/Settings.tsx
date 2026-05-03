@@ -38,7 +38,7 @@ import {
   limit,
   Timestamp,
 } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
@@ -771,6 +771,8 @@ function UsersSection({ language, theme, t }: UsersSectionProps) {
           permissions: d.data().permissions ?? ALL_PERMISSIONS,
         }))
       );
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'users');
     });
 
     const unsubPending = onSnapshot(collection(db, 'user_permissions'), (snap) => {
@@ -783,6 +785,8 @@ function UsersSection({ language, theme, t }: UsersSectionProps) {
           isPending: true,
         }))
       );
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'user_permissions');
     });
 
     return () => { unsubUsers(); unsubPending(); };

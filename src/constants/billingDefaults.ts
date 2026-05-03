@@ -1,0 +1,7 @@
+export const BILLING_DEFAULTS: Record<string, number> = {
+  VAT_PCT: 14,
+  EXEC_GUARANTEE_PCT: 10,
+  WHT_PCT: 1,
+  LABOUR_INSURANCE_PCT: 5,
+  MANPOWER_LEVY_PCT: 0.03,
+};

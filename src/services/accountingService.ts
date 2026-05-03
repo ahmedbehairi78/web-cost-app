@@ -82,22 +82,30 @@ export const accountingService = {
    * Creates a balanced journal entry
    */
   async createTransaction(transaction: Omit<Transaction, 'createdAt' | 'createdBy' | 'isDeleted'>) {
+    if (!auth.currentUser) throw new Error('User not authenticated');
+
     const totalDebit = transaction.entries.reduce((sum, e) => sum + e.debit, 0);
     const totalCredit = transaction.entries.reduce((sum, e) => sum + e.credit, 0);
 
-    // Allow for small rounding differences
-    if (Math.abs(totalDebit - totalCredit) > 0.1) {
+    const hasDebit = transaction.entries.some(e => e.debit > 0);
+    const hasCredit = transaction.entries.some(e => e.credit > 0);
+
+    if (!hasDebit || !hasCredit) {
+      throw new Error('Transaction must have at least one debit entry and one credit entry');
+    }
+
+    if (Math.abs(totalDebit - totalCredit) > 0.005) {
       throw new Error(`Transaction is not balanced: Total Debit (${totalDebit.toFixed(2)}) must equal Total Credit (${totalCredit.toFixed(2)})`);
     }
 
-    // Generate a reference if not provided
-    const reference = transaction.reference || `JV-${Date.now().toString().slice(-6)}`;
+    const reference = transaction.reference ||
+      `JV-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
 
     const docRef = await addDoc(collection(db, 'transactions'), {
       ...transaction,
       reference,
       createdAt: serverTimestamp(),
-      createdBy: auth.currentUser?.uid,
+      createdBy: auth.currentUser.uid,
       isDeleted: false
     });
     return docRef.id;
@@ -115,6 +123,7 @@ export const accountingService = {
     date: string;
     transactionId?: string;
   }) {
+    if (!auth.currentUser) throw new Error('User not authenticated');
     const expenseAccount =
       params.category === 'materials' ? AccountCodes.EXPENSE_MATERIALS :
       params.category === 'labour'    ? AccountCodes.EXPENSE_LABOUR : AccountCodes.EXPENSE_ADMIN;
@@ -185,6 +194,7 @@ export const accountingService = {
     contractName: string;
     transactionId?: string;
   }) {
+    if (!auth.currentUser) throw new Error('User not authenticated');
     const entries: JournalEntry[] = [
       // Debits — حقوق مستحقة للشركة من العميل
       { accountCode: AccountCodes.RECEIVABLES,             accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: params.netPayable,     credit: 0 },
@@ -264,6 +274,7 @@ export const accountingService = {
     date: string;
     transactionId?: string;
   }) {
+    if (!auth.currentUser) throw new Error('User not authenticated');
     const entries: JournalEntry[] = [
       // Debits — تكلفة الشراء وضريبة المدخلات
       { accountCode: params.expenseAccountCode, accountName: params.expenseAccountName,                              debit: params.baseAmount,  credit: 0 },
@@ -310,6 +321,7 @@ export const accountingService = {
     date: string;
     transactionId?: string;
   }) {
+    if (!auth.currentUser) throw new Error('User not authenticated');
     const entries: JournalEntry[] = [
       // Debits — تكلفة مقاول الباطن وضريبة المدخلات
       { accountCode: AccountCodes.EXPENSE_SUBCONTRACTOR,      accountName: `تكاليف مقاولو الباطن - ${params.supplierName}`, debit: params.worksValue,      credit: 0 },

@@ -11,6 +11,7 @@ interface LanguageContextType {
   setTheme: (theme: Theme) => void;
   t: (key: string) => string;
   dir: 'rtl' | 'ltr';
+  locale: string;
 }
 
 const translations: Record<Language, Record<string, string>> = {
@@ -219,10 +220,15 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>('dark');
 
   const t = (key: string) => {
-    return translations[language][key] || key;
+    const val = translations[language][key];
+    if (val === undefined && import.meta.env.DEV) {
+      console.warn(`[i18n] Missing translation key: "${key}" for language "${language}"`);
+    }
+    return val ?? key;
   };
 
   const dir = language === 'ar' ? 'rtl' : 'ltr';
+  const locale = language === 'ar' ? 'ar-EG' : 'en-US';
 
   useEffect(() => {
     document.documentElement.dir = dir;
@@ -236,7 +242,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, [language, dir, theme]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, theme, setTheme, t, dir }}>
+    <LanguageContext.Provider value={{ language, setLanguage, theme, setTheme, t, dir, locale }}>
       <div className={cn(theme === 'dark' ? 'dark' : '', theme === 'soft' ? 'soft' : '')}>
         {children}
       </div>

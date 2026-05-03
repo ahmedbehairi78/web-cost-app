@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Plus,
   FileText,
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { BOQItemFormModal } from './boq/BOQItemFormModal';
 import { ContractFormModal } from './boq/ContractFormModal';
-import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
@@ -200,7 +200,7 @@ export function BOQ() {
       
       setProgressMap(progress);
     }, (error) => {
-      console.error("Error fetching progress for BOQ items:", error);
+      handleFirestoreError(error, OperationType.LIST, 'billing');
     });
 
     return () => unsubscribe();
@@ -298,10 +298,16 @@ export function BOQ() {
         try {
           const q = query(collection(db, 'boq_items'), where('contractId', '==', selectedContractId));
           const snapshot = await getDocs(q);
-          
-          const deletePromises = snapshot.docs.map(d => deleteDoc(doc(db, 'boq_items', d.id)));
-          await Promise.all(deletePromises);
-          
+
+          const CHUNK = 500;
+          for (let i = 0; i < snapshot.docs.length; i += CHUNK) {
+            const batch = writeBatch(db);
+            snapshot.docs.slice(i, i + CHUNK).forEach(d =>
+              batch.update(doc(db, 'boq_items', d.id), { isDeleted: true })
+            );
+            await batch.commit();
+          }
+
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         } catch (error) {
           handleFirestoreError(error, OperationType.DELETE, 'boq_items');
@@ -312,7 +318,7 @@ export function BOQ() {
     });
   };
 
-  const handleEditItem = (item: BOQItem) => {
+  const handleEditItem = useCallback((item: BOQItem) => {
     setEditingItem(item);
     setFormData({
       chapterCode: item.chapterCode || '',
@@ -333,7 +339,7 @@ export function BOQ() {
       expectedDuration: item.expectedDuration || 0
     });
     setIsModalOpen(true);
-  };
+  }, []);
 
   const handleDeleteItem = async (itemId: string) => {
     setConfirmConfig({

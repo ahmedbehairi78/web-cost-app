@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import {
   Plus,
   FileText,
@@ -124,11 +125,11 @@ export function Billing() {
     billingNumber: '',
     date: new Date().toISOString().split('T')[0],
     items: [] as BillingItem[],
-    vatPct: 14,
-    execGuaranteePct: 10,
-    whtPct: 1, // 1% Withholding Tax
-    labourInsurancePct: 5,
-    manpowerLevyPct: 0.03, // 0.03% Manpower Levy
+    vatPct: BILLING_DEFAULTS.VAT_PCT,
+    execGuaranteePct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+    whtPct: BILLING_DEFAULTS.WHT_PCT,
+    labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+    manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
     advancePaymentRecovery: 0,
   });
 
@@ -199,6 +200,8 @@ export function Billing() {
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
       setBoqItems(data);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'boq_items');
     });
 
     return () => {
@@ -342,18 +345,21 @@ export function Billing() {
     reader.readAsBinaryString(file);
   };
 
-  const handleOpenModal = (ipc?: BillingIPC) => {
+  const safePct = (num: number, denom: number, fallback: number) =>
+    denom > 0 ? (num / denom) * 100 : fallback;
+
+  const handleOpenModal = useCallback((ipc?: BillingIPC) => {
     if (ipc) {
       setEditingIPC(ipc);
       setFormData({
         billingNumber: ipc.billingNumber,
         date: normalizeDate(ipc.date),
         items: ipc.items,
-        vatPct: (ipc.vatAmount / ipc.worksValueExVat) * 100 || 14,
-        execGuaranteePct: (ipc.execGuaranteeAmount / ipc.worksValueExVat) * 100 || 10,
-        whtPct: (ipc.whtAmount / ipc.worksValueExVat) * 100 || 1,
-        labourInsurancePct: (ipc.labourInsuranceAmount / ipc.worksValueExVat) * 100 || 5,
-        manpowerLevyPct: (ipc.manpowerLevyAmount / ipc.worksValueExVat) * 100 || 0.03,
+        vatPct: safePct(ipc.vatAmount, ipc.worksValueExVat, BILLING_DEFAULTS.VAT_PCT),
+        execGuaranteePct: safePct(ipc.execGuaranteeAmount, ipc.worksValueExVat, BILLING_DEFAULTS.EXEC_GUARANTEE_PCT),
+        whtPct: safePct(ipc.whtAmount, ipc.worksValueExVat, BILLING_DEFAULTS.WHT_PCT),
+        labourInsurancePct: safePct(ipc.labourInsuranceAmount, ipc.worksValueExVat, BILLING_DEFAULTS.LABOUR_INSURANCE_PCT),
+        manpowerLevyPct: safePct(ipc.manpowerLevyAmount, ipc.worksValueExVat, BILLING_DEFAULTS.MANPOWER_LEVY_PCT),
         advancePaymentRecovery: ipc.advancePaymentRecovery || 0,
       });
     } else {
@@ -390,16 +396,16 @@ export function Billing() {
         billingNumber: `IPC-${billings.length + 1}`,
         date: new Date().toISOString().split('T')[0],
         items: initialItems,
-        vatPct: 14,
-        execGuaranteePct: 10,
-        whtPct: 1,
-        labourInsurancePct: 5,
-        manpowerLevyPct: 0.03,
+        vatPct: BILLING_DEFAULTS.VAT_PCT,
+        execGuaranteePct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+        whtPct: BILLING_DEFAULTS.WHT_PCT,
+        labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+        manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
         advancePaymentRecovery: 0,
       });
     }
     setIsModalOpen(true);
-  };
+  }, [billings, boqItems]);
 
   const handleItemQtyChange = (idx: number, qty: number) => {
     const newItems = [...formData.items];
