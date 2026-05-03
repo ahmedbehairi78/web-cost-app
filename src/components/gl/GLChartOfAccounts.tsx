@@ -18,7 +18,11 @@ interface Props {
 export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: Props) {
   const [searchQuery, setSearchQuery] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
-    new Set(['1', '11', '12', '2', '21', '22', '3', '31', '4', '41', '42', '5', '51', '52', '53'])
+    new Set(['1', '11', '12', '2', '21', '22', '3', '31', '4', '41', '42', '5', '51', '52', '53',
+             '111', '119', '121', '122', '123', '124', '125', '126',
+             '211', '212', '213', '214', '215', '221',
+             '311', '312', '313', '314',
+             '411', '421', '511', '512', '521', '522', '531'])
   );
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
@@ -42,115 +46,181 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
   const seedAccounts = async () => {
     const BS = 'balance_sheet';
     const PL = 'income_statement';
+    // 5-level hierarchy: L1(1d) > L2(2d) > L3(3d) > L4(5d) > L5(8d=leaf)
+    const G = true; const L = false; // isGroup shorthand
     const defaults = [
-      // ══════════════════════════════════════════════════════════════
-      // 1 — الأصول [ميزانية]
-      // ══════════════════════════════════════════════════════════════
-      { accountCode: '1',    accountName: 'الأصول',                                 accountNameEn: 'Assets',                               parentCode: '',    type: 'asset',     isGroup: true,  statementType: BS },
-      // L2: الأصول المتداولة
-      { accountCode: '11',   accountName: 'الأصول المتداولة',                       accountNameEn: 'Current Assets',                       parentCode: '1',   type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '111',  accountName: 'النقدية والبنوك',                        accountNameEn: 'Cash & Banks',                         parentCode: '11',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1111', accountName: 'البنك',                                  accountNameEn: 'Bank',                                 parentCode: '111', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '112',  accountName: 'العملاء والذمم المدينة',                 accountNameEn: 'Accounts Receivable',                  parentCode: '11',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1121', accountName: 'العملاء - مستخلصات تحت التحصيل',        accountNameEn: 'Clients - IPCs Under Collection',      parentCode: '112', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '1122', accountName: 'محتجزات الضمان - عملاء',                accountNameEn: 'Retention Guarantee - Clients',        parentCode: '112', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '113',  accountName: 'المدفوعات المقدمة',                      accountNameEn: 'Prepayments',                          parentCode: '11',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1131', accountName: 'مقدمات للموردين',                        accountNameEn: 'Advances to Suppliers',                parentCode: '113', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '114',  accountName: 'حسابات ضريبية مدينة',                   accountNameEn: 'Tax Receivables',                      parentCode: '11',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1141', accountName: 'ضريبة القيمة المضافة - مدخلات',         accountNameEn: 'VAT - Input',                          parentCode: '114', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '1142', accountName: 'مصلحة الضرائب - خصم وإضافة',           accountNameEn: 'WHT Tax Receivable',                   parentCode: '114', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '1143', accountName: 'التأمينات الاجتماعية',                   accountNameEn: 'Social Insurance Receivable',          parentCode: '114', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '1144', accountName: 'القوى العاملة',                          accountNameEn: 'Manpower Levy Receivable',             parentCode: '114', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '115',  accountName: 'ذمم مدينة أخرى',                        accountNameEn: 'Other Receivables',                    parentCode: '11',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1151', accountName: 'حسابات مدينة متنوعة',                   accountNameEn: 'Miscellaneous Receivables',            parentCode: '115', type: 'asset',     isGroup: false, statementType: BS },
-      // L2: الأصول غير المتداولة
-      { accountCode: '12',   accountName: 'الأصول غير المتداولة',                   accountNameEn: 'Non-Current Assets',                   parentCode: '1',   type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '121',  accountName: 'الأصول الثابتة',                         accountNameEn: 'Fixed Assets',                         parentCode: '12',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1211', accountName: 'أصول ثابتة - تكلفة',                    accountNameEn: 'Fixed Assets - Cost',                  parentCode: '121', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '1212', accountName: 'مجمع الإهلاك (دائن)',                    accountNameEn: 'Accumulated Depreciation',             parentCode: '121', type: 'asset',     isGroup: false, statementType: BS },
-      { accountCode: '122',  accountName: 'أصول أخرى',                             accountNameEn: 'Other Assets',                         parentCode: '12',  type: 'asset',     isGroup: true,  statementType: BS },
-      { accountCode: '1221', accountName: 'أعمال قيد التنفيذ (WIP)',                accountNameEn: 'Work In Progress (WIP)',               parentCode: '122', type: 'asset',     isGroup: false, statementType: BS },
-      // ══════════════════════════════════════════════════════════════
-      // 2 — الخصوم [ميزانية]
-      // ══════════════════════════════════════════════════════════════
-      { accountCode: '2',    accountName: 'الخصوم',                                 accountNameEn: 'Liabilities',                          parentCode: '',    type: 'liability', isGroup: true,  statementType: BS },
-      // L2: الخصوم المتداولة
-      { accountCode: '21',   accountName: 'الخصوم المتداولة',                       accountNameEn: 'Current Liabilities',                  parentCode: '2',   type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '211',  accountName: 'ذمم دائنة تجارية',                      accountNameEn: 'Trade Payables',                       parentCode: '21',  type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '2111', accountName: 'الموردون',                               accountNameEn: 'Suppliers',                            parentCode: '211', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '2112', accountName: 'مقاولو الباطن',                          accountNameEn: 'Subcontractors',                       parentCode: '211', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '212',  accountName: 'محتجزات الضمان - مقاولون',             accountNameEn: 'Retention Payable - Contractors',      parentCode: '21',  type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '2121', accountName: 'محتجزات ضمان الأعمال - مقاولون',       accountNameEn: 'Work Retention - Contractors',         parentCode: '212', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '213',  accountName: 'دفعات مقدمة من العملاء',                accountNameEn: 'Advances from Clients',                parentCode: '21',  type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '2131', accountName: 'دفعات مقدمة من العملاء',                accountNameEn: 'Client Advance Payments',              parentCode: '213', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '214',  accountName: 'التزامات ضريبية',                       accountNameEn: 'Tax Liabilities',                      parentCode: '21',  type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '2141', accountName: 'ضريبة القيمة المضافة - مخرجات',         accountNameEn: 'VAT - Output',                         parentCode: '214', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '2142', accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',   accountNameEn: 'WHT Tax Payable',                      parentCode: '214', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '2143', accountName: 'التأمينات الاجتماعية (دائن)',           accountNameEn: 'Social Insurance Payable',             parentCode: '214', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '2144', accountName: 'القوى العاملة (دائن)',                  accountNameEn: 'Manpower Levy Payable',                parentCode: '214', type: 'liability', isGroup: false, statementType: BS },
-      { accountCode: '215',  accountName: 'مستحقات دائنة أخرى',                    accountNameEn: 'Other Payables',                       parentCode: '21',  type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '2151', accountName: 'مصروفات مستحقة',                         accountNameEn: 'Accrued Expenses',                     parentCode: '215', type: 'liability', isGroup: false, statementType: BS },
-      // L2: الخصوم غير المتداولة
-      { accountCode: '22',   accountName: 'الخصوم غير المتداولة',                   accountNameEn: 'Non-Current Liabilities',              parentCode: '2',   type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '221',  accountName: 'قروض طويلة الأجل',                      accountNameEn: 'Long-term Loans',                      parentCode: '22',  type: 'liability', isGroup: true,  statementType: BS },
-      { accountCode: '2211', accountName: 'قروض بنكية طويلة الأجل',                accountNameEn: 'Long-term Bank Loans',                 parentCode: '221', type: 'liability', isGroup: false, statementType: BS },
-      // ══════════════════════════════════════════════════════════════
-      // 3 — حقوق الملكية [ميزانية]
-      // ══════════════════════════════════════════════════════════════
-      { accountCode: '3',    accountName: 'حقوق الملكية',                           accountNameEn: 'Equity',                               parentCode: '',    type: 'equity',    isGroup: true,  statementType: BS },
-      { accountCode: '31',   accountName: 'رأس المال والاحتياطيات',                 accountNameEn: 'Capital & Reserves',                   parentCode: '3',   type: 'equity',    isGroup: true,  statementType: BS },
-      { accountCode: '311',  accountName: 'رأس المال',                              accountNameEn: 'Capital',                              parentCode: '31',  type: 'equity',    isGroup: true,  statementType: BS },
-      { accountCode: '3111', accountName: 'رأس المال المدفوع',                      accountNameEn: 'Paid-in Capital',                      parentCode: '311', type: 'equity',    isGroup: false, statementType: BS },
-      { accountCode: '312',  accountName: 'الاحتياطيات',                            accountNameEn: 'Reserves',                             parentCode: '31',  type: 'equity',    isGroup: true,  statementType: BS },
-      { accountCode: '3121', accountName: 'احتياطي قانوني',                          accountNameEn: 'Legal Reserve',                        parentCode: '312', type: 'equity',    isGroup: false, statementType: BS },
-      { accountCode: '3122', accountName: 'احتياطيات أخرى',                         accountNameEn: 'Other Reserves',                       parentCode: '312', type: 'equity',    isGroup: false, statementType: BS },
-      { accountCode: '313',  accountName: 'الأرباح المحتجزة',                       accountNameEn: 'Retained Earnings',                    parentCode: '31',  type: 'equity',    isGroup: true,  statementType: BS },
-      { accountCode: '3131', accountName: 'الأرباح المحتجزة',                       accountNameEn: 'Retained Earnings',                    parentCode: '313', type: 'equity',    isGroup: false, statementType: BS },
-      // ══════════════════════════════════════════════════════════════
-      // 4 — الإيرادات [قائمة دخل]
-      // ══════════════════════════════════════════════════════════════
-      { accountCode: '4',    accountName: 'الإيرادات',                              accountNameEn: 'Revenue',                              parentCode: '',    type: 'revenue',   isGroup: true,  statementType: PL },
-      { accountCode: '41',   accountName: 'إيرادات تشغيلية',                        accountNameEn: 'Operating Revenue',                    parentCode: '4',   type: 'revenue',   isGroup: true,  statementType: PL },
-      { accountCode: '411',  accountName: 'إيرادات عقود المقاولات',                 accountNameEn: 'Contract Revenue',                     parentCode: '41',  type: 'revenue',   isGroup: true,  statementType: PL },
-      { accountCode: '4111', accountName: 'إيرادات عقود مقاولات',                   accountNameEn: 'Construction Contract Revenue',        parentCode: '411', type: 'revenue',   isGroup: false, statementType: PL },
-      { accountCode: '4112', accountName: 'إيرادات خدمات إضافية',                   accountNameEn: 'Additional Services Revenue',          parentCode: '411', type: 'revenue',   isGroup: false, statementType: PL },
-      { accountCode: '42',   accountName: 'إيرادات أخرى',                           accountNameEn: 'Other Revenue',                        parentCode: '4',   type: 'revenue',   isGroup: true,  statementType: PL },
-      { accountCode: '421',  accountName: 'إيرادات غير تشغيلية',                    accountNameEn: 'Non-Operating Revenue',                parentCode: '42',  type: 'revenue',   isGroup: true,  statementType: PL },
-      { accountCode: '4211', accountName: 'إيرادات متنوعة',                          accountNameEn: 'Miscellaneous Revenue',                parentCode: '421', type: 'revenue',   isGroup: false, statementType: PL },
-      // ══════════════════════════════════════════════════════════════
-      // 5 — المصروفات [قائمة دخل]
-      //   51 تكاليف العقود | 52 مصروفات تشغيلية | 53 مصروفات تمويلية
-      // ══════════════════════════════════════════════════════════════
-      { accountCode: '5',    accountName: 'المصروفات',                               accountNameEn: 'Expenses',                             parentCode: '',    type: 'expense',   isGroup: true,  statementType: PL },
-      // 51 — تكاليف العقود (COGS)
-      { accountCode: '51',   accountName: 'تكاليف العقود',                           accountNameEn: 'Contract Costs (COGS)',                parentCode: '5',   type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '511',  accountName: 'تكاليف مباشرة',                           accountNameEn: 'Direct Costs',                         parentCode: '51',  type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '5111', accountName: 'مواد البناء',                             accountNameEn: 'Construction Materials',               parentCode: '511', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5112', accountName: 'عمالة مباشرة',                            accountNameEn: 'Direct Labour',                        parentCode: '511', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5113', accountName: 'مقاولو الباطن',                           accountNameEn: 'Subcontractors',                       parentCode: '511', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5114', accountName: 'معدات وآلات',                             accountNameEn: 'Equipment & Machinery',                parentCode: '511', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5115', accountName: 'نقل ولوجستيات',                           accountNameEn: 'Transportation & Logistics',           parentCode: '511', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '512',  accountName: 'تكاليف غير مباشرة للموقع',               accountNameEn: 'Indirect Site Costs',                  parentCode: '51',  type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '5121', accountName: 'إشراف ميداني',                            accountNameEn: 'Field Supervision',                    parentCode: '512', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5122', accountName: 'مستلزمات الموقع',                         accountNameEn: 'Site Supplies',                        parentCode: '512', type: 'expense',   isGroup: false, statementType: PL },
-      // 52 — مصروفات تشغيلية
-      { accountCode: '52',   accountName: 'المصروفات التشغيلية',                     accountNameEn: 'Operating Expenses',                   parentCode: '5',   type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '521',  accountName: 'إدارية وعمومية',                          accountNameEn: 'General & Administrative',             parentCode: '52',  type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '5211', accountName: 'رواتب وأجور إدارية',                      accountNameEn: 'Administrative Salaries',              parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5212', accountName: 'إيجارات مكاتب',                           accountNameEn: 'Office Rent',                          parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5213', accountName: 'مرافق واتصالات',                          accountNameEn: 'Utilities & Communications',           parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5214', accountName: 'رسوم قانونية ومهنية',                     accountNameEn: 'Legal & Professional Fees',            parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5215', accountName: 'تأمينات',                                 accountNameEn: 'Insurance',                            parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5216', accountName: 'إهلاك وإطفاء',                            accountNameEn: 'Depreciation & Amortization',          parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5217', accountName: 'مصروفات مكتبية وقرطاسية',                 accountNameEn: 'Office & Stationery Expenses',         parentCode: '521', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '522',  accountName: 'مصروفات التسويق والبيع',                   accountNameEn: 'Marketing & Sales Expenses',           parentCode: '52',  type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '5221', accountName: 'دعاية وإعلان',                             accountNameEn: 'Advertising & Marketing',              parentCode: '522', type: 'expense',   isGroup: false, statementType: PL },
-      // 53 — مصروفات تمويلية
-      { accountCode: '53',   accountName: 'المصروفات التمويلية',                     accountNameEn: 'Finance Expenses',                     parentCode: '5',   type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '531',  accountName: 'تكاليف التمويل',                          accountNameEn: 'Financing Costs',                      parentCode: '53',  type: 'expense',   isGroup: true,  statementType: PL },
-      { accountCode: '5311', accountName: 'فوائد بنكية',                             accountNameEn: 'Bank Interest',                        parentCode: '531', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5312', accountName: 'رسوم بنكية',                              accountNameEn: 'Bank Charges',                         parentCode: '531', type: 'expense',   isGroup: false, statementType: PL },
-      { accountCode: '5313', accountName: 'خسائر فروق العملة',                       accountNameEn: 'Foreign Currency Losses',              parentCode: '531', type: 'expense',   isGroup: false, statementType: PL },
+      // ══ 1 — الأصول ══════════════════════════════════════════════
+      { accountCode: '1',        accountName: 'الأصول',                                   accountNameEn: 'Assets',                           parentCode: '',      type: 'asset',     isGroup: G, statementType: BS },
+      // L2
+      { accountCode: '11',       accountName: 'الأصول الثابتة',                           accountNameEn: 'Fixed Assets',                     parentCode: '1',     type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '12',       accountName: 'الأصول المتداولة',                         accountNameEn: 'Current Assets',                   parentCode: '1',     type: 'asset',     isGroup: G, statementType: BS },
+      // L3 — under 11
+      { accountCode: '111',      accountName: 'وسائل النقل',                              accountNameEn: 'Transport & Vehicles',             parentCode: '11',    type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '119',      accountName: 'مجمع الإهلاك (دائن)',                      accountNameEn: 'Accumulated Depreciation',         parentCode: '11',    type: 'asset',     isGroup: G, statementType: BS },
+      // L3 — under 12
+      { accountCode: '121',      accountName: 'النقدية والبنوك',                          accountNameEn: 'Cash & Banks',                     parentCode: '12',    type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '122',      accountName: 'العملاء والذمم المدينة',                   accountNameEn: 'Accounts Receivable',              parentCode: '12',    type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '123',      accountName: 'المدفوعات المقدمة',                        accountNameEn: 'Prepayments',                      parentCode: '12',    type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '124',      accountName: 'حسابات ضريبية مدينة',                     accountNameEn: 'Tax Receivables',                  parentCode: '12',    type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '125',      accountName: 'ذمم مدينة أخرى',                          accountNameEn: 'Other Receivables',                parentCode: '12',    type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '126',      accountName: 'أصول أخرى',                               accountNameEn: 'Other Assets',                     parentCode: '12',    type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 111
+      { accountCode: '11101',    accountName: 'سيارات نقل',                               accountNameEn: 'Trucks & Vehicles',                parentCode: '111',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 119
+      { accountCode: '11901',    accountName: 'مجمع إهلاك سيارات النقل',                 accountNameEn: 'Acc. Depr. - Vehicles',            parentCode: '119',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 121
+      { accountCode: '12101',    accountName: 'البنوك',                                   accountNameEn: 'Banks',                            parentCode: '121',   type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '12102',    accountName: 'الصناديق',                                 accountNameEn: 'Cash on Hand',                     parentCode: '121',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 122
+      { accountCode: '12201',    accountName: 'العملاء - مستخلصات تحت التحصيل',          accountNameEn: 'Clients - IPCs Under Collection',  parentCode: '122',   type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '12202',    accountName: 'محتجزات الضمان - عملاء',                  accountNameEn: 'Retention Guarantee - Clients',    parentCode: '122',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 123
+      { accountCode: '12301',    accountName: 'مقدمات للموردين',                          accountNameEn: 'Advances to Suppliers',            parentCode: '123',   type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '12302',    accountName: 'مقدمات لمقاولي الباطن',                   accountNameEn: 'Advances to Subcontractors',       parentCode: '123',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 124
+      { accountCode: '12401',    accountName: 'مصلحة الضرائب - خصم وإضافة',             accountNameEn: 'WHT & VAT Receivable',             parentCode: '124',   type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '12402',    accountName: 'التأمينات الاجتماعية - مدين',             accountNameEn: 'Social Insurance Receivable',      parentCode: '124',   type: 'asset',     isGroup: G, statementType: BS },
+      { accountCode: '12403',    accountName: 'القوى العاملة - مدين',                    accountNameEn: 'Manpower Levy Receivable',         parentCode: '124',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 125
+      { accountCode: '12501',    accountName: 'حسابات مدينة متنوعة',                     accountNameEn: 'Miscellaneous Receivables',        parentCode: '125',   type: 'asset',     isGroup: G, statementType: BS },
+      // L4 — under 126
+      { accountCode: '12601',    accountName: 'أعمال قيد التنفيذ (WIP)',                  accountNameEn: 'Work In Progress (WIP)',           parentCode: '126',   type: 'asset',     isGroup: G, statementType: BS },
+      // L5 — leaves (asset)
+      { accountCode: '11101001', accountName: 'سيارات نقل',                               accountNameEn: 'Trucks & Vehicles - Cost',         parentCode: '11101', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '11901001', accountName: 'مجمع إهلاك سيارات النقل',                 accountNameEn: 'Acc. Depr. - Vehicles',            parentCode: '11901', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12101001', accountName: 'البنك التجاري الدولي',                    accountNameEn: 'Commercial International Bank',    parentCode: '12101', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12102001', accountName: 'صندوق الشركة',                            accountNameEn: 'Company Cash Fund',                parentCode: '12102', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12201001', accountName: 'العملاء - مستخلصات تحت التحصيل',          accountNameEn: 'Clients - IPCs Under Collection',  parentCode: '12201', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12202001', accountName: 'محتجزات الضمان - عملاء',                  accountNameEn: 'Retention Guarantee - Clients',    parentCode: '12202', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12301001', accountName: 'مقدمات للموردين',                          accountNameEn: 'Advances to Suppliers',            parentCode: '12301', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12302001', accountName: 'مقدمات لمقاولي الباطن',                   accountNameEn: 'Advances to Subcontractors',       parentCode: '12302', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12401001', accountName: 'ضريبة القيمة المضافة - مدخلات',           accountNameEn: 'VAT - Input',                      parentCode: '12401', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12401002', accountName: 'ضريبة الخصم والإضافة - مدين',            accountNameEn: 'WHT Tax Receivable',               parentCode: '12401', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12402001', accountName: 'التأمينات الاجتماعية - مدين',             accountNameEn: 'Social Insurance Receivable',      parentCode: '12402', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12403001', accountName: 'القوى العاملة - مدين',                    accountNameEn: 'Manpower Levy Receivable',         parentCode: '12403', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12501001', accountName: 'حسابات مدينة متنوعة',                     accountNameEn: 'Miscellaneous Receivables',        parentCode: '12501', type: 'asset',     isGroup: L, statementType: BS },
+      { accountCode: '12601001', accountName: 'أعمال قيد التنفيذ',                       accountNameEn: 'Work In Progress',                 parentCode: '12601', type: 'asset',     isGroup: L, statementType: BS },
+      // ══ 2 — الخصوم ══════════════════════════════════════════════
+      { accountCode: '2',        accountName: 'الخصوم',                                   accountNameEn: 'Liabilities',                      parentCode: '',      type: 'liability', isGroup: G, statementType: BS },
+      // L2
+      { accountCode: '21',       accountName: 'الخصوم المتداولة',                         accountNameEn: 'Current Liabilities',              parentCode: '2',     type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '22',       accountName: 'الخصوم غير المتداولة',                     accountNameEn: 'Non-Current Liabilities',          parentCode: '2',     type: 'liability', isGroup: G, statementType: BS },
+      // L3 — under 21
+      { accountCode: '211',      accountName: 'ذمم دائنة تجارية',                        accountNameEn: 'Trade Payables',                   parentCode: '21',    type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '212',      accountName: 'محتجزات ضمان دائنة',                      accountNameEn: 'Retention Payable',                parentCode: '21',    type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '213',      accountName: 'دفعات مقدمة من العملاء',                  accountNameEn: 'Advances from Clients',            parentCode: '21',    type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '214',      accountName: 'التزامات ضريبية',                          accountNameEn: 'Tax Liabilities',                  parentCode: '21',    type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '215',      accountName: 'مستحقات دائنة أخرى',                      accountNameEn: 'Other Payables',                   parentCode: '21',    type: 'liability', isGroup: G, statementType: BS },
+      // L3 — under 22
+      { accountCode: '221',      accountName: 'قروض طويلة الأجل',                        accountNameEn: 'Long-term Loans',                  parentCode: '22',    type: 'liability', isGroup: G, statementType: BS },
+      // L4 — under 211
+      { accountCode: '21101',    accountName: 'الموردون',                                  accountNameEn: 'Suppliers',                        parentCode: '211',   type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '21102',    accountName: 'مقاولو الباطن',                            accountNameEn: 'Subcontractors',                   parentCode: '211',   type: 'liability', isGroup: G, statementType: BS },
+      // L4 — under 212
+      { accountCode: '21201',    accountName: 'محتجزات ضمان الأعمال - مقاولون',          accountNameEn: 'Work Retention - Contractors',     parentCode: '212',   type: 'liability', isGroup: G, statementType: BS },
+      // L4 — under 213
+      { accountCode: '21301',    accountName: 'دفعات مقدمة من عملاء المقاولات',          accountNameEn: 'Client Advance Payments',          parentCode: '213',   type: 'liability', isGroup: G, statementType: BS },
+      // L4 — under 214
+      { accountCode: '21401',    accountName: 'ضريبة القيمة المضافة والخصم والإضافة',   accountNameEn: 'VAT Output & WHT Payable',         parentCode: '214',   type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '21403',    accountName: 'التأمينات الاجتماعية - دائن',             accountNameEn: 'Social Insurance Payable',         parentCode: '214',   type: 'liability', isGroup: G, statementType: BS },
+      { accountCode: '21404',    accountName: 'القوى العاملة - دائن',                    accountNameEn: 'Manpower Levy Payable',            parentCode: '214',   type: 'liability', isGroup: G, statementType: BS },
+      // L4 — under 215
+      { accountCode: '21501',    accountName: 'رسوم واشتراكات جهات حكومية',              accountNameEn: 'Gov. Fees & Subscriptions',        parentCode: '215',   type: 'liability', isGroup: L, statementType: BS },
+      // L4 — under 221
+      { accountCode: '22101',    accountName: 'قروض بنكية طويلة الأجل',                  accountNameEn: 'Long-term Bank Loans',             parentCode: '221',   type: 'liability', isGroup: L, statementType: BS },
+      // L5 — leaves (liability)
+      { accountCode: '21101001', accountName: 'الموردون',                                  accountNameEn: 'Suppliers',                        parentCode: '21101', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21102001', accountName: 'مقاولو الباطن',                            accountNameEn: 'Subcontractors',                   parentCode: '21102', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21201001', accountName: 'محتجزات ضمان الأعمال',                    accountNameEn: 'Work Retention - Contractors',     parentCode: '21201', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21201002', accountName: 'محتجزات التأمينات',                       accountNameEn: 'Insurance Retention',              parentCode: '21201', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21301001', accountName: 'دفعات مقدمة من العملاء',                  accountNameEn: 'Client Advance Payments',          parentCode: '21301', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21401001', accountName: 'ضريبة القيمة المضافة - مخرجات',           accountNameEn: 'VAT - Output',                     parentCode: '21401', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21401002', accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',      accountNameEn: 'WHT Tax Payable',                  parentCode: '21401', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21403001', accountName: 'التأمينات الاجتماعية - دائن',             accountNameEn: 'Social Insurance Payable',         parentCode: '21403', type: 'liability', isGroup: L, statementType: BS },
+      { accountCode: '21404001', accountName: 'القوى العاملة - دائن',                    accountNameEn: 'Manpower Levy Payable',            parentCode: '21404', type: 'liability', isGroup: L, statementType: BS },
+      // ══ 3 — حقوق الملكية ════════════════════════════════════════
+      { accountCode: '3',        accountName: 'حقوق الملكية',                             accountNameEn: 'Equity',                           parentCode: '',      type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '31',       accountName: 'رأس المال والاحتياطيات',                   accountNameEn: 'Capital & Reserves',               parentCode: '3',     type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '311',      accountName: 'رأس المال',                                accountNameEn: 'Capital',                          parentCode: '31',    type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '312',      accountName: 'الاحتياطيات',                              accountNameEn: 'Reserves',                         parentCode: '31',    type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '313',      accountName: 'الأرباح المحتجزة',                         accountNameEn: 'Retained Earnings',                parentCode: '31',    type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '314',      accountName: 'جاري الشركاء',                             accountNameEn: "Partners' Current Accounts",       parentCode: '31',    type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '31101',    accountName: 'رأس المال المدفوع',                        accountNameEn: 'Paid-in Capital',                  parentCode: '311',   type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '31201',    accountName: 'احتياطي قانوني',                            accountNameEn: 'Legal Reserve',                    parentCode: '312',   type: 'equity',    isGroup: L, statementType: BS },
+      { accountCode: '31202',    accountName: 'احتياطيات أخرى',                           accountNameEn: 'Other Reserves',                   parentCode: '312',   type: 'equity',    isGroup: L, statementType: BS },
+      { accountCode: '31301',    accountName: 'الأرباح المحتجزة',                         accountNameEn: 'Retained Earnings',                parentCode: '313',   type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '31401',    accountName: 'جاري الشركاء - مسحوبات',                  accountNameEn: "Partners' Current Accounts",       parentCode: '314',   type: 'equity',    isGroup: G, statementType: BS },
+      { accountCode: '31101001', accountName: 'رأس المال المدفوع',                        accountNameEn: 'Paid-in Capital',                  parentCode: '31101', type: 'equity',    isGroup: L, statementType: BS },
+      { accountCode: '31301001', accountName: 'الأرباح المحتجزة',                         accountNameEn: 'Retained Earnings',                parentCode: '31301', type: 'equity',    isGroup: L, statementType: BS },
+      { accountCode: '31401001', accountName: 'جاري الشركاء',                             accountNameEn: "Partner Current Account",          parentCode: '31401', type: 'equity',    isGroup: L, statementType: BS },
+      // ══ 4 — الإيرادات ════════════════════════════════════════════
+      { accountCode: '4',        accountName: 'الإيرادات',                                accountNameEn: 'Revenue',                          parentCode: '',      type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '41',       accountName: 'إيرادات تشغيلية',                          accountNameEn: 'Operating Revenue',                parentCode: '4',     type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '42',       accountName: 'إيرادات أخرى',                             accountNameEn: 'Other Revenue',                    parentCode: '4',     type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '411',      accountName: 'إيرادات عقود المقاولات',                   accountNameEn: 'Contract Revenue',                 parentCode: '41',    type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '421',      accountName: 'إيرادات غير تشغيلية',                      accountNameEn: 'Non-Operating Revenue',            parentCode: '42',    type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '41101',    accountName: 'إيرادات عقود مقاولات',                     accountNameEn: 'Construction Contract Revenue',    parentCode: '411',   type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '41102',    accountName: 'إيرادات خدمات إضافية',                     accountNameEn: 'Additional Services Revenue',      parentCode: '411',   type: 'revenue',   isGroup: L, statementType: PL },
+      { accountCode: '42101',    accountName: 'إيرادات متنوعة',                            accountNameEn: 'Miscellaneous Revenue',            parentCode: '421',   type: 'revenue',   isGroup: G, statementType: PL },
+      { accountCode: '41101001', accountName: 'إيرادات عقود المقاولات',                   accountNameEn: 'Construction Contract Revenue',    parentCode: '41101', type: 'revenue',   isGroup: L, statementType: PL },
+      { accountCode: '42101001', accountName: 'إيرادات متنوعة',                            accountNameEn: 'Miscellaneous Revenue',            parentCode: '42101', type: 'revenue',   isGroup: L, statementType: PL },
+      // ══ 5 — المصروفات ════════════════════════════════════════════
+      { accountCode: '5',        accountName: 'المصروفات',                                 accountNameEn: 'Expenses',                         parentCode: '',      type: 'expense',   isGroup: G, statementType: PL },
+      // L2
+      { accountCode: '51',       accountName: 'تكاليف العقود',                             accountNameEn: 'Contract Costs (COGS)',            parentCode: '5',     type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52',       accountName: 'المصروفات التشغيلية',                       accountNameEn: 'Operating Expenses',               parentCode: '5',     type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '53',       accountName: 'المصروفات التمويلية',                       accountNameEn: 'Finance Expenses',                 parentCode: '5',     type: 'expense',   isGroup: G, statementType: PL },
+      // L3 — under 51
+      { accountCode: '511',      accountName: 'تكاليف مباشرة',                             accountNameEn: 'Direct Costs',                     parentCode: '51',    type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '512',      accountName: 'تكاليف غير مباشرة للموقع',                 accountNameEn: 'Indirect Site Costs',              parentCode: '51',    type: 'expense',   isGroup: G, statementType: PL },
+      // L3 — under 52
+      { accountCode: '521',      accountName: 'إدارية وعمومية',                            accountNameEn: 'General & Administrative',         parentCode: '52',    type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '522',      accountName: 'مصروفات التسويق والبيع',                    accountNameEn: 'Marketing & Sales',                parentCode: '52',    type: 'expense',   isGroup: G, statementType: PL },
+      // L3 — under 53
+      { accountCode: '531',      accountName: 'تكاليف التمويل',                            accountNameEn: 'Financing Costs',                  parentCode: '53',    type: 'expense',   isGroup: G, statementType: PL },
+      // L4 — under 511
+      { accountCode: '51101',    accountName: 'مواد',                                      accountNameEn: 'Construction Materials',           parentCode: '511',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '51102',    accountName: 'عمالة مباشرة',                              accountNameEn: 'Direct Labour',                    parentCode: '511',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '51103',    accountName: 'مقاولو الباطن',                              accountNameEn: 'Subcontractors',                   parentCode: '511',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '51104',    accountName: 'معدات وآلات',                               accountNameEn: 'Equipment & Machinery',            parentCode: '511',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '51105',    accountName: 'نقل ولوجستيات',                             accountNameEn: 'Transportation & Logistics',       parentCode: '511',   type: 'expense',   isGroup: G, statementType: PL },
+      // L4 — under 512
+      { accountCode: '51201',    accountName: 'إشراف ميداني',                              accountNameEn: 'Field Supervision',                parentCode: '512',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '51202',    accountName: 'مستلزمات الموقع',                           accountNameEn: 'Site Supplies',                    parentCode: '512',   type: 'expense',   isGroup: L, statementType: PL },
+      // L4 — under 521
+      { accountCode: '52101',    accountName: 'رواتب وأجور إدارية',                        accountNameEn: 'Administrative Salaries',          parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52102',    accountName: 'إيجارات مكاتب',                             accountNameEn: 'Office Rent',                      parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52103',    accountName: 'مرافق واتصالات',                            accountNameEn: 'Utilities & Communications',       parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52104',    accountName: 'رسوم قانونية ومهنية',                       accountNameEn: 'Legal & Professional Fees',        parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52105',    accountName: 'تأمينات',                                   accountNameEn: 'Insurance',                        parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52106',    accountName: 'إهلاك وإطفاء',                              accountNameEn: 'Depreciation & Amortization',      parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '52107',    accountName: 'أدوات كتابية ومكتبية',                      accountNameEn: 'Office & Stationery',              parentCode: '521',   type: 'expense',   isGroup: G, statementType: PL },
+      // L4 — under 522
+      { accountCode: '52201',    accountName: 'دعاية وإعلان',                              accountNameEn: 'Advertising & Marketing',          parentCode: '522',   type: 'expense',   isGroup: G, statementType: PL },
+      // L4 — under 531
+      { accountCode: '53101',    accountName: 'فوائد بنكية',                               accountNameEn: 'Bank Interest',                    parentCode: '531',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '53102',    accountName: 'رسوم بنكية',                                accountNameEn: 'Bank Charges',                     parentCode: '531',   type: 'expense',   isGroup: G, statementType: PL },
+      { accountCode: '53103',    accountName: 'خسائر فروق العملة',                         accountNameEn: 'Foreign Currency Losses',          parentCode: '531',   type: 'expense',   isGroup: G, statementType: PL },
+      // L5 — leaves (expense)
+      { accountCode: '51101001', accountName: 'مواد البناء',                               accountNameEn: 'Building Materials',               parentCode: '51101', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51101002', accountName: 'مواد لاندسكيب',                             accountNameEn: 'Landscape Materials',              parentCode: '51101', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51102001', accountName: 'رواتب وأجور مواقع',                        accountNameEn: 'Site Labour',                      parentCode: '51102', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51102002', accountName: 'أجور مقاولة',                               accountNameEn: 'Contract Labour',                  parentCode: '51102', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51103001', accountName: 'مقاولو الباطن - تكاليف',                   accountNameEn: 'Subcontractors - Cost',            parentCode: '51103', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51104001', accountName: 'إيجار معدات',                               accountNameEn: 'Equipment Rent',                   parentCode: '51104', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51105001', accountName: 'إيجار نقل',                                 accountNameEn: 'Transport Rent',                   parentCode: '51105', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '51201001', accountName: 'أجور ومرتبات إدارة الموقع',                accountNameEn: 'Field Supervision Salaries',       parentCode: '51201', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52101001', accountName: 'رواتب وأجور إدارية',                        accountNameEn: 'Administrative Salaries',          parentCode: '52101', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52102001', accountName: 'إيجار مقر الشركة',                         accountNameEn: 'Office Rent',                      parentCode: '52102', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52103001', accountName: 'كهرباء',                                    accountNameEn: 'Electricity',                      parentCode: '52103', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52104001', accountName: 'رسوم قانونية ومهنية',                       accountNameEn: 'Legal & Professional Fees',        parentCode: '52104', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52105001', accountName: 'تأمينات مقاولات',                           accountNameEn: 'Construction Insurance',           parentCode: '52105', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52106001', accountName: 'إهلاك سيارات النقل',                       accountNameEn: 'Vehicle Depreciation',             parentCode: '52106', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52107001', accountName: 'أدوات كتابية ومكتبية',                      accountNameEn: 'Office & Stationery',              parentCode: '52107', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '52201001', accountName: 'دعاية وإعلان',                              accountNameEn: 'Advertising & Marketing',          parentCode: '52201', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '53101001', accountName: 'فوائد بنكية',                               accountNameEn: 'Bank Interest',                    parentCode: '53101', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '53102001', accountName: 'رسوم بنكية',                                accountNameEn: 'Bank Charges',                     parentCode: '53102', type: 'expense',   isGroup: L, statementType: PL },
+      { accountCode: '53103001', accountName: 'خسائر فروق العملة',                         accountNameEn: 'Foreign Currency Losses',          parentCode: '53103', type: 'expense',   isGroup: L, statementType: PL },
     ];
     for (const acc of defaults) await addDoc(collection(db, 'chart_of_accounts'), { ...acc, status: 'active' });
   };
@@ -248,7 +318,9 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
               level >= 3 && 'text-sm',
               acc.status === 'disabled' && 'opacity-40 grayscale'
             )}
-            style={{ [dir === 'rtl' ? 'paddingRight' : 'paddingLeft']: `${level * 20 + 16}px` }}
+            style={dir === 'rtl'
+              ? { paddingRight: `${level * 20 + 16}px` }
+              : { paddingLeft:  `${level * 20 + 16}px` }}
             onClick={() => acc.isGroup && toggleGroup(acc.accountCode)}
           >
             {acc.isGroup ? (isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : <div className="w-3.5" />}
@@ -285,6 +357,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
                                            (language === 'ar' ? 'مصروفات' : 'Exp')}
               </span>
               <button
+                type="button"
                 onClick={(e) => { e.stopPropagation(); handleToggleStatus(acc); }}
                 className={cn('text-[10px] px-2 py-0.5 rounded font-bold transition-colors', acc.status === 'disabled' ? 'bg-green-600/20 text-green-500 hover:bg-green-600/30' : 'bg-red-600/20 text-red-500 hover:bg-red-600/30')}
               >
@@ -327,7 +400,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
             />
           </div>
           <div className="flex gap-2">
-            <button onClick={handleExportExcel} className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
+            <button type="button" onClick={handleExportExcel} className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
               <FileDown size={14} />
               {language === 'ar' ? 'تصدير إكسل' : 'Export Excel'}
             </button>
@@ -337,7 +410,7 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
               {isSubmitting && <Loader2 className="animate-spin" size={12} />}
               <input type="file" className="hidden" accept=".xlsx, .xls" onChange={handleImportExcel} />
             </label>
-            <button onClick={() => { setEditingAccount(null); setNewAccountParent(null); setIsAccountModalOpen(true); }} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
+            <button type="button" onClick={() => { setEditingAccount(null); setNewAccountParent(null); setIsAccountModalOpen(true); }} className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-xs font-medium transition-colors flex items-center gap-2 text-white">
               {language === 'ar' ? 'إضافة حساب' : 'Add Account'}
             </button>
             <button
