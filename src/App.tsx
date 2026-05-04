@@ -3,17 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { Dashboard } from './components/Dashboard';
-import { GeneralLedger } from './components/GeneralLedger';
-import { Projects } from './components/Projects';
-import { BOQ } from './components/BOQ';
-import { Billing } from './components/Billing';
-import { ActualCosts } from './components/ActualCosts';
-import { Purchases } from './components/Purchases';
-import { Reports } from './components/Reports';
-import { Settings } from './components/Settings';
+import { WindowManager, type AppWindow } from './components/WindowManager';
 import { Login } from './components/Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -25,28 +17,100 @@ import { type UserPermissions, ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from './ty
 
 export default function App() {
   const { dir, language, theme } = useLanguage();
-  const [activeTab, setActiveTab] = useState('dashboard');
   const [user, setUser] = useState<import('firebase/auth').User | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'user'>('user');
   const [userPermissions, setUserPermissions] = useState<UserPermissions>(ALL_PERMISSIONS);
   const [loading, setLoading] = useState(true);
 
+  // ── Window management ────────────────────────────────────────────────────────
+  const [windows, setWindows] = useState<AppWindow[]>([]);
+  const zBase = useRef(10);
+
+  const nextZ = () => {
+    zBase.current += 1;
+    return zBase.current;
+  };
+
+  const openWindow = useCallback((moduleId: string) => {
+    setWindows(prev => {
+      const existing = prev.find(w => w.moduleId === moduleId);
+      if (existing) {
+        // Restore if minimized, then focus
+        return prev.map(w =>
+          w.id === existing.id
+            ? { ...w, windowState: w.windowState === 'minimized' ? 'normal' : w.windowState, zIndex: nextZ() }
+            : w
+        );
+      }
+
+      const cascade   = (prev.length % 6) * 32;
+      const available = { w: Math.max(300, window.innerWidth - 256), h: window.innerHeight };
+      const winW = Math.min(1280, Math.round(available.w * 0.88));
+      const winH = Math.round(available.h * 0.88);
+
+      const newWin: AppWindow = {
+        id: `${moduleId}-${Date.now()}`,
+        moduleId,
+        windowState: 'normal',
+        position: { x: cascade, y: cascade },
+        size:     { width: winW, height: winH },
+        zIndex:   nextZ(),
+      };
+      return [...prev, newWin];
+    });
+  }, []);
+
+  const closeWindow = useCallback((id: string) => {
+    setWindows(prev => prev.filter(w => w.id !== id));
+  }, []);
+
+  const minimizeWindow = useCallback((id: string) => {
+    setWindows(prev => prev.map(w => w.id === id ? { ...w, windowState: 'minimized' } : w));
+  }, []);
+
+  const maximizeToggle = useCallback((id: string) => {
+    setWindows(prev => prev.map(w => {
+      if (w.id !== id) return w;
+      return {
+        ...w,
+        windowState: w.windowState === 'maximized' ? 'normal' : 'maximized',
+        zIndex: nextZ(),
+      };
+    }));
+  }, []);
+
+  const focusWindow = useCallback((id: string) => {
+    setWindows(prev => {
+      const win = prev.find(w => w.id === id);
+      if (!win || win.zIndex === zBase.current) return prev; // already on top
+      return prev.map(w => w.id === id ? { ...w, zIndex: nextZ() } : w);
+    });
+  }, []);
+
+  const updateWindowPosition = useCallback((id: string, pos: { x: number; y: number }) => {
+    setWindows(prev => prev.map(w => w.id === id ? { ...w, position: pos } : w));
+  }, []);
+
+  const restoreMinimized = useCallback((id: string) => {
+    setWindows(prev => prev.map(w =>
+      w.id === id ? { ...w, windowState: 'normal', zIndex: nextZ() } : w
+    ));
+  }, []);
+
+  // ── Auth ─────────────────────────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
         if (firebaseUser) {
-          const userRef = doc(db, 'users', firebaseUser.uid);
+          const userRef  = doc(db, 'users', firebaseUser.uid);
           const userSnap = await getDoc(userRef);
 
           if (!userSnap.exists()) {
-            // Check for pre-registered permissions set by admin
-            const permRef = doc(db, 'user_permissions', firebaseUser.email!);
+            const permRef  = doc(db, 'user_permissions', firebaseUser.email!);
             const permSnap = await getDoc(permRef);
 
-            const role = permSnap.exists() ? permSnap.data().role : 'user';
-            const permissions = permSnap.exists()
-              ? permSnap.data().permissions
-              : DEFAULT_PERMISSIONS;
+            const role        = permSnap.exists() ? permSnap.data().role : 'user';
+            const permissions = permSnap.exists() ? permSnap.data().permissions : DEFAULT_PERMISSIONS;
 
             await setDoc(userRef, {
               email: firebaseUser.email,
@@ -73,6 +137,7 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // ── Render ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="h-screen w-full bg-[#0a0a0a] flex flex-col items-center justify-center text-white">
@@ -84,51 +149,36 @@ export default function App() {
     );
   }
 
-  if (!user) {
-    return <Login />;
-  }
+  if (!user) return <Login />;
 
-  const isAdmin = userRole === 'admin';
+  const isAdmin      = userRole === 'admin';
+  const openModuleIds = new Set(windows.map(w => w.moduleId));
 
   return (
     <div
       className={cn(
         'flex h-screen overflow-hidden',
-        theme === 'dark' ? 'bg-[#0a0a0a]' : theme === 'soft' ? 'bg-[#eceff1]' : 'bg-gray-50'
+        theme === 'dark' ? 'bg-[#0a0a0a]' : theme === 'soft' ? 'bg-[#dde3e8]' : 'bg-gray-100'
       )}
       dir={dir}
     >
       <Sidebar
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
+        openModuleIds={openModuleIds}
+        openWindow={openWindow}
         permissions={userPermissions}
         isAdmin={isAdmin}
       />
 
-      <main className="flex-1 overflow-y-auto">
-        {activeTab === 'dashboard' && <Dashboard />}
-        {activeTab === 'ledger' && <GeneralLedger />}
-        {activeTab === 'projects' && <Projects />}
-        {activeTab === 'boq' && <BOQ />}
-        {activeTab === 'billing' && <Billing />}
-        {activeTab === 'costs' && <ActualCosts />}
-        {activeTab === 'suppliers' && <Purchases />}
-        {activeTab === 'reports' && <Reports />}
-        {activeTab === 'settings' && <Settings />}
-        {![
-          'dashboard', 'ledger', 'projects', 'boq', 'billing',
-          'costs', 'suppliers', 'reports', 'settings',
-        ].includes(activeTab) && (
-          <div className="h-full flex flex-col items-center justify-center text-gray-500 p-8 text-center">
-            <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center mb-4">
-              <Loader2 size={32} />
-            </div>
-            <h3 className="text-xl font-bold text-gray-300">قيد التطوير</h3>
-            <p className="max-w-md mt-2">
-              جاري العمل على موديول &quot;{activeTab}&quot; لربطه بقاعدة البيانات الجديدة.
-            </p>
-          </div>
-        )}
+      <main className="flex-1 flex overflow-hidden min-w-0">
+        <WindowManager
+          windows={windows}
+          onClose={closeWindow}
+          onMinimize={minimizeWindow}
+          onMaximizeToggle={maximizeToggle}
+          onFocus={focusWindow}
+          onUpdatePosition={updateWindowPosition}
+          onRestoreMinimized={restoreMinimized}
+        />
       </main>
     </div>
   );
