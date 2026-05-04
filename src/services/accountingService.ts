@@ -308,6 +308,7 @@ export const accountingService = {
     whtAmount: number;
     totalAmount: number;
     supplierName: string;
+    supplierAccountCode?: string;
     expenseAccountCode: string;
     expenseAccountName: string;
     description: string;
@@ -317,12 +318,13 @@ export const accountingService = {
     transactionId?: string;
   }) {
     if (!auth.currentUser) throw new Error('User not authenticated');
+    const supplierCode = params.supplierAccountCode || AccountCodes.SUPPLIERS;
     const entries: JournalEntry[] = [
       // Debits — تكلفة الشراء وضريبة المدخلات
       { accountCode: params.expenseAccountCode, accountName: params.expenseAccountName,                              debit: params.baseAmount,  credit: 0 },
       { accountCode: AccountCodes.VAT_INPUT,    accountName: 'ضريبة القيمة المضافة - مدخلات',                      debit: params.vatAmount,   credit: 0 },
       // Credits — المورد والضريبة المخصومة
-      { accountCode: AccountCodes.SUPPLIERS,    accountName: `موردين - ${params.supplierName}`,                    debit: 0, credit: params.totalAmount },
+      { accountCode: supplierCode,              accountName: `موردين - ${params.supplierName}`,                    debit: 0, credit: params.totalAmount },
       { accountCode: AccountCodes.WHT_PAYABLE,  accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',                 debit: 0, credit: params.whtAmount }
     ];
 
@@ -357,6 +359,7 @@ export const accountingService = {
     manpowerLevy: number;
     advancePaymentRecovery: number;
     supplierName: string;
+    supplierAccountCode?: string;
     description: string;
     projectId: string;
     contractId: string;
@@ -364,12 +367,13 @@ export const accountingService = {
     transactionId?: string;
   }) {
     if (!auth.currentUser) throw new Error('User not authenticated');
+    const subcontractorCode = params.supplierAccountCode || AccountCodes.SUBCONTRACTORS;
     const entries: JournalEntry[] = [
       // Debits — تكلفة مقاول الباطن وضريبة المدخلات
       { accountCode: AccountCodes.EXPENSE_SUBCONTRACTOR,      accountName: `تكاليف مقاولو الباطن - ${params.supplierName}`, debit: params.worksValue,      credit: 0 },
       { accountCode: AccountCodes.VAT_INPUT,                  accountName: 'ضريبة القيمة المضافة - مدخلات',                debit: params.vatAmount,       credit: 0 },
       // Credits — مستحقات مقاول الباطن والاستقطاعات
-      { accountCode: AccountCodes.SUBCONTRACTORS,             accountName: `مقاولو الباطن - ${params.supplierName}`,       debit: 0, credit: params.netPayable },
+      { accountCode: subcontractorCode,                        accountName: `مقاولو الباطن - ${params.supplierName}`,       debit: 0, credit: params.netPayable },
       { accountCode: AccountCodes.RETENTION_PAYABLE,          accountName: 'محتجز ضمان الأعمال - مقاولون',                debit: 0, credit: params.execGuarantee },
       { accountCode: AccountCodes.WHT_PAYABLE,                accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',          debit: 0, credit: params.whtAmount },
       { accountCode: AccountCodes.SOCIAL_INSURANCE_PAYABLE,   accountName: 'التأمينات الاجتماعية (دائن)',                 debit: 0, credit: params.labourInsurance },

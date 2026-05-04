@@ -43,21 +43,23 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 | `BOQ.tsx` | `boq_items`, `contracts`, `billing` (progress) |
 | `Billing.tsx` | `billing`, `boq_items`, `contracts` |
 | `GeneralLedger.tsx` | `transactions`, `chart_of_accounts`, `contracts`, `projects` |
-| `Purchases.tsx` | `purchase_transactions`, `suppliers` |
+| `ActualCosts.tsx` | `purchase_transactions`, `suppliers`, `chart_of_accounts`, `boq_items`, `contracts`, `transactions` |
+| `Purchases.tsx` | `purchase_transactions`, `suppliers` (legacy — kept for window routing only) |
 | `Reports.tsx` | reads all collections + `contracts` for contract filter |
 | `Settings.tsx` | `settings/company_info`, `chart_of_accounts` |
 | `Dashboard.tsx` | `projects`, `transactions`, `boq_items` |
+| `LiquidityReport.tsx` | `billing`, `transactions`, `contracts`, `projects`, `chart_of_accounts` |
 
 ### Data Integrity Rules
 
 - **Billing → GL**: Every non-draft IPC write goes through `accountingService.recordIPC()` which creates/updates a `transactions` doc and stores its ID as `billing.transactionId`.
 - **Draft revert**: Uses `writeBatch` to atomically soft-delete the GL entry and clear `transactionId` on the billing doc in one operation (`Billing.tsx`).
-- **Supplier creation**: Uses `writeBatch` to atomically create the supplier doc and its `chart_of_accounts` entry in one operation (`Purchases.tsx → handleSaveSupplier`).
+- **Supplier creation**: Uses `writeBatch` to atomically create the supplier doc and its `chart_of_accounts` entry in one operation (`ActualCosts.tsx → handleSaveSupplier`). The supplier type (`supplier` vs `subcontractor`) determines the parent code (`21101` vs `21102`) and sequential account code base (`21101001` vs `21102001`).
 - **Soft deletes**: All deletions set `isDeleted: true`. Never hard-delete.
 - **BOQ progress**: Derived from `billing` docs with `status IN ['submitted','approved','paid']`. Filtered via `useMemo` to exclude phantom entries from deleted BOQ items.
 - **Batched Writes rule**: Any operation that writes to more than one collection must use `writeBatch` to guarantee atomicity.
 - **projectId vs costCenterId**: On `transactions`, `costCenterId` = contract ID and `projectId` = actual project ID. Never set `projectId` to a contract ID. In `GLJournalEntries`, derive `projectId` from `contracts.find(c => c.id === costCenterId)?.projectId`.
-- **Budget alert**: `Purchases.tsx` computes `boqBudgetByContract` and `spentByContract` via `useMemo` (no extra Firestore reads). A yellow warning banner appears when `spent + newAmount > BOQ budget` for the selected contract — non-blocking, user can still save.
+- **Budget alert**: `ActualCosts.tsx` computes `boqBudgetByContract` and `spentByContract` via `useMemo` (no extra Firestore reads). A yellow warning banner appears when `spent + newAmount > BOQ budget` for the selected contract — non-blocking, user can still save.
 - **Dashboard collection split**: `Dashboard.tsx` distinguishes two types of cash inflows. `totalCollected` (shown in التحصيلات النقدية card) includes both IPC collections (`RECEIVABLES` credit) and advance payments (`ADVANCE_PAYMENT` credit). `ipcCollected` tracks only IPC receipts. `pendingBilling = totalRevenue - ipcCollected` — advance payments must NOT reduce pending billing because they are a liability, not a reduction of IPC receivables. Cash/bank detection uses `startsWith('121')` to cover all banks (`12101xxx`) and cash funds (`12102xxx`).
 - **Sub-account shortcut**: In `GLChartOfAccounts.tsx`, hovering a row shows a green `+` button. Clicking it opens `AccountModal` with `defaultParentCode` and `defaultType` pre-filled from the parent account, so the user doesn't have to select the parent manually.
 
@@ -141,9 +143,10 @@ Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field 
 - Billing default rates are in `src/constants/billingDefaults.ts` (`BILLING_DEFAULTS`). Never hardcode `14`, `10`, `1`, `5`, or `0.03` inline.
 
 ### Account Code Generation
-- Supplier `chart_of_accounts` entries must use **8-digit sequential codes** under `parentCode: '21101'` (e.g. `21101002`, `21101003`…). Never use `Math.random()` to generate account codes — it produces duplicate and non-compliant codes.
+- Supplier `chart_of_accounts` entries must use **8-digit sequential codes** under `parentCode: '21101'` for suppliers or `parentCode: '21102'` for subcontractors (e.g. `21101002`, `21101003`…, `21102002`…). Never use `Math.random()` to generate account codes — it produces duplicate and non-compliant codes.
 - Every `chart_of_accounts` entry created for a supplier must include a `supplierId` field linking back to the supplier doc.
 - Always use `AccountCodes` enum constants — never hardcode account code strings.
+- When recording journal entries for purchase invoices or subcontractor IPCs, look up the supplier's specific COA account via `accounts.find(a => a.supplierId === supplierId && a.accountCode.startsWith('211'))` and pass it as `supplierAccountCode` to `recordPurchaseInvoice` / `recordSubcontractorIPC`. Both functions accept an optional `supplierAccountCode` and fall back to the generic `AccountCodes.SUPPLIERS` / `AccountCodes.SUBCONTRACTORS` if not provided.
 
 ### Soft Deletes & Batching
 - All deletions must use `isDeleted: true` (soft delete). Never call `deleteDoc()` directly on user data.
@@ -214,6 +217,39 @@ Firestore offline persistence is enabled in production via `initializeFirestore`
 - Always use `normalizeDate(item.startDate)` from `src/lib/utils.ts` before any date arithmetic to avoid UTC timezone shifts.
 - End date is calculated as: `new Date(sy, sm-1, sd + expectedDuration)` using local-midnight construction — never use `getTime() + ms` arithmetic on ISO strings.
 - Work status has four states: **done** (≥99.9% progress), **not started** (start > today), **late** (end < today and not complete), **running** (in progress).
+
+## Actual Costs Module
+
+`ActualCosts.tsx` consolidates three transaction types into a single tabbed module:
+
+| Tab | `type` value | Description |
+|-----|-------------|-------------|
+| فاتورة مشتريات | `invoice` | Purchase invoice from a supplier — calls `accountingService.recordPurchaseInvoice()` |
+| مستخلص مقاول | `ipc` | Subcontractor IPC (BOQ-based) — calls `accountingService.recordSubcontractorIPC()` |
+| تسوية عهدة | `custody` | Renders `<GLCustodySettlement>` inline — no `purchase_transactions` write |
+
+- All invoice and IPC records are stored in `purchase_transactions` with `type` = `'invoice'` or `'ipc'` and `isDeleted: false`.
+- The custody tab does **not** write to `purchase_transactions`; it writes directly to `transactions` via `accountingService.createTransaction()`.
+- The `GLCustodySettlement` component is embedded in the custody tab and receives `contracts` as a prop so each expense item can be assigned a `contractId` (cost center). Items are grouped by `contractId` on submit; each group becomes its own balanced transaction with `costCenterId` set.
+
+## Custody Settlement — Contract Allocation
+
+`GLCustodySettlement.tsx` accepts `contracts: { id, contractName, contractNumber }[]`. Each expense item row has a **مركز التكلفة / Cost Center** dropdown. On submit, items are grouped by `contractId`:
+- Items in the same group → one transaction with `costCenterId = contractId` and the custody account credited for that group's subtotal.
+- Items with no `contractId` → one transaction without `costCenterId`.
+
+This ensures each contract group is independently balanced and can be traced in the GL by cost center.
+
+## Liquidity Report
+
+`LiquidityReport.tsx` is a read-only report module accessible from the Sidebar footer (Droplets icon). It shows:
+
+- **Summary cards**: live cash & banks balance (net debit on all `111xxx` accounts), total billed IPCs, total collected, net uncollected.
+- **Per-contract table**: contract name, project, billed (submitted/approved/paid billing docs), collections (cash debit + RECEIVABLES credit per contract), advances (ADVANCE_PAYMENT credits), retention, net uncollected, and a collection % progress bar.
+
+The report loads `billing`, `transactions`, `contracts`, `projects`, and `chart_of_accounts` via `onSnapshot` listeners. All computation is in `useMemo`.
+
+The `liquidity` module ID is registered in `WindowManager` (`MODULE_COMPONENTS` + `MODULE_LABELS`). The Sidebar footer button highlights when the window is open (`openModuleIds.has('liquidity')`).
 
 ## Known Constraints
 

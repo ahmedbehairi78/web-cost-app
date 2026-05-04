@@ -275,6 +275,7 @@ export function ActualCosts() {
     e.preventDefault();
     const supplier = suppliers.find(s => s.id === formData.supplierId);
     const expenseAccount = accounts.find(a => a.id === formData.expenseAccountId);
+    const supplierCoaAccount = accounts.find(a => a.supplierId === formData.supplierId && a.accountCode.startsWith('211'));
     const { worksValue, vat, exec, wht, insurance, levy, advance, net } =
       activeTab === 'invoice'
         ? { worksValue: formData.amount, vat: formData.amount * (formData.vatPct / 100), wht: formData.amount * (formData.whtPct / 100), exec: 0, insurance: 0, levy: 0, advance: 0, net: formData.amount + (formData.amount * (formData.vatPct / 100)) - (formData.amount * (formData.whtPct / 100)) }
@@ -284,7 +285,8 @@ export function ActualCosts() {
       if (activeTab === 'invoice' && expenseAccount) {
         transactionId = await accountingService.recordPurchaseInvoice({
           baseAmount: formData.amount, vatAmount: vat, whtAmount: wht, totalAmount: net,
-          supplierName: supplier?.name || '', expenseAccountCode: expenseAccount.accountCode,
+          supplierName: supplier?.name || '', supplierAccountCode: supplierCoaAccount?.accountCode,
+          expenseAccountCode: expenseAccount.accountCode,
           expenseAccountName: expenseAccount.accountName,
           description: formData.description || `${t('invoice_entry')} - ${supplier?.name}`,
           projectId: formData.projectId, contractId: formData.contractId, date: formData.date
@@ -293,7 +295,7 @@ export function ActualCosts() {
         transactionId = await accountingService.recordSubcontractorIPC({
           worksValue, vatAmount: vat, netPayable: net, execGuarantee: exec, whtAmount: wht,
           labourInsurance: insurance, manpowerLevy: levy, advancePaymentRecovery: advance,
-          supplierName: supplier?.name || '',
+          supplierName: supplier?.name || '', supplierAccountCode: supplierCoaAccount?.accountCode,
           description: formData.description || `${t('ipc_entry')} - ${supplier?.name}`,
           projectId: formData.projectId, contractId: formData.contractId, date: formData.date
         });

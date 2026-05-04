@@ -6,10 +6,12 @@ import {
   Receipt,
   TrendingUp,
   Settings,
+  Users,
   BarChart3,
   BookOpen,
   LogOut,
   Languages,
+  Droplets,
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -31,6 +33,7 @@ const ALL_MENU_ITEMS = [
   { id: 'boq',       labelKey: 'boq',       icon: FileText },
   { id: 'costs',     labelKey: 'costs',     icon: Receipt },
   { id: 'billing',   labelKey: 'billing',   icon: TrendingUp },
+  { id: 'suppliers', labelKey: 'suppliers', icon: Users },
   { id: 'reports',   labelKey: 'reports',   icon: BarChart3 },
   { id: 'settings',  labelKey: 'settings',  icon: Settings },
 ] as const;
@@ -117,6 +120,17 @@ export function Sidebar({ openModuleIds, openWindow, permissions, isAdmin }: Sid
       {/* Footer */}
       <div className={cn('p-4 border-t space-y-1',
         theme === 'dark' ? 'border-gray-800' : theme === 'soft' ? 'border-[#cfd8dc]' : 'border-gray-200')}>
+        <button
+          type="button"
+          onClick={() => openWindow('liquidity')}
+          className={cn(
+            ghostBtnCls,
+            openModuleIds.has('liquidity') ? 'bg-blue-600 text-white hover:bg-blue-500' : '',
+          )}
+        >
+          <Droplets size={20} className="flex-shrink-0" />
+          <span className="font-medium">{language === 'ar' ? 'تقرير السيولة' : 'Liquidity'}</span>
+        </button>
         <button
           type="button"
           onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
