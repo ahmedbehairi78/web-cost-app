@@ -16,22 +16,29 @@ interface Transaction {
   createdBy: string;
 }
 
+interface ContractOption {
+  id: string;
+  contractName: string;
+  contractNumber: string;
+}
+
 interface Props {
   accounts: Account[];
   transactions: Transaction[];
+  contracts: ContractOption[];
   theme: string;
   language: string;
   dir: string;
 }
 
-export function GLCustodySettlement({ accounts, transactions, theme, language, dir }: Props) {
+export function GLCustodySettlement({ accounts, transactions, contracts, theme, language, dir }: Props) {
   const [selectedCustodyAccount, setSelectedCustodyAccount] = useState('');
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [settlement, setSettlement] = useState({
     date: new Date().toISOString().split('T')[0],
     description: language === 'ar' ? 'تسوية عهدة' : 'Custody Settlement',
-    items: [{ id: crypto.randomUUID(), accountCode: '', accountName: '', amount: 0, description: '' }]
+    items: [{ id: crypto.randomUUID(), contractId: '', accountCode: '', accountName: '', amount: 0, description: '' }]
   });
 
   const custodyBalance = useMemo(() => {
@@ -44,7 +51,7 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
 
   const totalSettlement = settlement.items.reduce((s, i) => s + Number(i.amount), 0);
 
-  const handleItemChange = (idx: number, field: keyof typeof settlement.items[0], value: string | number) => {
+  const handleItemChange = (idx: number, field: string, value: string | number) => {
     const next = [...settlement.items];
     next[idx] = { ...next[idx], [field]: value };
     if (field === 'accountCode') {
@@ -60,16 +67,32 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
     setIsSubmitting(true);
     try {
       const custodyAcc = accounts.find(a => a.accountCode === selectedCustodyAccount);
-      await accountingService.createTransaction({
-        date: settlement.date,
-        description: settlement.description,
-        reference: `SET-${Date.now().toString().slice(-6)}`,
-        entries: [
-          { accountCode: selectedCustodyAccount, accountName: custodyAcc?.accountName || '', debit: 0, credit: totalSettlement },
-          ...settlement.items.map(item => ({ accountCode: item.accountCode, accountName: item.accountName, debit: Number(item.amount), credit: 0 }))
-        ]
-      });
-      setSettlement({ date: new Date().toISOString().split('T')[0], description: language === 'ar' ? 'تسوية عهدة' : 'Custody Settlement', items: [{ id: crypto.randomUUID(), accountCode: '', accountName: '', amount: 0, description: '' }] });
+      const ref = `SET-${Date.now().toString().slice(-6)}`;
+
+      // Group items by contractId — each group becomes its own balanced transaction
+      const groups = new Map<string, typeof settlement.items>();
+      for (const item of settlement.items) {
+        const key = item.contractId || '';
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key)!.push(item);
+      }
+
+      for (const [contractId, items] of groups) {
+        const groupTotal = items.reduce((s, i) => s + Number(i.amount), 0);
+        if (groupTotal <= 0) continue;
+        await accountingService.createTransaction({
+          date: settlement.date,
+          description: settlement.description,
+          reference: ref,
+          ...(contractId ? { costCenterId: contractId } : {}),
+          entries: [
+            { accountCode: selectedCustodyAccount, accountName: custodyAcc?.accountName || '', debit: 0, credit: groupTotal },
+            ...items.map(item => ({ accountCode: item.accountCode, accountName: item.accountName, debit: Number(item.amount), credit: 0 }))
+          ]
+        });
+      }
+
+      setSettlement({ date: new Date().toISOString().split('T')[0], description: language === 'ar' ? 'تسوية عهدة' : 'Custody Settlement', items: [{ id: crypto.randomUUID(), contractId: '', accountCode: '', accountName: '', amount: 0, description: '' }] });
       alert(language === 'ar' ? 'تم حفظ التسوية بنجاح' : 'Settlement saved successfully');
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'transactions');
@@ -96,6 +119,7 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
       const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
       const imported = (data as Record<string, unknown>[]).map(row => ({
         id: crypto.randomUUID(),
+        contractId: '',
         accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
         accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),
         amount: Number(row['Amount'] || row['المبلغ'] || 0),
@@ -165,12 +189,27 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
             <div className="space-y-4">
               <div className="flex justify-between items-center">
                 <h4 className="font-bold text-sm">{language === 'ar' ? 'بنود المصروفات' : 'Expense Items'}</h4>
-                <button type="button" onClick={() => setSettlement({ ...settlement, items: [...settlement.items, { id: crypto.randomUUID(), accountCode: '', accountName: '', amount: 0, description: '' }] })} className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1"><Plus size={14} />{language === 'ar' ? 'إضافة بند' : 'Add Item'}</button>
+                <button type="button" onClick={() => setSettlement({ ...settlement, items: [...settlement.items, { id: crypto.randomUUID(), contractId: '', accountCode: '', accountName: '', amount: 0, description: '' }] })} className="text-xs text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1"><Plus size={14} />{language === 'ar' ? 'إضافة بند' : 'Add Item'}</button>
               </div>
               <div className="space-y-3">
                 {settlement.items.map((item, idx) => (
                   <div key={item.id} className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end bg-gray-900/40 p-3 rounded-lg border border-gray-800">
-                    <div className="md:col-span-4 space-y-1">
+                    <div className="md:col-span-3 space-y-1">
+                      <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'مركز التكلفة' : 'Cost Center'}</label>
+                      <SearchableSelect
+                        value={item.contractId}
+                        onChange={(v) => handleItemChange(idx, 'contractId', v)}
+                        theme={theme}
+                        dir={dir}
+                        placeholder={language === 'ar' ? '--- بدون مركز ---' : '--- No Center ---'}
+                        options={contracts.map(c => ({
+                          value: c.id,
+                          secondary: c.contractNumber,
+                          label: c.contractName,
+                        }))}
+                      />
+                    </div>
+                    <div className="md:col-span-3 space-y-1">
                       <div className="flex justify-between items-center">
                         <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'مصروف' : 'Expense Account'}</label>
                         <button type="button" onClick={() => setIsAccountModalOpen(true)} className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"><Plus size={10} />{language === 'ar' ? 'جديد' : 'New'}</button>
@@ -196,7 +235,7 @@ export function GLCustodySettlement({ accounts, transactions, theme, language, d
                       <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'المبلغ' : 'Amount'}</label>
                       <input type="number" className={cn(inputCls, 'text-blue-400')} value={item.amount} onChange={(e) => handleItemChange(idx, 'amount', e.target.value)} />
                     </div>
-                    <div className="md:col-span-5 space-y-1">
+                    <div className="md:col-span-3 space-y-1">
                       <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'ملاحظات' : 'Notes'}</label>
                       <input type="text" className={inputCls} value={item.description} onChange={(e) => handleItemChange(idx, 'description', e.target.value)} />
                     </div>

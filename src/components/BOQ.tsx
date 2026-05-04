@@ -17,7 +17,7 @@ import { BOQItemFormModal } from './boq/BOQItemFormModal';
 import { ContractFormModal } from './boq/ContractFormModal';
 import { collection, onSnapshot, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { cn } from '../lib/utils';
+import { cn, normalizeDate } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
@@ -739,7 +739,7 @@ export function BOQ() {
                   <td className="p-4 text-xs text-gray-400">{item.unit}</td>
                   <td className="p-4 text-xs font-bold">{item.tenderQty.toLocaleString()}</td>
                   <td className="p-4 text-[10px] font-mono text-gray-400">
-                    {item.startDate ? new Date(item.startDate).toLocaleDateString(locale) : '-'}
+                    {item.startDate ? normalizeDate(item.startDate) : '-'}
                   </td>
                   <td className="p-4 text-[10px] font-mono">
                     {item.expectedDuration ? (
@@ -753,8 +753,9 @@ export function BOQ() {
                     "p-4 text-[10px] font-mono font-bold",
                     (() => {
                       if (!item.startDate || !item.expectedDuration) return "text-gray-500";
-                      const start = new Date(item.startDate);
-                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      const [sy, sm, sd] = normalizeDate(item.startDate).split('-').map(Number);
+                      const start = new Date(sy, sm - 1, sd);
+                      const end = new Date(sy, sm - 1, sd + item.expectedDuration);
                       const totalExecuted = progressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
                       const isDelayed = end < new Date() && progressPct < 99.9;
@@ -763,8 +764,8 @@ export function BOQ() {
                   )}>
                     {(() => {
                       if (!item.startDate || !item.expectedDuration) return '-';
-                      const start = new Date(item.startDate);
-                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      const [sy, sm, sd] = normalizeDate(item.startDate).split('-').map(Number);
+                      const end = new Date(sy, sm - 1, sd + item.expectedDuration);
                       return end.toLocaleDateString(locale);
                     })()}
                   </td>
@@ -793,19 +794,31 @@ export function BOQ() {
                   <td className="p-4">
                     {(() => {
                       if (!item.startDate || !item.expectedDuration) return null;
-                      const start = new Date(item.startDate);
-                      const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
+                      const [sy, sm, sd] = normalizeDate(item.startDate).split('-').map(Number);
+                      const start = new Date(sy, sm - 1, sd);
+                      const end = new Date(sy, sm - 1, sd + item.expectedDuration);
+                      const now = new Date(); now.setHours(0, 0, 0, 0);
                       const totalExecuted = progressMap[item.id] || 0;
                       const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
-                      
+
                       const isCompleted = progressPct >= 99.9;
-                      const isDelayed = end < new Date() && !isCompleted;
+                      const notStarted = start > now;
+                      const isDelayed = end < now && !isCompleted;
 
                       if (isCompleted) {
                         return (
                           <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full w-fit">
                             <CheckCircle2 size={8} />
                             {t('done')}
+                          </div>
+                        );
+                      }
+
+                      if (notStarted) {
+                        return (
+                          <div className="flex items-center gap-1 text-[8px] font-bold text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded-full w-fit">
+                            <Clock size={8} />
+                            {language === 'ar' ? 'لم يبدأ' : 'Not started'}
                           </div>
                         );
                       }

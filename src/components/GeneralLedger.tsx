@@ -127,7 +127,7 @@ export function GeneralLedger() {
         <GLAccountStatement transactions={transactions} accounts={accounts} theme={theme} language={language} dir={dir} />
       )}
       {activeSubTab === 'custody' && (
-        <GLCustodySettlement accounts={accounts} transactions={transactions} theme={theme} language={language} dir={dir} />
+        <GLCustodySettlement accounts={accounts} transactions={transactions} contracts={contracts} theme={theme} language={language} dir={dir} />
       )}
     </div>
   );

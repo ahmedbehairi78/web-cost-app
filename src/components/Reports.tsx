@@ -95,7 +95,8 @@ export function Reports() {
   const [activeReport, setActiveReport] = useState<'overview' | 'income' | 'budget' | 'balance' | 'trial' | 'time'>('overview');
   const [transactions, setTransactions] = useState<any[]>([]);
   const [accounts, setAccounts] = useState<any[]>([]);
-  const [showCharts, setShowCharts] = useState(true);
+  const [showCharts, setShowCharts] = useState(false);
+  const [showAnalytical, setShowAnalytical] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('all');
   const [selectedContractId, setSelectedContractId] = useState<string>('all');
   const [contracts, setContracts] = useState<Contract[]>([]);
@@ -1111,13 +1112,22 @@ export function Reports() {
               if (total === 0) return null;
               return (
                 <div className="mb-3">
-                  <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1 pb-1 border-b border-dashed border-gray-700/30">{label}</div>
-                  <BSLeafRows prefix={prefix} nature={nature} />
-                  {codes.length > 1 && (
-                    <div className="flex justify-between items-center py-1 text-sm font-semibold border-t border-gray-700/20 mt-1 pt-1">
-                      <span className="text-gray-400 text-xs">{language === 'ar' ? 'مجموع' : 'Sub-total'}</span>
-                      <span className="font-mono tabular-nums text-xs">{total.toLocaleString()}</span>
-                    </div>
+                  <div className="flex justify-between items-center text-xs font-bold uppercase tracking-wider text-gray-500 mb-1 pb-1 border-b border-dashed border-gray-700/30">
+                    <span>{label}</span>
+                    {!showAnalytical && (
+                      <span className="font-mono tabular-nums normal-case">{total.toLocaleString()}</span>
+                    )}
+                  </div>
+                  {showAnalytical && (
+                    <>
+                      <BSLeafRows prefix={prefix} nature={nature} />
+                      {codes.length > 1 && (
+                        <div className="flex justify-between items-center py-1 text-sm font-semibold border-t border-gray-700/20 mt-1 pt-1">
+                          <span className="text-gray-400 text-xs">{language === 'ar' ? 'مجموع' : 'Sub-total'}</span>
+                          <span className="font-mono tabular-nums text-xs">{total.toLocaleString()}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );
@@ -1148,39 +1158,58 @@ export function Reports() {
                   </p>
                 </div>
 
-                {/* Balance indicator */}
-                <div className={cn('flex items-center justify-center gap-3 mb-8 px-6 py-3 rounded-xl border w-fit mx-auto',
-                  bs.isBalanced
-                    ? (theme === 'dark' ? 'bg-green-900/10 border-green-900/30 text-green-400' : 'bg-green-50 border-green-200 text-green-700')
-                    : (theme === 'dark' ? 'bg-red-900/10 border-red-900/30 text-red-400'   : 'bg-red-50 border-red-200 text-red-700')
-                )}>
-                  <div className={cn('w-2.5 h-2.5 rounded-full animate-pulse', bs.isBalanced ? 'bg-green-500' : 'bg-red-500')} />
-                  <span className="font-bold text-sm uppercase tracking-wider">
-                    {bs.isBalanced
-                      ? (language === 'ar' ? 'الميزانية متوازنة' : 'Balanced')
-                      : (language === 'ar' ? `فرق: ${Math.abs(bs.totalAssets - bs.totalLE).toLocaleString()}` : `Out of balance by ${Math.abs(bs.totalAssets - bs.totalLE).toLocaleString()}`)}
-                  </span>
+                {/* Balance indicator + analytical toggle */}
+                <div className="flex items-center justify-center gap-4 mb-8 flex-wrap">
+                  <div className={cn('flex items-center gap-3 px-6 py-3 rounded-xl border',
+                    bs.isBalanced
+                      ? (theme === 'dark' ? 'bg-green-900/10 border-green-900/30 text-green-400' : 'bg-green-50 border-green-200 text-green-700')
+                      : (theme === 'dark' ? 'bg-red-900/10 border-red-900/30 text-red-400'   : 'bg-red-50 border-red-200 text-red-700')
+                  )}>
+                    <div className={cn('w-2.5 h-2.5 rounded-full animate-pulse', bs.isBalanced ? 'bg-green-500' : 'bg-red-500')} />
+                    <span className="font-bold text-sm uppercase tracking-wider">
+                      {bs.isBalanced
+                        ? (language === 'ar' ? 'الميزانية متوازنة' : 'Balanced')
+                        : (language === 'ar' ? `فرق: ${Math.abs(bs.totalAssets - bs.totalLE).toLocaleString()}` : `Out of balance by ${Math.abs(bs.totalAssets - bs.totalLE).toLocaleString()}`)}
+                    </span>
+                  </div>
+
+                  {/* Analytical toggle button */}
+                  <button
+                    type="button"
+                    onClick={() => setShowAnalytical(v => !v)}
+                    className={cn(
+                      'flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold border transition-all',
+                      showAnalytical
+                        ? (theme === 'dark' ? 'bg-blue-600/20 border-blue-600/40 text-blue-400' : 'bg-blue-50 border-blue-300 text-blue-700')
+                        : (theme === 'dark' ? 'bg-gray-800 border-gray-700 text-gray-400 hover:text-gray-200' : 'bg-white border-gray-300 text-gray-500 hover:text-gray-700')
+                    )}
+                  >
+                    <FileText size={15} />
+                    {showAnalytical
+                      ? (language === 'ar' ? 'إخفاء التحليلي' : 'Hide Details')
+                      : (language === 'ar' ? 'إظهار التحليلي' : 'Show Details')}
+                  </button>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
 
                   {/* ════ LEFT: ASSETS ════ */}
                   <div>
-                    {/* Current Assets */}
-                    <SectionTitle label={language === 'ar' ? 'الأصول المتداولة' : 'Current Assets'} color="text-blue-500 border-blue-500/40" />
-                    <BSGroup prefix="111" nature="debit" label={l3Label('111', language === 'ar' ? 'النقدية والبنوك' : 'Cash & Banks')} />
-                    <BSGroup prefix="112" nature="debit" label={l3Label('112', language === 'ar' ? 'العملاء والذمم المدينة' : 'Receivables')} />
-                    <BSGroup prefix="113" nature="debit" label={l3Label('113', language === 'ar' ? 'مدفوعات مقدمة' : 'Advances')} />
-                    <BSGroup prefix="114" nature="debit" label={l3Label('114', language === 'ar' ? 'حسابات ضريبية مدينة' : 'Tax Receivables')} />
-                    <BSGroup prefix="115" nature="debit" label={l3Label('115', language === 'ar' ? 'ذمم مدينة أخرى' : 'Other Receivables')} />
-                    <SectionTotal label={language === 'ar' ? 'مجموع الأصول المتداولة' : 'Total Current Assets'} value={bs.currentAssets} color="text-blue-500" />
+                    {/* Non-Current Assets — first per IFRS/Arabic standards */}
+                    <SectionTitle label={language === 'ar' ? 'الأصول غير المتداولة' : 'Non-Current Assets'} color="text-blue-400 border-blue-400/30" />
+                    <BSGroup prefix="121" nature="debit" label={l3Label('121', language === 'ar' ? 'الأصول الثابتة' : 'Fixed Assets')} />
+                    <BSGroup prefix="122" nature="debit" label={l3Label('122', language === 'ar' ? 'أصول أخرى' : 'Other Assets')} />
+                    <SectionTotal label={language === 'ar' ? 'مجموع الأصول غير المتداولة' : 'Total Non-Current Assets'} value={bs.nonCurrentAssets} color="text-blue-400" />
 
                     <div className="mt-8">
-                      {/* Non-Current Assets */}
-                      <SectionTitle label={language === 'ar' ? 'الأصول غير المتداولة' : 'Non-Current Assets'} color="text-blue-400 border-blue-400/30" />
-                      <BSGroup prefix="121" nature="debit" label={l3Label('121', language === 'ar' ? 'الأصول الثابتة' : 'Fixed Assets')} />
-                      <BSGroup prefix="122" nature="debit" label={l3Label('122', language === 'ar' ? 'أصول أخرى' : 'Other Assets')} />
-                      <SectionTotal label={language === 'ar' ? 'مجموع الأصول غير المتداولة' : 'Total Non-Current Assets'} value={bs.nonCurrentAssets} color="text-blue-400" />
+                      {/* Current Assets */}
+                      <SectionTitle label={language === 'ar' ? 'الأصول المتداولة' : 'Current Assets'} color="text-blue-500 border-blue-500/40" />
+                      <BSGroup prefix="111" nature="debit" label={l3Label('111', language === 'ar' ? 'النقدية والبنوك' : 'Cash & Banks')} />
+                      <BSGroup prefix="112" nature="debit" label={l3Label('112', language === 'ar' ? 'العملاء والذمم المدينة' : 'Receivables')} />
+                      <BSGroup prefix="113" nature="debit" label={l3Label('113', language === 'ar' ? 'مدفوعات مقدمة' : 'Advances')} />
+                      <BSGroup prefix="114" nature="debit" label={l3Label('114', language === 'ar' ? 'حسابات ضريبية مدينة' : 'Tax Receivables')} />
+                      <BSGroup prefix="115" nature="debit" label={l3Label('115', language === 'ar' ? 'ذمم مدينة أخرى' : 'Other Receivables')} />
+                      <SectionTotal label={language === 'ar' ? 'مجموع الأصول المتداولة' : 'Total Current Assets'} value={bs.currentAssets} color="text-blue-500" />
                     </div>
 
                     {/* Grand Total Assets */}
@@ -1192,20 +1221,20 @@ export function Reports() {
 
                   {/* ════ RIGHT: LIABILITIES & EQUITY ════ */}
                   <div>
-                    {/* Current Liabilities */}
-                    <SectionTitle label={language === 'ar' ? 'الخصوم المتداولة' : 'Current Liabilities'} color="text-red-500 border-red-500/40" />
-                    <BSGroup prefix="211" nature="credit" label={l3Label('211', language === 'ar' ? 'ذمم دائنة تجارية' : 'Trade Payables')} />
-                    <BSGroup prefix="212" nature="credit" label={l3Label('212', language === 'ar' ? 'محتجزات الضمان' : 'Retention Payables')} />
-                    <BSGroup prefix="213" nature="credit" label={l3Label('213', language === 'ar' ? 'دفعات مقدمة من العملاء' : 'Customer Advances')} />
-                    <BSGroup prefix="214" nature="credit" label={l3Label('214', language === 'ar' ? 'التزامات ضريبية' : 'Tax Liabilities')} />
-                    <BSGroup prefix="215" nature="credit" label={l3Label('215', language === 'ar' ? 'مستحقات أخرى' : 'Other Payables')} />
-                    <SectionTotal label={language === 'ar' ? 'مجموع الخصوم المتداولة' : 'Total Current Liabilities'} value={bs.currentLiab} color="text-red-500" />
+                    {/* Non-Current Liabilities — first per IFRS/Arabic standards */}
+                    <SectionTitle label={language === 'ar' ? 'الخصوم غير المتداولة' : 'Non-Current Liabilities'} color="text-red-400 border-red-400/30" />
+                    <BSGroup prefix="221" nature="credit" label={l3Label('221', language === 'ar' ? 'قروض طويلة الأجل' : 'Long-term Loans')} />
+                    <SectionTotal label={language === 'ar' ? 'مجموع الخصوم غير المتداولة' : 'Total Non-Current Liabilities'} value={bs.nonCurrentLiab} color="text-red-400" />
 
                     <div className="mt-8">
-                      {/* Non-Current Liabilities */}
-                      <SectionTitle label={language === 'ar' ? 'الخصوم غير المتداولة' : 'Non-Current Liabilities'} color="text-red-400 border-red-400/30" />
-                      <BSGroup prefix="221" nature="credit" label={l3Label('221', language === 'ar' ? 'قروض طويلة الأجل' : 'Long-term Loans')} />
-                      <SectionTotal label={language === 'ar' ? 'مجموع الخصوم غير المتداولة' : 'Total Non-Current Liabilities'} value={bs.nonCurrentLiab} color="text-red-400" />
+                      {/* Current Liabilities */}
+                      <SectionTitle label={language === 'ar' ? 'الخصوم المتداولة' : 'Current Liabilities'} color="text-red-500 border-red-500/40" />
+                      <BSGroup prefix="211" nature="credit" label={l3Label('211', language === 'ar' ? 'ذمم دائنة تجارية' : 'Trade Payables')} />
+                      <BSGroup prefix="212" nature="credit" label={l3Label('212', language === 'ar' ? 'محتجزات الضمان' : 'Retention Payables')} />
+                      <BSGroup prefix="213" nature="credit" label={l3Label('213', language === 'ar' ? 'دفعات مقدمة من العملاء' : 'Customer Advances')} />
+                      <BSGroup prefix="214" nature="credit" label={l3Label('214', language === 'ar' ? 'التزامات ضريبية' : 'Tax Liabilities')} />
+                      <BSGroup prefix="215" nature="credit" label={l3Label('215', language === 'ar' ? 'مستحقات أخرى' : 'Other Payables')} />
+                      <SectionTotal label={language === 'ar' ? 'مجموع الخصوم المتداولة' : 'Total Current Liabilities'} value={bs.currentLiab} color="text-red-500" />
                     </div>
 
                     <div className="mt-8">

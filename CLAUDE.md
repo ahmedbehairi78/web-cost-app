@@ -103,7 +103,7 @@ The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) a
 - IPC collection transactions: debit `BANK (11101001)` + credit `RECEIVABLES (11201001)`.
 - Advance payment received: debit `BANK (11101001)` + credit `ADVANCE_PAYMENT (21301001)`.
 - **Dashboard cash/bank detection**: uses `startsWith('111')` to cover all banks and cash funds — never `startsWith('12')`.
-- **Account code migration**: `src/services/migrateAccountCodes.ts` contains `migrateAccountCodes()` — run once from Settings → Database to fix existing transactions that used the old `12xxxxxx` asset codes.
+- **Account code migration**: `src/services/migrateAccountCodes.ts` contains `migrateAccountCodes()`, `patchMissingCoaAccounts()`, and `deduplicateCoaAccounts()` — these are maintenance utilities available via code only. The Settings UI buttons for these were removed after migrations completed.
 - ملف الـ seed الكامل لشجرة الحسابات (5 مستويات): `src/data/chartOfAccountsSeed.ts`. يحتوي على `seedChartOfAccounts()` لتهيئة Firestore.
 
 ### Permissions
@@ -200,6 +200,20 @@ Firestore offline persistence is enabled in production via `initializeFirestore`
 ## Fiscal Year Filter
 
 `GeneralLedger.tsx` holds a `fiscalYear` state (default: current year). The transactions Firestore query uses `where('date', '>=', '{year}-01-01')` + `where('date', '<=', '{year}-12-31')` to scope all loaded entries to the selected year. Changing the year resets `transactionLimit` to 50. The year selector UI lives in `GLJournalEntries.tsx` header. The existing `(isDeleted ASC, date DESC)` composite index covers this query — no new index needed.
+
+## Reports — Balance Sheet
+
+- **Presentation order** follows IFRS/Arabic standards: Non-Current Assets first, then Current Assets; Non-Current Liabilities first, then Current Liabilities.
+- **Charts** (`showCharts` state) default to `false` — hidden on load, user toggles them on demand via the chart button in the report header.
+- **Analytical detail** (`showAnalytical` state) defaults to `false`. When false, `BSGroup` shows each L3 sub-group as a single line (label + total). When true, individual leaf-account rows are rendered inside each group. The toggle button appears in the balance sheet header next to the balance indicator.
+- Balance sheet totals are mathematically guaranteed to balance via prefix-sum approach (`netDebit('11')`, `netDebit('12')`, etc.) — do not change the prefix grouping logic.
+
+## BOQ — Date Handling
+
+- `startDate` in `boq_items` is stored as ISO `YYYY-MM-DD` string.
+- Always use `normalizeDate(item.startDate)` from `src/lib/utils.ts` before any date arithmetic to avoid UTC timezone shifts.
+- End date is calculated as: `new Date(sy, sm-1, sd + expectedDuration)` using local-midnight construction — never use `getTime() + ms` arithmetic on ISO strings.
+- Work status has four states: **done** (≥99.9% progress), **not started** (start > today), **late** (end < today and not complete), **running** (in progress).
 
 ## Known Constraints
 

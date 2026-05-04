@@ -39,7 +39,6 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { migrateAccountCodes, MigrationResult, patchMissingCoaAccounts, PatchCoaResult, deduplicateCoaAccounts, DeduplicateCoaResult } from '../services/migrateAccountCodes';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
@@ -989,69 +988,6 @@ export function Settings() {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('user');
 
-  // Migration state
-  const [migrating, setMigrating] = useState(false);
-  const [migrationResult, setMigrationResult] = useState<MigrationResult | null>(null);
-
-  const handleMigrateAccountCodes = useCallback(async () => {
-    setMigrating(true);
-    setMigrationResult(null);
-    try {
-      const result = await migrateAccountCodes();
-      setMigrationResult(result);
-      toast.success(language === 'ar'
-        ? `تم الترحيل: ${result.updated} قيد مُحدَّث من ${result.scanned} قيد`
-        : `Migration done: ${result.updated} of ${result.scanned} transactions updated`);
-    } catch (err) {
-      toast.error(language === 'ar' ? 'فشل الترحيل' : 'Migration failed');
-      console.error(err);
-    } finally {
-      setMigrating(false);
-    }
-  }, [language]);
-
-  // COA patch state
-  const [patching, setPatching] = useState(false);
-  const [patchResult, setPatchResult] = useState<PatchCoaResult | null>(null);
-
-  const handlePatchCoaAccounts = useCallback(async () => {
-    setPatching(true);
-    setPatchResult(null);
-    try {
-      const result = await patchMissingCoaAccounts();
-      setPatchResult(result);
-      toast.success(language === 'ar'
-        ? `تم إكمال الحسابات: ${result.added} حساب مُضاف من أصل ${result.checked}`
-        : `COA patched: ${result.added} accounts added out of ${result.checked} checked`);
-    } catch (err) {
-      toast.error(language === 'ar' ? 'فشل إكمال الحسابات' : 'COA patch failed');
-      console.error(err);
-    } finally {
-      setPatching(false);
-    }
-  }, [language]);
-
-  // COA deduplication state
-  const [deduplicating, setDeduplicating] = useState(false);
-  const [deduplicateResult, setDeduplicateResult] = useState<DeduplicateCoaResult | null>(null);
-
-  const handleDeduplicateCoa = useCallback(async () => {
-    setDeduplicating(true);
-    setDeduplicateResult(null);
-    try {
-      const result = await deduplicateCoaAccounts();
-      setDeduplicateResult(result);
-      toast.success(language === 'ar'
-        ? `تم تنظيف الحسابات: حُذف ${result.removed} سجل مكرر من أصل ${result.scanned}`
-        : `COA deduplicated: removed ${result.removed} duplicate(s) out of ${result.scanned} scanned`);
-    } catch (err) {
-      toast.error(language === 'ar' ? 'فشل تنظيف الحسابات المكررة' : 'COA deduplication failed');
-      console.error(err);
-    } finally {
-      setDeduplicating(false);
-    }
-  }, [language]);
-
   // Clear data state
   const [dangerOpen, setDangerOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
@@ -1228,123 +1164,6 @@ export function Settings() {
                     >
                       <HardDrive size={16} />
                       {language === 'ar' ? 'فتح' : 'Open'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── Patch Missing COA Accounts ── */}
-                <div className={cn('border rounded-2xl p-5', theme === 'dark' ? 'border-blue-800/50 bg-blue-950/20' : 'border-blue-300 bg-blue-50')}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className={cn('p-2 rounded-lg mt-0.5', theme === 'dark' ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-100 text-blue-700')}>
-                        <Database size={20} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm">{language === 'ar' ? 'إكمال الحسابات الناقصة' : 'Patch Missing COA Accounts'}</p>
-                        <p className={cn('text-xs mt-0.5', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                          {language === 'ar'
-                            ? 'يُضيف الحسابات الناقصة من ملف البذرة إلى Firestore دون المساس بالموجودة. شغّلها أولاً قبل الترحيل.'
-                            : 'Adds accounts missing from Firestore based on the seed file. Run this first, before the migration.'}
-                        </p>
-                        {patchResult && (
-                          <p className={cn('text-xs mt-2 font-mono', theme === 'dark' ? 'text-green-400' : 'text-green-700')}>
-                            {language === 'ar'
-                              ? `✓ فُحص ${patchResult.checked} حساب | أُضيف ${patchResult.added}`
-                              : `✓ Checked ${patchResult.checked} | Added ${patchResult.added}`}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handlePatchCoaAccounts}
-                      disabled={patching}
-                      className={cn(
-                        'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors whitespace-nowrap',
-                        patching ? 'opacity-60 cursor-not-allowed' : '',
-                        theme === 'dark' ? 'bg-blue-700 hover:bg-blue-600 text-white' : 'bg-blue-600 hover:bg-blue-500 text-white'
-                      )}
-                    >
-                      {patching ? <Loader2 size={16} className="animate-spin" /> : <Database size={16} />}
-                      {language === 'ar' ? 'إكمال الحسابات' : 'Patch COA'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── Account Code Migration ── */}
-                <div className={cn('border rounded-2xl p-5', theme === 'dark' ? 'border-yellow-800/50 bg-yellow-950/20' : 'border-yellow-300 bg-yellow-50')}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className={cn('p-2 rounded-lg mt-0.5', theme === 'dark' ? 'bg-yellow-900/30 text-yellow-400' : 'bg-yellow-100 text-yellow-700')}>
-                        <RefreshCw size={20} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm">{language === 'ar' ? 'ترحيل أكواد الحسابات' : 'Account Code Migration'}</p>
-                        <p className={cn('text-xs mt-0.5', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                          {language === 'ar'
-                            ? 'يُصحح القيود المحاسبية القديمة التي استخدمت أكوادًا خاطئة (12xxxxxx بدلاً من 11xxxxxx). شغّلها مرة واحدة فقط.'
-                            : 'Fixes existing transactions that used old account codes (12xxxxxx instead of 11xxxxxx). Run once only.'}
-                        </p>
-                        {migrationResult && (
-                          <p className={cn('text-xs mt-2 font-mono', theme === 'dark' ? 'text-green-400' : 'text-green-700')}>
-                            {language === 'ar'
-                              ? `✓ فُحص ${migrationResult.scanned} قيد | حُدِّث ${migrationResult.updated} | تخطَّى ${migrationResult.skipped}`
-                              : `✓ Scanned ${migrationResult.scanned} | Updated ${migrationResult.updated} | Skipped ${migrationResult.skipped}`}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleMigrateAccountCodes}
-                      disabled={migrating}
-                      className={cn(
-                        'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors whitespace-nowrap',
-                        migrating ? 'opacity-60 cursor-not-allowed' : '',
-                        theme === 'dark' ? 'bg-yellow-700 hover:bg-yellow-600 text-white' : 'bg-yellow-500 hover:bg-yellow-400 text-white'
-                      )}
-                    >
-                      {migrating ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                      {language === 'ar' ? 'تشغيل الترحيل' : 'Run Migration'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* ── COA Deduplication ── */}
-                <div className={cn('border rounded-2xl p-5', theme === 'dark' ? 'border-purple-800/50 bg-purple-950/20' : 'border-purple-300 bg-purple-50')}>
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex items-start gap-3">
-                      <div className={cn('p-2 rounded-lg mt-0.5', theme === 'dark' ? 'bg-purple-900/30 text-purple-400' : 'bg-purple-100 text-purple-700')}>
-                        <Database size={20} />
-                      </div>
-                      <div>
-                        <p className="font-bold text-sm">{language === 'ar' ? 'إزالة الحسابات المكررة' : 'Remove Duplicate COA Accounts'}</p>
-                        <p className={cn('text-xs mt-0.5', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                          {language === 'ar'
-                            ? 'يحذف السجلات المكررة في شجرة الحسابات التي تشترك في نفس الكود — يُصحح ظهور أسماء خاطئة في الميزانية وميزان المراجعة.'
-                            : 'Removes duplicate chart_of_accounts entries sharing the same code — fixes wrong account names appearing in balance sheet and trial balance.'}
-                        </p>
-                        {deduplicateResult && (
-                          <p className={cn('text-xs mt-2 font-mono', theme === 'dark' ? 'text-green-400' : 'text-green-700')}>
-                            {language === 'ar'
-                              ? `✓ فُحص ${deduplicateResult.scanned} حساب | حُذف ${deduplicateResult.removed} مكرر`
-                              : `✓ Scanned ${deduplicateResult.scanned} | Removed ${deduplicateResult.removed} duplicate(s)`}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={handleDeduplicateCoa}
-                      disabled={deduplicating}
-                      className={cn(
-                        'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-colors whitespace-nowrap',
-                        deduplicating ? 'opacity-60 cursor-not-allowed' : '',
-                        theme === 'dark' ? 'bg-purple-700 hover:bg-purple-600 text-white' : 'bg-purple-600 hover:bg-purple-500 text-white'
-                      )}
-                    >
-                      {deduplicating ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />}
-                      {language === 'ar' ? 'تنظيف المكررات' : 'Deduplicate'}
                     </button>
                   </div>
                 </div>
