@@ -346,39 +346,52 @@ export function Reports() {
   const balanceSheet = React.useMemo(() => {
     const allTx = transactions.filter(t => !t.isDeleted);
 
+    // Single source of truth: code → net (debit - credit) across all transactions
+    const codeBalMap = new Map<string, number>();
+    allTx.forEach(t => {
+      (t.entries || []).forEach((e: JournalEntry) => {
+        if (!e.accountCode) return;
+        codeBalMap.set(e.accountCode, (codeBalMap.get(e.accountCode) ?? 0) + e.debit - e.credit);
+      });
+    });
+
+    // Sum all codes whose accountCode starts with prefix
+    const netDebit = (prefix: string) => {
+      let sum = 0;
+      codeBalMap.forEach((bal, code) => { if (code.startsWith(prefix)) sum += bal; });
+      return sum;
+    };
+
+    // Per-account balance from the map
     const accBal = (code: string, nature: 'debit' | 'credit') => {
-      const net = allTx.reduce((sum, t) => {
-        const entry = (t.entries || []).find((e: JournalEntry) => e.accountCode === code);
-        return sum + (entry ? entry.debit - entry.credit : 0);
-      }, 0);
+      const net = codeBalMap.get(code) ?? 0;
       return nature === 'debit' ? net : -net;
     };
 
+    // Detail-level section sum — used only for display rows, not for totals
     const sectionBal = (prefix: string, nature: 'debit' | 'credit') =>
       accounts
         .filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled')
         .reduce((sum, acc) => sum + accBal(acc.accountCode || '', nature), 0);
 
-    // All-transactions net profit for equity section
-    const allRevenue = transactions.filter(t => !t.isDeleted).reduce((sum, t) =>
-      sum + (t.entries || []).filter((e: JournalEntry) => e.accountCode.startsWith('4'))
-        .reduce((s: number, e: JournalEntry) => s + (e.credit - e.debit), 0), 0);
-    const allCosts = transactions.filter(t => !t.isDeleted).reduce((sum, t) =>
-      sum + (t.entries || []).filter((e: JournalEntry) => e.accountCode.startsWith('5'))
-        .reduce((s: number, e: JournalEntry) => s + (e.debit - e.credit), 0), 0);
-    const netProfitForBS = allRevenue - allCosts;
-
-    const currentAssets    = sectionBal('11', 'debit');
-    const nonCurrentAssets = sectionBal('12', 'debit');
+    // ── Totals via direct prefix sums — mathematically guaranteed to balance ──
+    const currentAssets    = netDebit('11');
+    const nonCurrentAssets = netDebit('12');
     const totalAssets      = currentAssets + nonCurrentAssets;
-    const currentLiab      = sectionBal('21', 'credit');
-    const nonCurrentLiab   = sectionBal('22', 'credit');
+
+    const currentLiab      = -netDebit('21');
+    const nonCurrentLiab   = -netDebit('22');
     const totalLiab        = currentLiab + nonCurrentLiab;
-    const equityAccounts   = sectionBal('3', 'credit');
+
+    const equityAccounts   = -netDebit('3');
+    const allRevenue       = -netDebit('4');
+    const allCosts         =  netDebit('5');
+    const netProfitForBS   = allRevenue - allCosts;
     const totalEquity      = equityAccounts + netProfitForBS;
     const totalLE          = totalLiab + totalEquity;
 
     return {
+      codeBalMap,
       currentAssets, nonCurrentAssets, totalAssets,
       currentLiab, nonCurrentLiab, totalLiab,
       equityAccounts, netProfitForBS, totalEquity, totalLE,
@@ -1053,33 +1066,54 @@ export function Reports() {
           {activeReport === 'balance' && (() => {
             const bs = balanceSheet;
 
-            // Render leaf accounts within a L3 prefix group
+            // Name lookup from COA
+            const coaNameMap = new Map<string, string>(
+              accounts.map(a => [
+                a.accountCode || '',
+                language === 'ar'
+                  ? (a.accountName || a.accountCode || '')
+                  : (a.accountNameEn || a.accountName || a.accountCode || ''),
+              ])
+            );
+
+            // Derive all account codes with a non-zero balance for a given prefix
+            // directly from codeBalMap — single source of truth, no re-scan needed.
+            const resolveAccounts = (prefix: string, nature: 'debit' | 'credit'): string[] => {
+              const result: string[] = [];
+              bs.codeBalMap.forEach((net, code) => {
+                if (!code.startsWith(prefix)) return;
+                const bal = nature === 'debit' ? net : -net;
+                if (bal !== 0) result.push(code);
+              });
+              return result.sort();
+            };
+
+            // Render leaf account rows for a prefix (all codes with non-zero balance)
             const BSLeafRows = ({ prefix, nature }: { prefix: string; nature: 'debit' | 'credit' }) => {
-              const rows = accounts
-                .filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled')
-                .map(acc => {
-                  const bal = bs.accBal(acc.accountCode || '', nature);
-                  if (bal === 0) return null;
-                  return (
-                    <div key={acc.id} className="flex justify-between items-center py-1.5 text-sm ps-4">
-                      <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}>{acc.accountName}</span>
-                      <span className="font-mono tabular-nums">{bal.toLocaleString()}</span>
-                    </div>
-                  );
-                });
+              const rows = resolveAccounts(prefix, nature).map(code => {
+                const bal = bs.accBal(code, nature);
+                const name = coaNameMap.get(code) || code;
+                return (
+                  <div key={code} className="flex justify-between items-center py-1.5 text-sm ps-4">
+                    <span className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}>{name}</span>
+                    <span className="font-mono tabular-nums">{bal.toLocaleString()}</span>
+                  </div>
+                );
+              });
               return <>{rows}</>;
             };
 
             // Render an L3 sub-group: header + leaf rows + optional subtotal
             const BSGroup = ({ prefix, nature, label }: { prefix: string; nature: 'debit' | 'credit'; label: string }) => {
-              const leafAccounts = accounts.filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled');
-              const total = leafAccounts.reduce((s, a) => s + bs.accBal(a.accountCode || '', nature), 0);
-              if (total === 0 && leafAccounts.every(a => bs.accBal(a.accountCode || '', nature) === 0)) return null;
+              const codes = resolveAccounts(prefix, nature);
+              if (codes.length === 0) return null;
+              const total = codes.reduce((s, code) => s + bs.accBal(code, nature), 0);
+              if (total === 0) return null;
               return (
                 <div className="mb-3">
                   <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1 pb-1 border-b border-dashed border-gray-700/30">{label}</div>
                   <BSLeafRows prefix={prefix} nature={nature} />
-                  {leafAccounts.length > 1 && total !== 0 && (
+                  {codes.length > 1 && (
                     <div className="flex justify-between items-center py-1 text-sm font-semibold border-t border-gray-700/20 mt-1 pt-1">
                       <span className="text-gray-400 text-xs">{language === 'ar' ? 'مجموع' : 'Sub-total'}</span>
                       <span className="font-mono tabular-nums text-xs">{total.toLocaleString()}</span>

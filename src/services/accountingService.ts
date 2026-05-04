@@ -1,35 +1,64 @@
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  doc, 
-  serverTimestamp, 
-  query, 
-  where, 
+import {
+  collection,
+  addDoc,
+  updateDoc,
+  doc,
+  serverTimestamp,
+  query,
+  where,
   onSnapshot,
   getDocs,
   Timestamp
 } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 
+// ── COA validation cache ───────────────────────────────────────────────────────
+// Refreshed at most once every 5 minutes or whenever a new account is created.
+let _coaValidCodes: Set<string> | null = null;
+let _coaCacheAt = 0;
+const COA_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+async function getValidAccountCodes(): Promise<Set<string>> {
+  if (_coaValidCodes && Date.now() - _coaCacheAt < COA_CACHE_TTL) {
+    return _coaValidCodes;
+  }
+  const snap = await getDocs(collection(db, 'chart_of_accounts'));
+  _coaValidCodes = new Set(
+    snap.docs
+      .map(d => d.data())
+      .filter(a => !a.isGroup && a.status !== 'disabled')
+      .map(a => a.accountCode as string)
+      .filter(Boolean)
+  );
+  _coaCacheAt = Date.now();
+  return _coaValidCodes;
+}
+
+/** Call this after adding a new account to chart_of_accounts to force re-fetch. */
+export function invalidateCoaCache(): void {
+  _coaValidCodes = null;
+  _coaCacheAt = 0;
+}
+
 export enum AccountCodes {
-  // ─── الأصول المتداولة (مستوى 5 — 8 أرقام) ────────────────
-  BANK                        = '12101001', // البنك التجاري الدولي
-  RECEIVABLES                 = '12201001', // العملاء - مستخلصات تحت التحصيل
-  RETENTION_GUARANTEE         = '12202001', // محتجزات الضمان - عملاء
-  ADVANCE_TO_SUPPLIERS        = '12301001', // مقدمات للموردين
-  ADVANCE_TO_SUBCONTRACTORS   = '12302001', // مقدمات لمقاولي الباطن
-  VAT_INPUT                   = '12401001', // ضريبة القيمة المضافة - مدخلات
-  WHT_RECEIVABLE              = '12401002', // ضريبة الخصم والإضافة - مدين (محتجز من العميل)
-  SOCIAL_INSURANCE_RECEIVABLE = '12402001', // التأمينات الاجتماعية - مدين
-  MANPOWER_LEVY_RECEIVABLE    = '12403001', // القوى العاملة - مدين
-  // ─── الخصوم المتداولة (مستوى 5 — 8 أرقام) ───────────────
+  // ─── الأصول المتداولة (مستوى 5 — 8 أرقام، كلها تبدأ بـ 11) ──
+  BANK                        = '11101001', // البنك التجاري الدولي
+  CASH                        = '11102001', // عهدة نقدية
+  RECEIVABLES                 = '11201001', // العملاء - مستخلصات تحت التحصيل
+  RETENTION_GUARANTEE         = '11202001', // محتجزات الضمان - عملاء
+  ADVANCE_TO_SUPPLIERS        = '11301001', // مقدمات للموردين
+  ADVANCE_TO_SUBCONTRACTORS   = '11302001', // مقدمات لمقاولي الباطن
+  VAT_INPUT                   = '11401001', // ضريبة القيمة المضافة - مدخلات
+  WHT_RECEIVABLE              = '11401002', // ضريبة الخصم والإضافة - مدين (محتجز من العميل)
+  SOCIAL_INSURANCE_RECEIVABLE = '11402001', // التأمينات الاجتماعية - مدين
+  MANPOWER_LEVY_RECEIVABLE    = '11403001', // القوى العاملة - مدين
+  // ─── الخصوم المتداولة (مستوى 5 — 8 أرقام، كلها تبدأ بـ 21) ──
   SUPPLIERS                   = '21101001', // الموردون (حساب المورد يُنشأ عند إضافته في المشتريات)
   SUBCONTRACTORS              = '21102001', // مقاولو الباطن (حساب المقاول يُنشأ عند إضافته)
   RETENTION_PAYABLE           = '21201001', // محتجزات ضمان الأعمال - مقاولون
   ADVANCE_PAYMENT             = '21301001', // دفعات مقدمة من العملاء
   VAT_OUTPUT                  = '21401001', // ضريبة القيمة المضافة - مخرجات
-  WHT_PAYABLE                 = '21401002', // مصلحة الضرائب - خصم وإضافة (دائن)
+  WHT_PAYABLE                 = '21402001', // مصلحة الضرائب - خصم وإضافة (دائن)
   SOCIAL_INSURANCE_PAYABLE    = '21403001', // التأمينات الاجتماعية - دائن
   MANPOWER_LEVY_PAYABLE       = '21404001', // القوى العاملة - دائن
   // ─── الإيرادات ────────────────────────────────────────────
@@ -96,6 +125,19 @@ export const accountingService = {
 
     if (Math.abs(totalDebit - totalCredit) > 0.005) {
       throw new Error(`Transaction is not balanced: Total Debit (${totalDebit.toFixed(2)}) must equal Total Credit (${totalCredit.toFixed(2)})`);
+    }
+
+    // Validate all account codes exist in the Chart of Accounts as active leaf accounts.
+    // If this throws, go to Settings → Database → "إكمال الحسابات الناقصة" then retry.
+    const validCodes = await getValidAccountCodes();
+    const invalidCodes = transaction.entries
+      .map(e => e.accountCode)
+      .filter(code => code && !validCodes.has(code));
+    if (invalidCodes.length > 0) {
+      throw new Error(
+        `الأكواد التالية غير موجودة في شجرة الحسابات كحسابات ختامية نشطة: ${invalidCodes.join(', ')}` +
+        ` — يرجى الذهاب إلى الإعدادات › قاعدة البيانات وتشغيل "إكمال الحسابات الناقصة".`
+      );
     }
 
     const reference = transaction.reference ||

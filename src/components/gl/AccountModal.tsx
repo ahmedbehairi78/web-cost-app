@@ -4,7 +4,7 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
-import { accountingService, Account } from '../../services/accountingService';
+import { accountingService, Account, invalidateCoaCache } from '../../services/accountingService';
 import { SearchableSelect } from '../ui/SearchableSelect';
 
 interface Props {
@@ -76,6 +76,7 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
           statementType: deriveStatementType(form.accountCode),
           createdAt: serverTimestamp(),
         });
+        invalidateCoaCache();
       }
       setForm(EMPTY_FORM);
       onClose();

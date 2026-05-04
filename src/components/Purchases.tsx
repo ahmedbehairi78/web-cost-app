@@ -23,7 +23,7 @@ import {
 import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, writeBatch, doc } from 'firebase/firestore';
 import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { accountingService } from '../services/accountingService';
+import { accountingService, invalidateCoaCache } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
@@ -196,6 +196,7 @@ export function Purchases() {
         isGroup: false,
         createdAt: serverTimestamp()
       });
+      invalidateCoaCache();
       setFormData({ ...formData, expenseAccountId: docRef.id });
       setShowAccountModal(false);
       setNewAccountData({ accountName: '', accountNameEn: '', accountCode: '', parentCode: '511' });
@@ -259,6 +260,7 @@ export function Purchases() {
       });
 
       await batch.commit();
+      invalidateCoaCache(); // new supplier account added — force COA re-fetch on next transaction
 
       setFormData({ ...formData, supplierId: supplierRef.id });
       setShowSupplierModal(false);

@@ -69,21 +69,22 @@ The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) a
 
 | Constant | Code | Description |
 |----------|------|-------------|
-| `BANK` | 12101001 | البنك التجاري الدولي |
-| `RECEIVABLES` | 12201001 | العملاء - مستخلصات تحت التحصيل |
-| `RETENTION_GUARANTEE` | 12202001 | محتجزات الضمان - عملاء |
-| `ADVANCE_TO_SUPPLIERS` | 12301001 | مقدمات للموردين |
-| `ADVANCE_TO_SUBCONTRACTORS` | 12302001 | مقدمات لمقاولي الباطن |
-| `VAT_INPUT` | 12401001 | ضريبة القيمة المضافة - مدخلات (مشتريات) |
-| `WHT_RECEIVABLE` | 12401002 | ضريبة الخصم والإضافة - مدين (محتجز من العميل) |
-| `SOCIAL_INSURANCE_RECEIVABLE` | 12402001 | التأمينات الاجتماعية - مدين |
-| `MANPOWER_LEVY_RECEIVABLE` | 12403001 | القوى العاملة - مدين |
+| `BANK` | 11101001 | البنك التجاري الدولي |
+| `CASH` | 11102001 | عهدة نقدية |
+| `RECEIVABLES` | 11201001 | العملاء - مستخلصات تحت التحصيل |
+| `RETENTION_GUARANTEE` | 11202001 | محتجزات الضمان - عملاء |
+| `ADVANCE_TO_SUPPLIERS` | 11301001 | مقدمات للموردين |
+| `ADVANCE_TO_SUBCONTRACTORS` | 11302001 | مقدمات لمقاولي الباطن |
+| `VAT_INPUT` | 11401001 | ضريبة القيمة المضافة - مدخلات (مشتريات) |
+| `WHT_RECEIVABLE` | 11401002 | ضريبة الخصم والإضافة - مدين (محتجز من العميل) |
+| `SOCIAL_INSURANCE_RECEIVABLE` | 11402001 | التأمينات الاجتماعية - مدين |
+| `MANPOWER_LEVY_RECEIVABLE` | 11403001 | القوى العاملة - مدين |
 | `SUPPLIERS` | 21101001 | الموردون |
 | `SUBCONTRACTORS` | 21102001 | مقاولو الباطن |
 | `RETENTION_PAYABLE` | 21201001 | محتجزات الضمان - مقاولون |
 | `ADVANCE_PAYMENT` | 21301001 | دفعات مقدمة من العملاء (خصم — liability) |
 | `VAT_OUTPUT` | 21401001 | ضريبة القيمة المضافة - مخرجات (إيرادات) |
-| `WHT_PAYABLE` | 21401002 | مصلحة الضرائب - خصم وإضافة (دائن) |
+| `WHT_PAYABLE` | 21402001 | مصلحة الضرائب - خصم وإضافة (دائن) |
 | `SOCIAL_INSURANCE_PAYABLE` | 21403001 | التأمينات الاجتماعية - دائن |
 | `MANPOWER_LEVY_PAYABLE` | 21404001 | القوى العاملة - دائن |
 | `REVENUE` | 41101001 | إيرادات عقود المقاولات |
@@ -96,10 +97,13 @@ The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) a
 
 **قواعد مهمة:**
 - Revenue accounts start with `4`, expense accounts start with `5`.
-- Current assets (cash, receivables, prepayments, tax receivables) are under prefix `12xxxx`. Cash & bank accounts are `121xxxxx` (banks = `12101xxx`, cash funds = `12102xxx`).
-- VAT و WHT والتأمينات والقوى العاملة **مقسّمة** إلى كودين: مدين (أصل تحت `124`) ودائن (خصم تحت `214`). استخدم الكود الصحيح بحسب جهة القيد.
-- IPC collection transactions: debit `BANK (12101001)` + credit `RECEIVABLES (12201001)`.
-- Advance payment received: debit `BANK (12101001)` + credit `ADVANCE_PAYMENT (21301001)`.
+- Current assets (cash, receivables, prepayments, tax receivables) are under prefix `11xxxx`. Cash & bank accounts are `111xxxxx` (banks = `11101xxx`, cash funds = `11102xxx`).
+- Non-current assets (fixed assets, accumulated depreciation, WIP) are under prefix `12xxxx`.
+- VAT و WHT والتأمينات والقوى العاملة **مقسّمة** إلى كودين: مدين (أصل تحت `114`) ودائن (خصم تحت `214`). استخدم الكود الصحيح بحسب جهة القيد.
+- IPC collection transactions: debit `BANK (11101001)` + credit `RECEIVABLES (11201001)`.
+- Advance payment received: debit `BANK (11101001)` + credit `ADVANCE_PAYMENT (21301001)`.
+- **Dashboard cash/bank detection**: uses `startsWith('111')` to cover all banks and cash funds — never `startsWith('12')`.
+- **Account code migration**: `src/services/migrateAccountCodes.ts` contains `migrateAccountCodes()` — run once from Settings → Database to fix existing transactions that used the old `12xxxxxx` asset codes.
 - ملف الـ seed الكامل لشجرة الحسابات (5 مستويات): `src/data/chartOfAccountsSeed.ts`. يحتوي على `seedChartOfAccounts()` لتهيئة Firestore.
 
 ### Permissions

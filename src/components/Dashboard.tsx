@@ -75,7 +75,7 @@ export function Dashboard() {
         }
       });
 
-      const cashOrBankEntry = tx.entries.find((e: JournalEntry) => e.accountCode?.startsWith('121') && e.debit > 0);
+      const cashOrBankEntry = tx.entries.find((e: JournalEntry) => e.accountCode?.startsWith('111') && e.debit > 0);
       if (cashOrBankEntry) {
         const val = cashOrBankEntry.debit || 0;
         const isIpcCollection = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);

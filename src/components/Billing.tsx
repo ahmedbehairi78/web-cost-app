@@ -349,6 +349,7 @@ export function Billing() {
     denom > 0 ? (num / denom) * 100 : fallback;
 
   const handleOpenModal = useCallback((ipc?: BillingIPC) => {
+    if (ipc && (ipc.status === 'approved' || ipc.status === 'paid')) return;
     if (ipc) {
       setEditingIPC(ipc);
       setFormData({
@@ -846,13 +847,16 @@ export function Billing() {
                      (language === 'ar' ? 'تم الاعتماد' : 'Approved')}
                   </span>
                   <div className="flex gap-2">
-                    <button 
-                      onClick={() => handleOpenModal(ipc)}
-                      className="text-gray-500 hover:text-blue-500 transition-colors"
-                      title={language === 'ar' ? 'تعديل' : 'Edit'}
-                    >
-                      <Edit2 size={16} />
-                    </button>
+                    {ipc.status !== 'approved' && ipc.status !== 'paid' && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenModal(ipc)}
+                        className="text-gray-500 hover:text-blue-500 transition-colors"
+                        title={language === 'ar' ? 'تعديل' : 'Edit'}
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                    )}
                     <button 
                       onClick={() => handleDeleteIPC(ipc)}
                       className="text-gray-500 hover:text-red-500 transition-colors"
