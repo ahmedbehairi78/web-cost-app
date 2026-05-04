@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FolderTree, BookOpen, Calculator, Wallet } from 'lucide-react';
+import { FolderTree, BookOpen, Calculator } from 'lucide-react';
 import { collection, onSnapshot, query, orderBy, where, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
@@ -9,7 +9,6 @@ import { Account } from '../services/accountingService';
 import { GLChartOfAccounts } from './gl/GLChartOfAccounts';
 import { GLJournalEntries } from './gl/GLJournalEntries';
 import { GLAccountStatement } from './gl/GLAccountStatement';
-import { GLCustodySettlement } from './gl/GLCustodySettlement';
 
 interface Project { id: string; projectName: string; projectCode: string }
 interface Contract { id: string; contractName: string; contractNumber: string; projectId: string }
@@ -23,7 +22,7 @@ interface Transaction {
   createdBy: string;
 }
 
-type SubTab = 'coa' | 'journal' | 'ledger' | 'custody';
+type SubTab = 'coa' | 'journal' | 'ledger';
 
 export function GeneralLedger() {
   const { language, theme, dir } = useLanguage();
@@ -84,7 +83,6 @@ export function GeneralLedger() {
     { id: 'coa',     icon: <FolderTree size={16} />, label: language === 'ar' ? 'شجرة الحسابات' : 'Chart of Accounts' },
     { id: 'journal', icon: <BookOpen size={16} />,   label: language === 'ar' ? 'دفتر اليومية'   : 'Journal Entries' },
     { id: 'ledger',  icon: <Calculator size={16} />, label: language === 'ar' ? 'كشف حساب'       : 'Account Statement' },
-    { id: 'custody', icon: <Wallet size={16} />,     label: language === 'ar' ? 'تسويات عهد'     : 'Settlement of Custody' },
   ];
 
   return (
@@ -125,9 +123,6 @@ export function GeneralLedger() {
       )}
       {activeSubTab === 'ledger' && (
         <GLAccountStatement transactions={transactions} accounts={accounts} theme={theme} language={language} dir={dir} />
-      )}
-      {activeSubTab === 'custody' && (
-        <GLCustodySettlement accounts={accounts} transactions={transactions} contracts={contracts} theme={theme} language={language} dir={dir} />
       )}
     </div>
   );

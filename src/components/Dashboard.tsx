@@ -1,30 +1,23 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  DollarSign, 
-  Clock, 
+import {
+  TrendingUp,
+  TrendingDown,
+  DollarSign,
+  Clock,
   AlertTriangle,
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
   Loader2
 } from 'lucide-react';
-import { 
-  BarChart, 
-  Bar, 
-  XAxis, 
-  YAxis, 
-  CartesianGrid, 
-  Tooltip, 
-  ResponsiveContainer, 
-  LineChart, 
+import {
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  LineChart,
   Line,
-  AreaChart,
-  Area,
-  ScatterChart,
-  Scatter,
-  ZAxis,
   Legend
 } from 'recharts';
 import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
@@ -260,8 +253,7 @@ export function Dashboard() {
     )}>
       <header className="flex justify-between items-end">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">{t('portfolio_overview')}</h2>
-          <p className="text-gray-400 mt-1">{t('portfolio_subtitle')}</p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('portfolio_subtitle')}</h2>
         </div>
         <div className="flex gap-3">
           <button
@@ -316,128 +308,85 @@ export function Dashboard() {
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Cash Flow Chart */}
-        <div className={cn(
-          "lg:col-span-2 border p-6 rounded-xl transition-colors", 
-          theme === 'dark' ? "bg-[#0b0c0e] border-gray-800" : 
-          theme === 'soft' ? "bg-white border-[#cfd8dc]" :
-          "bg-white border-gray-200 shadow-sm"
-        )}>
-          <div className="flex justify-end items-center mb-6">
-            <h3 className="text-lg font-bold flex items-center gap-2 flex-row-reverse" dir="rtl">
-              <BarChart3 className="text-blue-500" size={20} />
-              {t('cash_flow_analysis')}
-            </h3>
-          </div>
-          <div className="h-[350px] w-full min-h-[350px]">
-            <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
-              <BarChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme === 'dark' ? "#1f2937" : "#e5e7eb"} opacity={0.3} />
-                <XAxis 
-                  dataKey="name" 
-                  stroke="#4b5563" 
-                  fontSize={12} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  dy={10}
-                  reversed={language === 'ar'}
-                />
-                <YAxis 
-                  stroke="#4b5563" 
-                  fontSize={12} 
-                  tickLine={false} 
-                  axisLine={false} 
-                  tickFormatter={(value) => `${value/1000}k`}
-                  orientation={language === 'ar' ? "right" : "left"}
-                  dx={language === 'ar' ? 10 : -10}
-                />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: theme === 'dark' ? '#111827' : theme === 'soft' ? '#ffffff' : '#ffffff', 
-                    border: theme === 'dark' ? '1px solid #374151' : '1px solid #cfd8dc', 
-                    borderRadius: '12px',
-                    fontSize: '12px',
-                    color: theme === 'dark' ? '#fff' : '#000'
-                  }}
-                  itemStyle={{ color: theme === 'dark' ? '#fff' : '#000' }}
-                  cursor={{ fill: theme === 'dark' ? '#1f2937' : theme === 'soft' ? '#cfd8dc' : '#f3f4f6', opacity: 0.4 }}
-                />
-                <Legend 
-                  verticalAlign="top" 
-                  align={language === 'ar' ? 'right' : 'left'}
-                  height={36}
-                  iconType="circle"
-                />
-                <Bar 
-                  name={t('chart_costs')}
-                  dataKey="cost" 
-                  fill="#ef4444" 
-                  radius={[4, 4, 0, 0]} 
-                  barSize={12}
-                />
-                <Bar 
-                  name={t('chart_revenue')}
-                  dataKey="revenue" 
-                  fill="#3b82f6" 
-                  radius={[4, 4, 0, 0]} 
-                  barSize={12}
-                />
-                <Bar 
-                  name={t('chart_collections')}
-                  dataKey="collections" 
-                  fill="#10b981" 
-                  radius={[4, 4, 0, 0]} 
-                  barSize={12}
-                />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Recent Transactions */}
-        <div className={cn(
-          "border p-6 rounded-xl transition-colors", 
-          theme === 'dark' ? "bg-[#151619] border-gray-800" : 
-          theme === 'soft' ? "bg-white border-[#cfd8dc]" :
-          "bg-white border-gray-200 shadow-sm"
-        )}>
-          <h3 className="text-lg font-bold mb-6 flex items-center gap-2">
-            <Clock className="text-blue-500" size={20} />
-            {t('recent_entries')}
+      <div className={cn(
+        "border p-6 rounded-xl transition-colors",
+        theme === 'dark' ? "bg-[#0b0c0e] border-gray-800" :
+        theme === 'soft' ? "bg-white border-[#cfd8dc]" :
+        "bg-white border-gray-200 shadow-sm"
+      )}>
+        <div className="flex justify-end items-center mb-6">
+          <h3 className="text-lg font-bold flex items-center gap-2 flex-row-reverse" dir="rtl">
+            <BarChart3 className="text-blue-500" size={20} />
+            {t('cash_flow_analysis')}
           </h3>
-          <div className="space-y-4">
-            {recentTransactions.length === 0 ? (
-              <div className={cn(
-                "p-8 text-center text-gray-500 border border-dashed rounded-lg",
-                theme === 'dark' ? "border-gray-800" : "border-gray-200"
-              )}>
-                {t('no_entries')}
-              </div>
-            ) : (
-              recentTransactions.map((t) => (
-                <div key={t.id} className={cn(
-                  "flex justify-between items-center p-3 rounded-lg border",
-                  theme === 'dark' ? "bg-gray-900/50 border-gray-800" : 
-                  theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" :
-                  "bg-gray-50 border-gray-100"
-                )}>
-                  <div>
-                    <p className="text-sm font-bold">{t.description}</p>
-                    <p className="text-[10px] text-gray-500">{t.date}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-mono font-bold text-blue-400">
-                      {t.entries.reduce((sum: number, e: JournalEntry) => sum + e.debit, 0).toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-          <button type="button" className="w-full mt-6 py-2 text-sm text-blue-400 hover:text-blue-300 transition-colors font-medium">
-            {t('view_all_entries')}
-          </button>
+        </div>
+        <div className="h-[350px] w-full min-h-[350px]">
+          <ResponsiveContainer width="100%" height="100%" minWidth={0} debounce={50}>
+            <LineChart data={chartData} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke={theme === 'dark' ? "#1f2937" : "#e5e7eb"} opacity={0.4} />
+              <XAxis
+                dataKey="name"
+                stroke="#4b5563"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+                reversed={language === 'ar'}
+              />
+              <YAxis
+                stroke="#4b5563"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                tickFormatter={(value) => `${value/1000}k`}
+                orientation={language === 'ar' ? "right" : "left"}
+                dx={language === 'ar' ? 10 : -10}
+              />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: theme === 'dark' ? '#111827' : '#ffffff',
+                  border: theme === 'dark' ? '1px solid #374151' : '1px solid #cfd8dc',
+                  borderRadius: '12px',
+                  fontSize: '12px',
+                  color: theme === 'dark' ? '#fff' : '#000'
+                }}
+                itemStyle={{ color: theme === 'dark' ? '#fff' : '#000' }}
+              />
+              <Legend
+                verticalAlign="top"
+                align={language === 'ar' ? 'right' : 'left'}
+                height={36}
+                iconType="circle"
+              />
+              <Line
+                type="monotone"
+                name={t('chart_costs')}
+                dataKey="cost"
+                stroke="#ef4444"
+                strokeWidth={2}
+                dot={{ r: 4, fill: '#ef4444', strokeWidth: 0 }}
+                activeDot={{ r: 6 }}
+              />
+              <Line
+                type="monotone"
+                name={t('chart_revenue')}
+                dataKey="revenue"
+                stroke="#3b82f6"
+                strokeWidth={2}
+                dot={{ r: 4, fill: '#3b82f6', strokeWidth: 0 }}
+                activeDot={{ r: 6 }}
+              />
+              <Line
+                type="monotone"
+                name={t('chart_collections')}
+                dataKey="collections"
+                stroke="#10b981"
+                strokeWidth={2}
+                dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
+                activeDot={{ r: 6 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
         </div>
       </div>
     </div>

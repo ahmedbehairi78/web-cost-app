@@ -35,12 +35,12 @@ export default function App() {
     setWindows(prev => {
       const existing = prev.find(w => w.moduleId === moduleId);
       if (existing) {
-        // Restore if minimized, then focus
-        return prev.map(w =>
-          w.id === existing.id
-            ? { ...w, windowState: w.windowState === 'minimized' ? 'normal' : w.windowState, zIndex: nextZ() }
-            : w
-        );
+        // Maximize the target window, minimize all others that are currently visible
+        return prev.map(w => {
+          if (w.id === existing.id) return { ...w, windowState: 'maximized' as const, zIndex: nextZ() };
+          if (w.windowState !== 'minimized') return { ...w, windowState: 'minimized' as const };
+          return w;
+        });
       }
 
       const cascade   = (prev.length % 6) * 32;
@@ -51,12 +51,16 @@ export default function App() {
       const newWin: AppWindow = {
         id: `${moduleId}-${Date.now()}`,
         moduleId,
-        windowState: 'normal',
+        windowState: 'maximized',
         position: { x: cascade, y: cascade },
         size:     { width: winW, height: winH },
         zIndex:   nextZ(),
       };
-      return [...prev, newWin];
+      // Minimize all currently visible windows before adding the new one
+      return [
+        ...prev.map(w => w.windowState !== 'minimized' ? { ...w, windowState: 'minimized' as const } : w),
+        newWin,
+      ];
     });
   }, []);
 
@@ -92,9 +96,11 @@ export default function App() {
   }, []);
 
   const restoreMinimized = useCallback((id: string) => {
-    setWindows(prev => prev.map(w =>
-      w.id === id ? { ...w, windowState: 'normal', zIndex: nextZ() } : w
-    ));
+    setWindows(prev => prev.map(w => {
+      if (w.id === id) return { ...w, windowState: 'maximized' as const, zIndex: nextZ() };
+      if (w.windowState !== 'minimized') return { ...w, windowState: 'minimized' as const };
+      return w;
+    }));
   }, []);
 
   // ── Auth ─────────────────────────────────────────────────────────────────────

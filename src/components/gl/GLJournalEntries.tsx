@@ -338,7 +338,7 @@ export function GLJournalEntries({
                             theme={theme}
                             dir={dir}
                             placeholder={language === 'ar' ? 'اختر الحساب' : 'Select Account'}
-                            options={accounts.filter(a => !a.isGroup && a.status !== 'disabled').map(a => ({
+                            options={accounts.filter(a => !a.isGroup && a.status !== 'disabled' && a.accountCode.length === 8).map(a => ({
                               value: a.accountCode,
                               secondary: a.accountCode,
                               label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
@@ -347,11 +347,11 @@ export function GLJournalEntries({
                         </div>
                         <div className="md:col-span-3 space-y-1">
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'مدين' : 'Debit'}</label>
-                          <input type="number" step="0.01" className={cn(inputCls('py-2 px-3'), theme === 'dark' ? 'text-blue-400' : 'text-blue-700')} value={entry.debit} onChange={(e) => handleEntryChange(idx, 'debit', e.target.value)} />
+                          <input type="number" step="0.01" className={cn(inputCls('py-2 px-3'), theme === 'dark' ? 'text-blue-400' : 'text-blue-700')} value={entry.debit || ''} onChange={(e) => handleEntryChange(idx, 'debit', e.target.value)} />
                         </div>
                         <div className="md:col-span-3 space-y-1">
                           <label className="text-[10px] text-gray-500 uppercase">{language === 'ar' ? 'دائن' : 'Credit'}</label>
-                          <input type="number" step="0.01" className={cn(inputCls('py-2 px-3'), theme === 'dark' ? 'text-red-400' : 'text-red-700')} value={entry.credit} onChange={(e) => handleEntryChange(idx, 'credit', e.target.value)} />
+                          <input type="number" step="0.01" className={cn(inputCls('py-2 px-3'), theme === 'dark' ? 'text-red-400' : 'text-red-700')} value={entry.credit || ''} onChange={(e) => handleEntryChange(idx, 'credit', e.target.value)} />
                         </div>
                         <div className="md:col-span-1 flex justify-center pb-2">
                           <button type="button" onClick={() => setEntryForm({ ...entryForm, entries: entryForm.entries.filter((_, i) => i !== idx) })} className="text-gray-500 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
@@ -437,7 +437,7 @@ export function GLJournalEntries({
                 <div className="space-y-1"><label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'كود المشروع' : 'Project Code'}</label><input required type="text" className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500" value={projectForm.projectCode} onChange={(e) => setProjectForm({ ...projectForm, projectCode: e.target.value })} /></div>
                 <div className="space-y-1"><label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'العميل' : 'Client'}</label><input required type="text" className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500" value={projectForm.clientName} onChange={(e) => setProjectForm({ ...projectForm, clientName: e.target.value })} /></div>
                 <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1"><label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الميزانية' : 'Budget'}</label><input required type="number" className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500" value={projectForm.budget} onChange={(e) => setProjectForm({ ...projectForm, budget: Number(e.target.value) })} /></div>
+                  <div className="space-y-1"><label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الميزانية' : 'Budget'}</label><input required type="number" className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500" value={projectForm.budget || ''} onChange={(e) => setProjectForm({ ...projectForm, budget: Number(e.target.value) })} /></div>
                   <div className="space-y-1"><label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'تاريخ البدء' : 'Start Date'}</label><input required type="date" className="w-full bg-gray-900 border border-gray-800 rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500" value={projectForm.startDate} onChange={(e) => setProjectForm({ ...projectForm, startDate: e.target.value })} /></div>
                 </div>
                 <div className="pt-4 flex gap-3">

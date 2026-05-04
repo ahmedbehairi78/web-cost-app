@@ -103,9 +103,20 @@ export function ActualCosts() {
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
   const [newSupplierData, setNewSupplierData] = useState({
-    name: '', taxNumber: '', phone: '', address: '',
+    name: '', nameEn: '', taxNumber: '', phone: '', address: '',
     type: 'subcontractor' as 'supplier' | 'subcontractor',
   });
+
+  const computedSupplierCode = useMemo(() => {
+    const parentCode = newSupplierData.type === 'supplier' ? '21101' : '21102';
+    const defaultBase = newSupplierData.type === 'supplier' ? 21101001 : 21102001;
+    const existingCodes = accounts
+      .filter(a => a.parentCode === parentCode)
+      .map(a => parseInt(a.accountCode, 10))
+      .filter(n => !isNaN(n));
+    const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : defaultBase;
+    return String(maxCode + 1);
+  }, [newSupplierData.type, accounts]);
 
   // ── Firestore listeners ────────────────────────────────────────────────────
   useEffect(() => {
@@ -177,6 +188,10 @@ export function ActualCosts() {
 
   const handleSaveSupplier = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!newSupplierData.nameEn.trim()) {
+      alert(language === 'ar' ? 'الاسم الإنجليزي مطلوب' : 'English name is required.');
+      return;
+    }
     setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
@@ -184,19 +199,11 @@ export function ActualCosts() {
       batch.set(supplierRef, { ...newSupplierData, isDeleted: false, createdAt: serverTimestamp() });
 
       const parentCode = newSupplierData.type === 'supplier' ? '21101' : '21102';
-      const existingCodes = accounts
-        .filter(a => a.parentCode === parentCode)
-        .map(a => parseInt(a.accountCode, 10))
-        .filter(n => !isNaN(n));
-      const defaultBase = newSupplierData.type === 'supplier' ? 21101001 : 21102001;
-      const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : defaultBase;
-      const nextAccountCode = String(maxCode + 1);
-
       const accountRef = doc(collection(db, 'chart_of_accounts'));
       batch.set(accountRef, {
-        accountName: newSupplierData.name,
-        accountNameEn: newSupplierData.name,
-        accountCode: nextAccountCode,
+        accountName: newSupplierData.name || newSupplierData.nameEn,
+        accountNameEn: newSupplierData.nameEn,
+        accountCode: computedSupplierCode,
         parentCode,
         type: 'liability',
         isGroup: false,
@@ -207,7 +214,7 @@ export function ActualCosts() {
       invalidateCoaCache();
       setFormData(prev => ({ ...prev, supplierId: supplierRef.id }));
       setShowSupplierModal(false);
-      setNewSupplierData({ name: '', taxNumber: '', phone: '', address: '', type: 'subcontractor' });
+      setNewSupplierData({ name: '', nameEn: '', taxNumber: '', phone: '', address: '', type: 'subcontractor' });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'suppliers');
     } finally { setIsSubmitting(false); }
@@ -568,7 +575,7 @@ export function ActualCosts() {
                     </div>
                     <div className="space-y-2">
                       <label className="text-xs font-bold text-gray-400 uppercase">{t('amount')}</label>
-                      <input required type="number" className={inputCls} value={formData.amount} onChange={e => setFormData(p => ({ ...p, amount: Number(e.target.value) }))} />
+                      <input required type="number" className={inputCls} value={formData.amount || ''} onChange={e => setFormData(p => ({ ...p, amount: Number(e.target.value) }))} />
                     </div>
                   </div>
                 ) : (
@@ -599,9 +606,9 @@ export function ActualCosts() {
                               <td className="p-2 font-mono">{item.itemCode}</td>
                               <td className="p-2 max-w-[120px] truncate">{item.description}</td>
                               <td className="p-2">{item.unit}</td>
-                              <td className="p-2"><input type="number" className="w-20 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500 font-mono" value={item.rate} onChange={e => handleItemRateChange(idx, Number(e.target.value))} /></td>
+                              <td className="p-2"><input type="number" className="w-20 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500 font-mono" value={item.rate || ''} onChange={e => handleItemRateChange(idx, Number(e.target.value))} /></td>
                               <td className="p-2 font-mono text-gray-500">{item.previousQty}</td>
-                              <td className="p-2"><input type="number" className="w-16 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500" value={item.currentQty} onChange={e => handleItemQtyChange(idx, Number(e.target.value))} /></td>
+                              <td className="p-2"><input type="number" className="w-16 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500" value={item.currentQty || ''} onChange={e => handleItemQtyChange(idx, Number(e.target.value))} /></td>
                               <td className="p-2 font-mono font-bold">{(item.totalQty * item.rate).toLocaleString()}</td>
                             </tr>
                           ))}
@@ -749,8 +756,16 @@ export function ActualCosts() {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم' : 'Name'}</label>
-                  <input required type="text" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.name} onChange={e => setNewSupplierData(p => ({ ...p, name: e.target.value }))} />
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'كود الحساب (تلقائي)' : 'Account Code (Auto)'}</label>
+                  <input readOnly value={computedSupplierCode} className={cn('w-full border rounded-lg py-2 px-3 text-sm font-mono cursor-not-allowed opacity-60', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200 text-blue-700')} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم (عربي)' : 'Name (Arabic)'}</label>
+                  <input type="text" placeholder="الاسم بالعربية" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.name} onChange={e => setNewSupplierData(p => ({ ...p, name: e.target.value }))} />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم (إنجليزي) *' : 'Name (English) *'}</label>
+                  <input required type="text" dir="ltr" placeholder="Name in English" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.nameEn} onChange={e => setNewSupplierData(p => ({ ...p, nameEn: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
                   <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'رقم التسجيل الضريبي' : 'Tax Registration'}</label>

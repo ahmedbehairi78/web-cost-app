@@ -162,32 +162,30 @@ function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUp
         </span>
 
         {/* Window controls: Minimize · Maximize · Close */}
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onMinimize(); }}
             title={language === 'ar' ? 'تصغير' : 'Minimize'}
-            className="w-4 h-4 rounded-full bg-yellow-400 hover:bg-yellow-500 flex items-center justify-center transition-colors group"
+            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-yellow-400 transition-colors rounded"
           >
-            <Minus size={8} className="opacity-0 group-hover:opacity-100 text-yellow-900" />
+            <Minus size={14} />
           </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onMaximizeToggle(); }}
             title={language === 'ar' ? (isMaximized ? 'استعادة' : 'تكبير') : (isMaximized ? 'Restore' : 'Maximize')}
-            className="w-4 h-4 rounded-full bg-green-400 hover:bg-green-500 flex items-center justify-center transition-colors group"
+            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-green-400 transition-colors rounded"
           >
-            {isMaximized
-              ? <Minimize2 size={8} className="opacity-0 group-hover:opacity-100 text-green-900" />
-              : <Maximize2 size={8} className="opacity-0 group-hover:opacity-100 text-green-900" />}
+            {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             title={language === 'ar' ? 'إغلاق' : 'Close'}
-            className="w-4 h-4 rounded-full bg-red-400 hover:bg-red-500 flex items-center justify-center transition-colors group"
+            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-red-400 transition-colors rounded"
           >
-            <X size={8} className="opacity-0 group-hover:opacity-100 text-red-900" />
+            <X size={14} />
           </button>
         </div>
       </div>

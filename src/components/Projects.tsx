@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, 
   Search, 
@@ -22,11 +22,16 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 
+const safePct = (num: number | undefined, denom: number | undefined, fallback = 0) =>
+  denom && denom > 0 ? (Number(num ?? 0) / denom) * 100 : fallback;
+
 interface Project {
   id: string;
   projectCode: string;
   projectName: string;
+  projectNameEn?: string;
   clientName: string;
+  clientNameEn?: string;
   status: 'active' | 'completed' | 'suspended' | 'cancelled';
   budget?: number;
   spent?: number;
@@ -39,6 +44,7 @@ interface Contract {
   id: string;
   projectId: string;
   contractName: string;
+  contractNameEn?: string;
   contractNumber: string;
   createdAt: any;
 }
@@ -58,6 +64,7 @@ export function Projects() {
 
   const [contractFormData, setContractFormData] = useState({
     contractName: '',
+    contractNameEn: '',
     contractNumber: ''
   });
 
@@ -77,7 +84,9 @@ export function Projects() {
   const [formData, setFormData] = useState({
     projectCode: '',
     projectName: '',
+    projectNameEn: '',
     clientName: '',
+    clientNameEn: '',
     status: 'active' as Project['status'],
     boqValue: 0,
     voValue: 0
@@ -126,6 +135,16 @@ export function Projects() {
     return () => unsubscribe();
   }, []);
 
+  const nextProjectCode = useMemo(() => {
+    const year = new Date().getFullYear();
+    const nums = projects.map(p => {
+      const m = p.projectCode.match(/(\d+)$/);
+      return m ? parseInt(m[1], 10) : 0;
+    }).filter(n => n > 0);
+    const next = nums.length > 0 ? Math.max(...nums) + 1 : 1;
+    return `PRJ-${year}-${String(next).padStart(3, '0')}`;
+  }, [projects]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
@@ -150,10 +169,12 @@ export function Projects() {
 
       setIsModalOpen(false);
       setEditingProject(null);
-      setFormData({ 
-        projectCode: '', 
-        projectName: '', 
-        clientName: '', 
+      setFormData({
+        projectCode: '',
+        projectName: '',
+        projectNameEn: '',
+        clientName: '',
+        clientNameEn: '',
         status: 'active',
         boqValue: 0,
         voValue: 0
@@ -178,7 +199,7 @@ export function Projects() {
         createdAt: serverTimestamp()
       });
       setIsContractModalOpen(false);
-      setContractFormData({ contractName: '', contractNumber: '' });
+      setContractFormData({ contractName: '', contractNameEn: '', contractNumber: '' });
       setTargetProjectForContract(null);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'contracts');
@@ -192,7 +213,9 @@ export function Projects() {
     setFormData({
       projectCode: project.projectCode,
       projectName: project.projectName,
+      projectNameEn: project.projectNameEn || '',
       clientName: project.clientName,
+      clientNameEn: project.clientNameEn || '',
       status: project.status,
       boqValue: project.boqValue || 0,
       voValue: project.voValue || 0
@@ -238,14 +261,17 @@ export function Projects() {
         <button 
           onClick={() => {
             setEditingProject(null);
-            setFormData({ 
-              projectCode: '', 
-              projectName: '', 
-              clientName: '', 
+            setFormData({
+              projectCode: '',
+              projectName: '',
+              projectNameEn: '',
+              clientName: '',
+              clientNameEn: '',
               status: 'active',
               boqValue: 0,
               voValue: 0
             });
+            setFormData(p => ({ ...p, projectCode: nextProjectCode }));
             setIsModalOpen(true);
           }}
           className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2"
@@ -302,38 +328,54 @@ export function Projects() {
                   />
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم المشروع' : 'Project Name'}</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder={language === 'ar' ? 'أدخل اسم المشروع بالكامل' : 'Enter full project name'}
-                    className={cn(
-                      "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                      theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                      theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                      "bg-white border-gray-200 text-gray-900"
-                    )}
-                    value={formData.projectName}
-                    onChange={(e) => setFormData({...formData, projectName: e.target.value})}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم المشروع (عربي)' : 'Project Name (Arabic)'}</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="اسم المشروع بالعربية"
+                      className={cn("w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : theme === 'soft' ? "bg-white border-[#cfd8dc]" : "bg-white border-gray-200 text-gray-900")}
+                      value={formData.projectName}
+                      onChange={(e) => setFormData({...formData, projectName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم المشروع (إنجليزي)' : 'Project Name (English)'}</label>
+                    <input
+                      type="text"
+                      placeholder="Project name in English"
+                      dir="ltr"
+                      className={cn("w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : theme === 'soft' ? "bg-white border-[#cfd8dc]" : "bg-white border-gray-200 text-gray-900")}
+                      value={formData.projectNameEn}
+                      onChange={(e) => setFormData({...formData, projectNameEn: e.target.value})}
+                    />
+                  </div>
                 </div>
 
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العميل' : 'Client Name'}</label>
-                  <input
-                    required
-                    type="text"
-                    placeholder={language === 'ar' ? 'اسم الجهة المالكة أو العميل' : 'Owner or client name'}
-                    className={cn(
-                      "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
-                      theme === 'dark' ? "bg-gray-900 border-gray-800" : 
-                      theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                      "bg-white border-gray-200 text-gray-900"
-                    )}
-                    value={formData.clientName}
-                    onChange={(e) => setFormData({...formData, clientName: e.target.value})}
-                  />
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العميل (عربي)' : 'Client Name (Arabic)'}</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="اسم العميل بالعربية"
+                      className={cn("w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : theme === 'soft' ? "bg-white border-[#cfd8dc]" : "bg-white border-gray-200 text-gray-900")}
+                      value={formData.clientName}
+                      onChange={(e) => setFormData({...formData, clientName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العميل (إنجليزي)' : 'Client Name (English)'}</label>
+                    <input
+                      type="text"
+                      placeholder="Client name in English"
+                      dir="ltr"
+                      className={cn("w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800" : theme === 'soft' ? "bg-white border-[#cfd8dc]" : "bg-white border-gray-200 text-gray-900")}
+                      value={formData.clientNameEn}
+                      onChange={(e) => setFormData({...formData, clientNameEn: e.target.value})}
+                    />
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -363,7 +405,7 @@ export function Projects() {
                         "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
                         theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200 text-gray-900"
                       )}
-                      value={formData.boqValue}
+                      value={formData.boqValue || ''}
                       onChange={(e) => setFormData({...formData, boqValue: Number(e.target.value)})}
                     />
                   </div>
@@ -375,7 +417,7 @@ export function Projects() {
                         "w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors",
                         theme === 'dark' ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200 text-gray-900"
                       )}
-                      value={formData.voValue}
+                      value={formData.voValue || ''}
                       onChange={(e) => setFormData({...formData, voValue: Number(e.target.value)})}
                     />
                   </div>
@@ -565,12 +607,12 @@ export function Projects() {
                   <div className="space-y-3">
                     <div className="flex justify-between items-end">
                       <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'استهلاك الميزانية' : 'Budget Utilization'}</span>
-                      <span className="text-lg font-black text-blue-500">{Math.round((selectedProject.spent! / (selectedProject.budget! || 1)) * 100)}%</span>
+                      <span className="text-lg font-black text-blue-500">{Math.round(safePct(selectedProject.spent, selectedProject.budget))}%</span>
                     </div>
                     <div className="h-3 bg-gray-900 rounded-full overflow-hidden p-1 shadow-inner border border-gray-800">
-                      <motion.div 
+                      <motion.div
                         initial={{ width: 0 }}
-                        animate={{ width: `${(selectedProject.spent! / (selectedProject.budget! || 1)) * 100}%` }}
+                        animate={{ width: `${safePct(selectedProject.spent, selectedProject.budget)}%` }}
                         className="h-full bg-blue-500 rounded-full shadow-[0_0_10px_rgba(59,130,246,0.5)]"
                       />
                     </div>
@@ -579,12 +621,12 @@ export function Projects() {
                   <div className="space-y-3">
                     <div className="flex justify-between items-end">
                       <span className="text-xs font-black text-gray-400 uppercase tracking-widest">{language === 'ar' ? 'كفاءة التحصيل' : 'Collection Efficiency'}</span>
-                      <span className="text-lg font-black text-green-500">{Math.round((selectedProject.collected! / (selectedProject.spent! || 1)) * 100)}%</span>
+                      <span className="text-lg font-black text-green-500">{Math.round(safePct(selectedProject.collected, selectedProject.spent))}%</span>
                     </div>
                     <div className="h-3 bg-gray-900 rounded-full overflow-hidden p-1 shadow-inner border border-gray-800">
-                      <motion.div 
+                      <motion.div
                         initial={{ width: 0 }}
-                        animate={{ width: `${(selectedProject.collected! / (selectedProject.spent! || 1)) * 100}%` }}
+                        animate={{ width: `${safePct(selectedProject.collected, selectedProject.spent)}%` }}
                         className="h-full bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.5)]"
                       />
                     </div>
@@ -670,20 +712,29 @@ export function Projects() {
               </div>
 
               <form onSubmit={handleContractSubmit} className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العقد' : 'Contract Name'}</label>
-                  <input 
-                    required
-                    type="text" 
-                    className={cn(
-                      "w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-purple-500 transition-colors uppercase tracking-wider",
-                      theme === 'dark' ? "bg-gray-900 border-gray-800 text-white" : 
-                      theme === 'soft' ? "bg-white border-[#cfd8dc]" : 
-                      "bg-white border-gray-200 shadow-sm"
-                    )}
-                    value={contractFormData.contractName}
-                    onChange={(e) => setContractFormData({...contractFormData, contractName: e.target.value})}
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العقد (عربي)' : 'Contract Name (AR)'}</label>
+                    <input
+                      required
+                      type="text"
+                      placeholder="اسم العقد بالعربية"
+                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-purple-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800 text-white" : theme === 'soft' ? "bg-white border-[#cfd8dc]" : "bg-white border-gray-200 shadow-sm")}
+                      value={contractFormData.contractName}
+                      onChange={(e) => setContractFormData({...contractFormData, contractName: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم العقد (إنجليزي)' : 'Contract Name (EN)'}</label>
+                    <input
+                      type="text"
+                      placeholder="Contract name in English"
+                      dir="ltr"
+                      className={cn("w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-purple-500 transition-colors", theme === 'dark' ? "bg-gray-900 border-gray-800 text-white" : theme === 'soft' ? "bg-white border-[#cfd8dc]" : "bg-white border-gray-200 shadow-sm")}
+                      value={contractFormData.contractNameEn}
+                      onChange={(e) => setContractFormData({...contractFormData, contractNameEn: e.target.value})}
+                    />
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'رقم العقد' : 'Contract Number'}</label>
@@ -845,30 +896,30 @@ export function Projects() {
                 <div className="space-y-2">
                   <div className="flex justify-between text-[10px] font-bold uppercase">
                     <span className="text-gray-400">{language === 'ar' ? 'نسبة استهلاك الميزانية' : 'Budget Utilization'}</span>
-                    <span className="text-blue-400">{Math.round((project.spent! / project.budget!) * 100)}%</span>
+                    <span className="text-blue-400">{Math.round(safePct(project.spent, project.budget))}%</span>
                   </div>
                   <div className={cn(
                     "h-1.5 rounded-full overflow-hidden",
                     theme === 'dark' ? "bg-gray-900" : "bg-gray-100"
                   )}>
-                    <div 
-                      className="h-full bg-blue-600 rounded-full" 
-                      style={{ width: `${(project.spent! / project.budget!) * 100}%` }}
+                    <div
+                      className="h-full bg-blue-600 rounded-full"
+                      style={{ width: `${safePct(project.spent, project.budget)}%` }}
                     />
                   </div>
                 </div>
                 <div className="space-y-2">
                   <div className="flex justify-between text-[10px] font-bold uppercase">
                     <span className="text-gray-400">{language === 'ar' ? 'نسبة التحصيل من المصروف' : 'Collection Rate'}</span>
-                    <span className="text-green-400">{Math.round((project.collected! / project.spent!) * 100)}%</span>
+                    <span className="text-green-400">{Math.round(safePct(project.collected, project.spent))}%</span>
                   </div>
                   <div className={cn(
                     "h-1.5 rounded-full overflow-hidden",
                     theme === 'dark' ? "bg-gray-900" : "bg-gray-100"
                   )}>
-                    <div 
-                      className="h-full bg-green-600 rounded-full" 
-                      style={{ width: `${(project.collected! / project.spent!) * 100}%` }}
+                    <div
+                      className="h-full bg-green-600 rounded-full"
+                      style={{ width: `${safePct(project.collected, project.spent)}%` }}
                     />
                   </div>
                 </div>
