@@ -169,46 +169,6 @@ Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field 
 
 ---
 
-## Pending Work (Phased Fix Plan)
-
-### Phase 1 — Critical (data corruption risk)
-| # | File | Issue |
-|---|------|-------|
-| 1.1 | `Billing.tsx:352` | `NaN` in IPC percentages when `worksValueExVat === 0` — use `safePct()` helper |
-| 1.2 | `Purchases.tsx:234` | Random/wrong supplier account codes — use sequential 8-digit codes under `21101` |
-| 1.3 | `accountingService.ts:89` | Balance tolerance `0.1` → `0.005` + add debit/credit sign validation |
-| 1.4 | `accountingService.ts:94` | Duplicate transaction references — use full timestamp + random suffix |
-| 1.5 | `BOQ.tsx:302` | Bulk clear uses `deleteDoc` loop → replace with batched soft-delete (`isDeleted: true`) |
-
-### Phase 2 — High (correctness)
-| # | File | Issue |
-|---|------|-------|
-| 2.1 | `Purchases.tsx:197` | `useState` declared after usage — move all hooks to top of component |
-| 2.2 | All components | `onSnapshot` missing error callbacks — add third argument everywhere |
-| 2.3 | `accountingService.ts:100` | Silent `undefined` on `createdBy` — throw if `auth.currentUser` is null |
-| 2.4 | `Billing.tsx` | Extract billing percentage constants to `src/constants/billingDefaults.ts` |
-
-### Phase 3 — Performance
-| # | File | Issue |
-|---|------|-------|
-| 3.1 | `Dashboard.tsx:117` | Move chart data computation out of `onSnapshot` into `useMemo` |
-| 3.2 | `Dashboard.tsx:70` | Replace `any` types in transaction loops with `Transaction`/`JournalEntry` |
-| 3.3 | `BOQ.tsx`, `Billing.tsx` | Wrap row handlers in `useCallback`; wrap row components in `React.memo` |
-| 3.4 | `GeneralLedger.tsx:39` | Wrap `contractsMap` and `projectsMap` in `useMemo` |
-
-### Phase 4 — i18n
-| # | File | Issue |
-|---|------|-------|
-| 4.1 | All components | Replace inline `language === 'ar' ?` ternaries with `t('key')` |
-| 4.2 | `LanguageContext.tsx` | Add missing-key warning + expose `locale` field for date/number formatting |
-| 4.3 | `Dashboard.tsx:75` | Replace hardcoded `'ar-EG'` / `'en-US'` with `locale` from context |
-
-### Phase 5 — Hardening
-| # | File | Issue |
-|---|------|-------|
-| 5.1 | `Purchases.tsx:231` | Add `supplierId` field to supplier `chart_of_accounts` entry |
-| 5.2 | `firebase.ts` | Validate all required `VITE_*` env vars at startup; throw on missing |
-
 ---
 
 ## Workflow

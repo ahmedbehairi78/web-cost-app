@@ -62,7 +62,7 @@ interface BOQItem {
 }
 
 export function BOQ() {
-  const { t, language, theme, dir } = useLanguage();
+  const { t, language, theme, dir, locale } = useLanguage();
   const [projects, setProjects] = useState<Project[]>([]);
   const [contracts, setContracts] = useState<Contract[]>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -291,8 +291,8 @@ export function BOQ() {
     
     setConfirmConfig({
       isOpen: true,
-      title: language === 'ar' ? 'تأكيد المسح' : 'Confirm Clear',
-      message: language === 'ar' ? 'هل أنت متأكد من رغبتك في مسح كافة بنود جدول الكميات لهذا العقد؟ لا يمكن التراجع عن هذه الخطوة.' : 'Are you sure you want to clear all BOQ items for this contract? This action cannot be undone.',
+      title: t('boq_confirm_clear'),
+      message: t('boq_confirm_clear_msg'),
       onConfirm: async () => {
         setIsSubmitting(true);
         try {
@@ -344,8 +344,8 @@ export function BOQ() {
   const handleDeleteItem = async (itemId: string) => {
     setConfirmConfig({
       isOpen: true,
-      title: language === 'ar' ? 'حذف البند' : 'Delete Item',
-      message: language === 'ar' ? 'هل أنت متأكد من حذف هذا البند؟' : 'Are you sure you want to delete this item?',
+      title: t('delete_item'),
+      message: t('delete_item_msg'),
       onConfirm: async () => {
         try {
           await deleteDoc(doc(db, 'boq_items', itemId));
@@ -519,13 +519,13 @@ export function BOQ() {
     )} dir={dir}>
       <header className="flex justify-between items-center mb-8">
         <div>
-          <h2 className="text-3xl font-bold tracking-tight">{language === 'ar' ? 'جدول الكميات (BOQ)' : 'Bill of Quantities (BOQ)'}</h2>
-          <p className="text-gray-400 mt-1">{language === 'ar' ? 'إدارة بنود التعاقد، الكميات، وتحليل الأسعار' : 'Manage contract items, quantities, and price analysis'}</p>
+          <h2 className="text-3xl font-bold tracking-tight">{t('boq_page_title')}</h2>
+          <p className="text-gray-400 mt-1">{t('boq_page_subtitle')}</p>
         </div>
         <div className="flex gap-4">
           <div className="flex flex-col items-end">
-            <span className="text-[10px] text-gray-500 font-bold uppercase">{language === 'ar' ? 'إجمالي قيمة المشروع' : 'Total Project Value'}</span>
-            <span className="text-xl font-bold text-blue-500">{totalBOQAmount.toLocaleString()} <span className="text-xs font-normal">{language === 'ar' ? 'ج.م' : 'EGP'}</span></span>
+            <span className="text-[10px] text-gray-500 font-bold uppercase">{t('total_project_value')}</span>
+            <span className="text-xl font-bold text-blue-500">{totalBOQAmount.toLocaleString()} <span className="text-xs font-normal">{t('currency')}</span></span>
           </div>
           
           <div className="flex gap-2">
@@ -537,24 +537,24 @@ export function BOQ() {
                 theme === 'soft' ? "bg-white hover:bg-[#eceff1] text-[#37474f] border-[#cfd8dc]" :
                 "bg-white hover:bg-gray-50 text-gray-700 border-gray-200 shadow-sm"
               )}
-              title={language === 'ar' ? 'تصدير قالب' : 'Export Template'}
+              title={t('export_template')}
             >
               <Download size={18} />
-              {language === 'ar' ? 'تصدير' : 'Export'}
+              {t('export')}
             </button>
-            <button 
+            <button
               disabled={!selectedContractId || isSubmitting}
               onClick={() => fileInputRef.current?.click()}
               className={cn(
                 "px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border disabled:opacity-50",
-                theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700" : 
+                theme === 'dark' ? "bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700" :
                 theme === 'soft' ? "bg-white hover:bg-[#eceff1] text-[#37474f] border-[#cfd8dc]" :
                 "bg-white hover:bg-gray-50 text-gray-700 border-gray-200 shadow-sm"
               )}
-              title={language === 'ar' ? 'استيراد قالب' : 'Import Template'}
+              title={t('import_template')}
             >
               <Upload size={18} />
-              {language === 'ar' ? 'استيراد' : 'Import'}
+              {t('import')}
             </button>
             <input 
               type="file" 
@@ -592,16 +592,16 @@ export function BOQ() {
               className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 text-white"
             >
               <Plus size={18} />
-              {language === 'ar' ? 'بند جديد' : 'New Item'}
+              {t('add_item')}
             </button>
-            <button 
+            <button
               disabled={!selectedContractId || isSubmitting || items.length === 0}
               onClick={handleClearBOQ}
               className="bg-red-900/20 hover:bg-red-900/40 text-red-500 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 border border-red-900/50"
-              title={language === 'ar' ? 'تفريغ الجدول' : 'Clear Table'}
+              title={t('boq_clear_table')}
             >
               <Trash2 size={18} />
-              {language === 'ar' ? 'تفريغ' : 'Clear'}
+              {t('clear')}
             </button>
           </div>
       </header>
@@ -618,7 +618,7 @@ export function BOQ() {
             <Briefcase size={20} />
           </div>
           <div className="flex-1">
-            <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">{language === 'ar' ? 'المشروع' : 'Project'}</label>
+            <label className="text-[10px] text-gray-500 font-bold uppercase block mb-1">{t('project')}</label>
             <select 
               className={cn(
                 "bg-transparent text-lg font-bold outline-none w-full cursor-pointer",
@@ -645,17 +645,17 @@ export function BOQ() {
           </div>
           <div className="flex-1">
             <div className="flex justify-between items-center mb-1">
-              <label className="text-[10px] text-gray-500 font-bold uppercase block">{language === 'ar' ? 'العقد' : 'Contract'}</label>
-              <button 
+              <label className="text-[10px] text-gray-500 font-bold uppercase block">{t('contract')}</label>
+              <button
                 onClick={() => setIsContractModalOpen(true)}
                 disabled={!selectedProjectId}
                 className="p-1 px-2 bg-purple-900/20 text-purple-500 rounded text-[10px] font-black uppercase flex items-center gap-1 hover:bg-purple-900/30 transition-colors disabled:opacity-50"
               >
                 <Plus size={10} />
-                {language === 'ar' ? 'إضافة عقد' : 'Add Contract'}
+                {t('add_contract')}
               </button>
             </div>
-            <select 
+            <select
               className={cn(
                 "bg-transparent text-lg font-bold outline-none w-full cursor-pointer",
                 theme === 'dark' ? "text-white" : "text-gray-900"
@@ -664,7 +664,7 @@ export function BOQ() {
               onChange={(e) => setSelectedContractId(e.target.value)}
               disabled={!selectedProjectId}
             >
-              <option value="" disabled>{language === 'ar' ? 'اختر العقد' : 'Select Contract'}</option>
+              <option value="" disabled>{t('select_contract')}</option>
               {contracts.map(c => (
                 <option key={c.id} value={c.id} className={theme === 'dark' ? "bg-[#151619]" : "bg-white"}>{c.contractName} ({c.contractNumber})</option>
               ))}
@@ -688,33 +688,33 @@ export function BOQ() {
               theme === 'soft' ? "bg-[#eceff1] border-[#cfd8dc]" : 
               "bg-gray-50 border-gray-100"
             )}>
-              <th className="p-4 w-24">{language === 'ar' ? 'الفصل' : 'Chapter'}</th>
-              <th className="p-4 w-24">{language === 'ar' ? 'القسم' : 'Section'}</th>
-              <th className="p-4 w-20">{language === 'ar' ? 'كود النوع' : 'Type'}</th>
-              <th className="p-4 w-20">{language === 'ar' ? 'الكود' : 'Code'}</th>
-              <th className="p-4">{language === 'ar' ? 'الوصف' : 'Description'}</th>
-              <th className="p-4 w-16">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
-              <th className="p-4 w-20">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
-              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'بدء العمل' : 'Start Date'}</th>
-              <th className="p-4 w-16 whitespace-nowrap">{language === 'ar' ? 'المدة' : 'Dur.'}</th>
-              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'نهاية العمل' : 'End Date'}</th>
-              <th className="p-4 w-20 whitespace-nowrap">{language === 'ar' ? 'الإنجاز' : 'Progress'}</th>
-              <th className="p-4 w-24 whitespace-nowrap">{language === 'ar' ? 'الحالة' : 'Status'}</th>
-              <th className="p-4 w-20 whitespace-normal text-[8px]">{language === 'ar' ? 'مواد' : 'Mat.'}</th>
-              <th className="p-4 w-20 whitespace-normal text-[8px]">{language === 'ar' ? 'عمالة' : 'Lab.'}</th>
-              <th className="p-4 w-20 whitespace-normal text-[8px]">{language === 'ar' ? 'معدات' : 'Equip.'}</th>
-              <th className="p-4 w-12 whitespace-normal text-[8px]">{language === 'ar' ? 'م.ع %' : 'OH%'}</th>
-              <th className="p-4 w-12 whitespace-normal text-[8px]">{language === 'ar' ? 'ربح %' : 'Prof%'}</th>
-              <th className="p-4 w-24">{language === 'ar' ? 'سعر الوحدة' : 'Unit Rate'}</th>
-              <th className="p-4 w-24">{language === 'ar' ? 'الإجمالي' : 'Total'}</th>
+              <th className="p-4 w-24">{t('chapter')}</th>
+              <th className="p-4 w-24">{t('section_col')}</th>
+              <th className="p-4 w-20">{t('type')}</th>
+              <th className="p-4 w-20">{t('code')}</th>
+              <th className="p-4">{t('description')}</th>
+              <th className="p-4 w-16">{t('unit')}</th>
+              <th className="p-4 w-20">{t('qty')}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{t('start_date')}</th>
+              <th className="p-4 w-16 whitespace-nowrap">{t('duration')}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{t('end_date')}</th>
+              <th className="p-4 w-20 whitespace-nowrap">{t('progress')}</th>
+              <th className="p-4 w-24 whitespace-nowrap">{t('status')}</th>
+              <th className="p-4 w-20 whitespace-normal text-[8px]">{t('mat_abbr')}</th>
+              <th className="p-4 w-20 whitespace-normal text-[8px]">{t('lab_abbr')}</th>
+              <th className="p-4 w-20 whitespace-normal text-[8px]">{t('equip_abbr')}</th>
+              <th className="p-4 w-12 whitespace-normal text-[8px]">{t('oh_pct')}</th>
+              <th className="p-4 w-12 whitespace-normal text-[8px]">{t('profit_pct')}</th>
+              <th className="p-4 w-24">{t('unit_rate')}</th>
+              <th className="p-4 w-24">{t('total')}</th>
               <th className="p-4 w-12"></th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={20} className="p-12 text-center text-gray-500">{language === 'ar' ? 'جاري تحميل البنود...' : 'Loading items...'}</td></tr>
+              <tr><td colSpan={20} className="p-12 text-center text-gray-500">{t('loading_items')}</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={20} className="p-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد بنود مسجلة لهذا المشروع.' : 'No items recorded for this project.'}</td></tr>
+              <tr><td colSpan={20} className="p-12 text-center text-gray-500">{t('no_items')}</td></tr>
             ) : (
               items.map((item) => (
                 <tr key={item.id} className={cn(
@@ -739,7 +739,7 @@ export function BOQ() {
                   <td className="p-4 text-xs text-gray-400">{item.unit}</td>
                   <td className="p-4 text-xs font-bold">{item.tenderQty.toLocaleString()}</td>
                   <td className="p-4 text-[10px] font-mono text-gray-400">
-                    {item.startDate ? new Date(item.startDate).toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US') : '-'}
+                    {item.startDate ? new Date(item.startDate).toLocaleDateString(locale) : '-'}
                   </td>
                   <td className="p-4 text-[10px] font-mono">
                     {item.expectedDuration ? (
@@ -765,7 +765,7 @@ export function BOQ() {
                       if (!item.startDate || !item.expectedDuration) return '-';
                       const start = new Date(item.startDate);
                       const end = new Date(start.getTime() + (item.expectedDuration * 24 * 60 * 60 * 1000));
-                      return end.toLocaleDateString(language === 'ar' ? 'ar-EG' : 'en-US');
+                      return end.toLocaleDateString(locale);
                     })()}
                   </td>
                   <td className="p-4">
@@ -805,7 +805,7 @@ export function BOQ() {
                         return (
                           <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full w-fit">
                             <CheckCircle2 size={8} />
-                            {language === 'ar' ? 'مكتمل' : 'Done'}
+                            {t('done')}
                           </div>
                         );
                       }
@@ -814,7 +814,7 @@ export function BOQ() {
                         return (
                           <div className="flex items-center gap-1 text-[8px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full w-fit">
                             <AlertCircle size={8} />
-                            {language === 'ar' ? 'متأخر' : 'Late'}
+                            {t('late')}
                           </div>
                         );
                       }
@@ -822,7 +822,7 @@ export function BOQ() {
                       return (
                         <div className="flex items-center gap-1 text-[8px] font-bold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded-full w-fit">
                           <Clock size={8} />
-                          {language === 'ar' ? 'جاري' : 'Runs'}
+                          {t('running')}
                         </div>
                       );
                     })()}
@@ -898,7 +898,7 @@ export function BOQ() {
                   onClick={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
                   className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
                 >
-                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                  {t('cancel')}
                 </button>
                 <button 
                   onClick={confirmConfig.onConfirm}
@@ -906,7 +906,7 @@ export function BOQ() {
                   className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2"
                 >
                   {isSubmitting && <Loader2 className="animate-spin" size={16} />}
-                  {language === 'ar' ? 'تأكيد' : 'Confirm'}
+                  {t('confirm')}
                 </button>
               </div>
             </motion.div>
