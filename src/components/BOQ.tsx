@@ -500,6 +500,7 @@ export function BOQ() {
             rateDirect: direct,
             unitRateTotal: total,
             tenderAmount: total * tenderQty,
+            isDeleted: false,
             createdAt: serverTimestamp()
           });
         }
