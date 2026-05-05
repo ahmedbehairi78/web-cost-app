@@ -95,6 +95,10 @@ export default function App() {
     setWindows(prev => prev.map(w => w.id === id ? { ...w, position: pos } : w));
   }, []);
 
+  const closeAllWindows = useCallback(() => {
+    setWindows([]);
+  }, []);
+
   const restoreMinimized = useCallback((id: string) => {
     setWindows(prev => prev.map(w => {
       if (w.id === id) return { ...w, windowState: 'maximized' as const, zIndex: nextZ() };
@@ -171,6 +175,7 @@ export default function App() {
       <Sidebar
         openModuleIds={openModuleIds}
         openWindow={openWindow}
+        closeAllWindows={closeAllWindows}
         permissions={userPermissions}
         isAdmin={isAdmin}
       />

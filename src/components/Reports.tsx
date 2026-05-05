@@ -106,10 +106,14 @@ export function Reports() {
 
   // Company Info State
   const [companyInfo, setCompanyInfo] = useState({
-    companyName: language === 'ar' ? 'شركة النيل للمقاولات والاستثمار العقاري' : 'Nile Construction & Real Estate',
-    headerLogo: 'https://picsum.photos/seed/construction/200/200',
+    companyName: 'شركة النيل للمقاولات والاستثمار العقاري',
+    companyNameEn: 'Nile Construction & Real Estate',
+    headerLogo: '',
     taxId: '123-456-789',
-    address: language === 'ar' ? 'القاهرة، مصر' : 'Cairo, Egypt'
+    address: 'القاهرة، مصر',
+    addressEn: 'Cairo, Egypt',
+    footerText: 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2024',
+    footerTextEn: 'Cost Management System - All Rights Reserved © 2024',
   });
 
   useEffect(() => {
@@ -501,10 +505,16 @@ export function Reports() {
       {/* Report Header (Visible in Print) */}
       <div className="hidden print:flex justify-between items-center border-b-2 border-gray-900 pb-6 mb-8">
         <div className="flex items-center gap-4">
-          <img src={companyInfo.headerLogo} alt="Logo" className="w-16 h-16 rounded-lg object-cover" referrerPolicy="no-referrer" />
+          {companyInfo.headerLogo && (
+            <img src={companyInfo.headerLogo} alt="Logo" className="w-16 h-16 rounded-lg object-contain" referrerPolicy="no-referrer" />
+          )}
           <div>
-            <h1 className="text-2xl font-black">{companyInfo.companyName}</h1>
-            <p className="text-sm text-gray-600">{companyInfo.address || (language === 'ar' ? 'القاهرة، مصر' : 'Cairo, Egypt')}</p>
+            <h1 className="text-2xl font-black">
+              {language === 'ar' ? companyInfo.companyName : (companyInfo.companyNameEn || companyInfo.companyName)}
+            </h1>
+            <p className="text-sm text-gray-600">
+              {language === 'ar' ? (companyInfo.address || 'القاهرة، مصر') : (companyInfo.addressEn || companyInfo.address || 'Cairo, Egypt')}
+            </p>
             <p className="text-sm text-gray-600">{language === 'ar' ? 'الرقم الضريبي:' : 'Tax ID:'} {companyInfo.taxId}</p>
           </div>
         </div>
@@ -1492,7 +1502,7 @@ export function Reports() {
 
       {/* Footer (Visible in Print) */}
       <div className="hidden print:block mt-12 pt-6 border-t border-gray-300 text-center text-xs text-gray-500">
-        <p>{companyInfo.companyName} - {language === 'ar' ? 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2024' : 'Cost Management System - All Rights Reserved © 2024'}</p>
+        <p>{language === 'ar' ? companyInfo.companyName : (companyInfo.companyNameEn || companyInfo.companyName)} - {language === 'ar' ? (companyInfo.footerText || 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2024') : (companyInfo.footerTextEn || companyInfo.footerText || 'Cost Management System - All Rights Reserved © 2024')}</p>
         <p className="mt-1">{language === 'ar' ? 'تم استخراج هذا التقرير آلياً' : 'This report was generated automatically'}</p>
       </div>
 

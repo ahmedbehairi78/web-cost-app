@@ -68,17 +68,18 @@ export function Dashboard() {
         }
       });
 
-      const cashOrBankEntry = tx.entries.find((e: JournalEntry) => e.accountCode?.startsWith('111') && e.debit > 0);
-      if (cashOrBankEntry) {
-        const val = cashOrBankEntry.debit || 0;
-        const isIpcCollection = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0);
-        const isAdvancePayment = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.ADVANCE_PAYMENT && e.credit > 0);
+      const cashDebits = tx.entries
+        .filter((e: JournalEntry) => e.accountCode?.startsWith('111') && (e.debit || 0) > 0)
+        .reduce((s: number, e: JournalEntry) => s + (e.debit || 0), 0);
+      if (cashDebits > 0) {
+        const isIpcCollection = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.RECEIVABLES && (e.credit || 0) > 0);
+        const isAdvancePayment = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.ADVANCE_PAYMENT && (e.credit || 0) > 0);
         if (isIpcCollection || isAdvancePayment) {
-          totalCollected += val;
-          monthlyMap[monthYear].collections += val;
+          totalCollected += cashDebits;
+          monthlyMap[monthYear].collections += cashDebits;
         }
         if (isIpcCollection) {
-          ipcCollected += val;
+          ipcCollected += cashDebits;
         }
       }
     });

@@ -302,7 +302,8 @@ export function ActualCosts() {
     setIsSubmitting(true);
     const supplier = suppliers.find(s => s.id === formData.supplierId);
     const expenseAccount = accounts.find(a => a.id === formData.expenseAccountId);
-    const supplierCoaAccount = accounts.find(a => a.supplierId === formData.supplierId && a.accountCode.startsWith('211'));
+    const supplierCoaAccount = accounts.find(a => a.supplierId === formData.supplierId && a.accountCode?.startsWith('211'));
+    const resolvedSupplierName = supplier?.name || supplierCoaAccount?.accountName || '';
     const { worksValue, vat, exec, wht, insurance, levy, advance, net } =
       activeTab === 'invoice'
         ? { worksValue: formData.amount, vat: formData.amount * (formData.vatPct / 100), wht: formData.amount * (formData.whtPct / 100), exec: 0, insurance: 0, levy: 0, advance: 0, net: formData.amount + (formData.amount * (formData.vatPct / 100)) - (formData.amount * (formData.whtPct / 100)) }
@@ -312,23 +313,23 @@ export function ActualCosts() {
       if (activeTab === 'invoice' && expenseAccount) {
         transactionId = await accountingService.recordPurchaseInvoice({
           baseAmount: formData.amount, vatAmount: vat, whtAmount: wht, totalAmount: net,
-          supplierName: supplier?.name || '', supplierAccountCode: supplierCoaAccount?.accountCode,
+          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount?.accountCode,
           expenseAccountCode: expenseAccount.accountCode,
           expenseAccountName: expenseAccount.accountName,
-          description: formData.description || `${t('invoice_entry')} - ${supplier?.name}`,
+          description: formData.description || `${t('invoice_entry')} - ${resolvedSupplierName}`,
           projectId: formData.projectId, contractId: formData.contractId, date: formData.date
         });
       } else if (activeTab === 'ipc') {
         transactionId = await accountingService.recordSubcontractorIPC({
           worksValue, vatAmount: vat, netPayable: net, execGuarantee: exec, whtAmount: wht,
           labourInsurance: insurance, manpowerLevy: levy, advancePaymentRecovery: advance,
-          supplierName: supplier?.name || '', supplierAccountCode: supplierCoaAccount?.accountCode,
-          description: formData.description || `${t('ipc_entry')} - ${supplier?.name}`,
+          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount?.accountCode,
+          description: formData.description || `${t('ipc_entry')} - ${resolvedSupplierName}`,
           projectId: formData.projectId, contractId: formData.contractId, date: formData.date
         });
       }
       await addDoc(collection(db, 'purchase_transactions'), {
-        type: activeTab, supplierId: formData.supplierId, supplierName: supplier?.name || '',
+        type: activeTab, supplierId: formData.supplierId, supplierName: resolvedSupplierName,
         projectId: formData.projectId, contractId: formData.contractId,
         expenseAccountId: formData.expenseAccountId, expenseAccountName: expenseAccount?.accountName || '',
         date: formData.date, referenceNumber: formData.referenceNumber,
@@ -554,7 +555,14 @@ export function ActualCosts() {
                     </div>
                     <SearchableSelect value={formData.supplierId} onChange={v => setFormData(p => ({ ...p, supplierId: v }))} theme={theme} dir={dir}
                       placeholder={language === 'ar' ? 'اختر المورد/المقاول' : 'Select Supplier'}
-                      options={suppliers.map(s => ({ value: s.id, label: s.name }))} />
+                      options={accounts.filter(a =>
+                        (a.accountCode?.startsWith('21101') || a.accountCode?.startsWith('21102')) &&
+                        a.accountCode?.length === 8 && !a.isGroup && a.supplierId
+                      ).map(a => ({
+                        value: a.supplierId,
+                        secondary: a.accountCode,
+                        label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
+                      }))} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{t('invoice_date')}</label>
@@ -666,7 +674,7 @@ export function ActualCosts() {
                   </div>
                   <SearchableSelect value={formData.expenseAccountId} onChange={v => setFormData(p => ({ ...p, expenseAccountId: v }))} theme={theme} dir={dir}
                     placeholder={t('select_account')}
-                    options={accounts.filter(a => a.type === 'expense' && !a.isGroup && a.status !== 'disabled').map(a => ({
+                    options={accounts.filter(a => a.accountCode?.startsWith('5') && a.accountCode?.length === 8 && !a.isGroup && a.status !== 'disabled').map(a => ({
                       value: a.id, secondary: a.accountCode, label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
                     }))} />
                 </div>

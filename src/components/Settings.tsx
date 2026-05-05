@@ -1006,9 +1006,13 @@ export function Settings() {
 
   const [printSettings, setPrintSettings] = useState({
     companyName: '',
+    companyNameEn: '',
     taxId: '',
-    headerLogo: 'https://picsum.photos/seed/construction/200/200',
+    address: '',
+    addressEn: '',
+    headerLogo: '',
     footerText: '',
+    footerTextEn: '',
   });
 
   useEffect(() => {
@@ -1018,10 +1022,14 @@ export function Settings() {
         setPrintSettings(settingsDoc.data() as typeof printSettings);
       } else {
         setPrintSettings({
-          companyName: language === 'ar' ? 'شركة النيل للمقاولات والاستثمار العقاري' : 'Nile Construction & Real Estate',
+          companyName: 'شركة النيل للمقاولات والاستثمار العقاري',
+          companyNameEn: 'Nile Construction & Real Estate',
           taxId: '123-456-789',
-          headerLogo: 'https://picsum.photos/seed/construction/200/200',
-          footerText: language === 'ar' ? 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2024' : 'Cost Management System - All Rights Reserved © 2024',
+          address: 'القاهرة، مصر',
+          addressEn: 'Cairo, Egypt',
+          headerLogo: '',
+          footerText: 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2024',
+          footerTextEn: 'Cost Management System - All Rights Reserved © 2024',
         });
       }
     };
@@ -1305,13 +1313,49 @@ export function Settings() {
                   <h3 className="text-xl font-bold">{t('print_settings')}</h3>
                 </div>
                 <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label htmlFor="company-name" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم الشركة' : 'Company Name'}</label>
-                    <input id="company-name" type="text" className={inputCls} value={printSettings.companyName} onChange={(e) => setPrintSettings({ ...printSettings, companyName: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="company-name-ar" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم الشركة (عربي)' : 'Company Name (Arabic)'}</label>
+                      <input id="company-name-ar" type="text" dir="rtl" className={inputCls} value={printSettings.companyName} onChange={(e) => setPrintSettings({ ...printSettings, companyName: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="company-name-en" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'اسم الشركة (إنجليزي)' : 'Company Name (English)'}</label>
+                      <input id="company-name-en" type="text" dir="ltr" className={inputCls} value={printSettings.companyNameEn} onChange={(e) => setPrintSettings({ ...printSettings, companyNameEn: e.target.value })} />
+                    </div>
                   </div>
                   <div className="space-y-2">
                     <label htmlFor="tax-id" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'الرقم الضريبي' : 'Tax ID'}</label>
                     <input id="tax-id" type="text" className={inputCls} value={printSettings.taxId} onChange={(e) => setPrintSettings({ ...printSettings, taxId: e.target.value })} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="address-ar" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'العنوان (عربي)' : 'Address (Arabic)'}</label>
+                      <input id="address-ar" type="text" dir="rtl" className={inputCls} value={printSettings.address} onChange={(e) => setPrintSettings({ ...printSettings, address: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="address-en" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'العنوان (إنجليزي)' : 'Address (English)'}</label>
+                      <input id="address-en" type="text" dir="ltr" className={inputCls} value={printSettings.addressEn} onChange={(e) => setPrintSettings({ ...printSettings, addressEn: e.target.value })} />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <label htmlFor="header-logo" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'رابط شعار الشركة (Logo URL)' : 'Company Logo URL'}</label>
+                    <input id="header-logo" type="url" dir="ltr" placeholder="https://..." className={inputCls} value={printSettings.headerLogo} onChange={(e) => setPrintSettings({ ...printSettings, headerLogo: e.target.value })} />
+                    {printSettings.headerLogo && (
+                      <div className="mt-2 flex items-center gap-3">
+                        <img src={printSettings.headerLogo} alt="Logo preview" className="w-14 h-14 rounded-lg object-contain border border-gray-700" referrerPolicy="no-referrer" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                        <span className="text-xs text-gray-500">{language === 'ar' ? 'معاينة الشعار' : 'Logo preview'}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label htmlFor="footer-ar" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'نص الفوتر (عربي)' : 'Footer Text (Arabic)'}</label>
+                      <input id="footer-ar" type="text" dir="rtl" className={inputCls} value={printSettings.footerText} onChange={(e) => setPrintSettings({ ...printSettings, footerText: e.target.value })} />
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="footer-en" className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'نص الفوتر (إنجليزي)' : 'Footer Text (English)'}</label>
+                      <input id="footer-en" type="text" dir="ltr" className={inputCls} value={printSettings.footerTextEn} onChange={(e) => setPrintSettings({ ...printSettings, footerTextEn: e.target.value })} />
+                    </div>
                   </div>
                 </div>
               </motion.div>

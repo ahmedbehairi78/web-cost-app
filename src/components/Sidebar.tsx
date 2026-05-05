@@ -11,6 +11,7 @@ import {
   LogOut,
   Languages,
   Droplets,
+  X,
 } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
@@ -21,6 +22,7 @@ import { type UserPermissions } from '../types';
 interface SidebarProps {
   openModuleIds: Set<string>;
   openWindow: (moduleId: string) => void;
+  closeAllWindows: () => void;
   permissions: UserPermissions;
   isAdmin: boolean;
 }
@@ -36,7 +38,7 @@ const ALL_MENU_ITEMS = [
   { id: 'settings',  labelKey: 'settings',  icon: Settings },
 ] as const;
 
-export function Sidebar({ openModuleIds, openWindow, permissions, isAdmin }: SidebarProps) {
+export function Sidebar({ openModuleIds, openWindow, closeAllWindows, permissions, isAdmin }: SidebarProps) {
   const { t, language, setLanguage, dir, theme } = useLanguage();
 
   const menuItems = isAdmin
@@ -129,9 +131,41 @@ export function Sidebar({ openModuleIds, openWindow, permissions, isAdmin }: Sid
           <Droplets size={20} className="flex-shrink-0" />
           <span className="font-medium">{language === 'ar' ? 'تقرير السيولة' : 'Liquidity'}</span>
         </button>
+
+        {openModuleIds.size > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const msg = language === 'ar'
+                ? `هل تريد إغلاق ${openModuleIds.size} نافذة مفتوحة؟ تأكد من حفظ أي بيانات قبل المتابعة.`
+                : `Close ${openModuleIds.size} open window(s)? Make sure to save any unsaved data first.`;
+              if (window.confirm(msg)) closeAllWindows();
+            }}
+            className={cn(
+              ghostBtnCls,
+              theme === 'dark' ? 'text-orange-400 hover:bg-orange-900/20 hover:text-orange-300'
+                : 'text-orange-600 hover:bg-orange-50 hover:text-orange-700',
+            )}
+          >
+            <X size={20} className="flex-shrink-0" />
+            <span className="font-medium">
+              {language === 'ar' ? `إغلاق الكل (${openModuleIds.size})` : `Close All (${openModuleIds.size})`}
+            </span>
+          </button>
+        )}
+
         <button
           type="button"
-          onClick={() => setLanguage(language === 'ar' ? 'en' : 'ar')}
+          onClick={() => {
+            if (openModuleIds.size > 0) {
+              const msg = language === 'ar'
+                ? 'يوجد نوافذ مفتوحة. تأكد من حفظ أي تغييرات. سيتم إغلاق جميع النوافذ عند تغيير اللغة. هل تريد المتابعة؟'
+                : 'There are open windows. Make sure to save any changes. All windows will be closed when switching language. Continue?';
+              if (!window.confirm(msg)) return;
+              closeAllWindows();
+            }
+            setLanguage(language === 'ar' ? 'en' : 'ar');
+          }}
           className={ghostBtnCls}
         >
           <Languages size={20} className="flex-shrink-0" />

@@ -62,8 +62,8 @@ export function LiquidityReport() {
 
   const cashBalance = useMemo(() =>
     glTxs.reduce((sum, tx) => {
-      const cashEntries = tx.entries.filter(e => e.accountCode.startsWith('111'));
-      return sum + cashEntries.reduce((s, e) => s + (e.debit - e.credit), 0);
+      const cashEntries = (tx.entries ?? []).filter(e => e.accountCode?.startsWith('111'));
+      return sum + cashEntries.reduce((s, e) => s + ((e.debit || 0) - (e.credit || 0)), 0);
     }, 0),
   [glTxs]);
 
@@ -78,23 +78,42 @@ export function LiquidityReport() {
 
       const contractTxs = glTxs.filter(tx => tx.costCenterId === contract.id);
 
-      const totalCollected = contractTxs.reduce((sum, tx) => {
-        const cashDebit = tx.entries
-          .filter(e => e.accountCode.startsWith('111') && e.debit > 0)
-          .reduce((s, e) => s + e.debit, 0);
-        const receivableCredit = tx.entries
-          .filter(e => e.accountCode === AccountCodes.RECEIVABLES && e.credit > 0)
-          .reduce((s, e) => s + e.credit, 0);
-        return sum + Math.min(cashDebit, receivableCredit);
+      // IPC collections: bank debit paired with RECEIVABLES credit
+      const ipcCollected = contractTxs.reduce((sum, tx) => {
+        const entries = tx.entries ?? [];
+        const cashDebit = entries
+          .filter(e => e.accountCode?.startsWith('111') && (e.debit || 0) > 0)
+          .reduce((s, e) => s + (e.debit || 0), 0);
+        const hasRecv = entries.some(e => e.accountCode === AccountCodes.RECEIVABLES && (e.credit || 0) > 0);
+        return hasRecv ? sum + cashDebit : sum;
       }, 0);
 
-      const totalAdvances = contractTxs.reduce((sum, tx) =>
-        sum + tx.entries.filter(e => e.accountCode === AccountCodes.ADVANCE_PAYMENT && e.credit > 0).reduce((s, e) => s + e.credit, 0),
+      // Advance payments received from client (bank debit + ADVANCE_PAYMENT credit)
+      const clientAdvances = contractTxs.reduce((sum, tx) => {
+        const entries = tx.entries ?? [];
+        const cashDebit = entries
+          .filter(e => e.accountCode?.startsWith('111') && (e.debit || 0) > 0)
+          .reduce((s, e) => s + (e.debit || 0), 0);
+        const hasAdv = entries.some(e => e.accountCode === AccountCodes.ADVANCE_PAYMENT && (e.credit || 0) > 0);
+        return hasAdv ? sum + cashDebit : sum;
+      }, 0);
+
+      // Advances paid out to suppliers/subcontractors (cash outflows)
+      const supplierAdvancesPaid = contractTxs.reduce((sum, tx) =>
+        sum + (tx.entries ?? [])
+          .filter(e =>
+            (e.accountCode === AccountCodes.ADVANCE_TO_SUPPLIERS || e.accountCode === AccountCodes.ADVANCE_TO_SUBCONTRACTORS) &&
+            (e.debit || 0) > 0)
+          .reduce((s, e) => s + (e.debit || 0), 0),
       0);
 
-      const uncollected = totalBilled - totalCollected - totalRetention;
+      // Net collections = IPC received + client advances - supplier advances paid
+      const totalCollected = ipcCollected + clientAdvances - supplierAdvancesPaid;
+      const totalAdvances = clientAdvances;
 
-      return { contract, totalBilled, totalCollected, totalAdvances, totalRetention, uncollected };
+      const uncollected = totalBilled - ipcCollected - totalRetention;
+
+      return { contract, totalBilled, totalCollected, totalAdvances, totalRetention, uncollected, ipcCollected };
     });
   }, [contracts, billing, glTxs]);
 
@@ -176,8 +195,8 @@ export function LiquidityReport() {
                 <tr><td colSpan={8} className="py-12 text-center text-gray-500">{language === 'ar' ? 'جاري التحميل...' : 'Loading...'}</td></tr>
               ) : contractRows.length === 0 ? (
                 <tr><td colSpan={8} className="py-12 text-center text-gray-500">{language === 'ar' ? 'لا توجد عقود.' : 'No contracts.'}</td></tr>
-              ) : contractRows.map(({ contract, totalBilled, totalCollected, totalAdvances, totalRetention, uncollected }) => {
-                const collectionPct = totalBilled > 0 ? (totalCollected / totalBilled) * 100 : 0;
+              ) : contractRows.map(({ contract, totalBilled, totalCollected, totalAdvances, totalRetention, uncollected, ipcCollected }) => {
+                const collectionPct = totalBilled > 0 ? (ipcCollected / totalBilled) * 100 : 0;
                 const project = projectsMap.get(contract.projectId);
                 return (
                   <tr key={contract.id} className={cn('transition-colors', rowHoverCls)}>
