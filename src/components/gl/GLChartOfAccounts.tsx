@@ -363,12 +363,14 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir }: P
               >
                 {acc.status === 'disabled' ? (language === 'ar' ? 'تفعيل' : 'Activate') : (language === 'ar' ? 'تعطيل' : 'Disable')}
               </button>
-              <button
-                type="button"
-                title={language === 'ar' ? 'إضافة حساب فرعي' : 'Add Sub-Account'}
-                onClick={(e) => { e.stopPropagation(); setEditingAccount(null); setNewAccountParent(acc); setIsAccountModalOpen(true); }}
-                className="text-gray-500 hover:text-green-400"
-              ><Plus size={13} /></button>
+              {acc.isGroup && (
+                <button
+                  type="button"
+                  title={language === 'ar' ? 'إضافة حساب فرعي' : 'Add Sub-Account'}
+                  onClick={(e) => { e.stopPropagation(); setEditingAccount(null); setNewAccountParent(acc); setIsAccountModalOpen(true); }}
+                  className="text-gray-500 hover:text-green-400"
+                ><Plus size={13} /></button>
+              )}
               <button type="button" title={language === 'ar' ? 'تعديل' : 'Edit'} onClick={(e) => { e.stopPropagation(); setNewAccountParent(null); setEditingAccount(acc); setIsAccountModalOpen(true); }} className="text-gray-500 hover:text-white"><Edit2 size={13} /></button>
               <button type="button" title={language === 'ar' ? 'حذف' : 'Delete'} className="text-gray-500 hover:text-red-500"><Trash2 size={13} /></button>
             </div>

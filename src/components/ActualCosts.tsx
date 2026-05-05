@@ -147,7 +147,7 @@ export function ActualCosts() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'chart_of_accounts')
     );
     const unsubBoq = onSnapshot(
-      collection(db, 'boq_items'),
+      query(collection(db, 'boq_items'), where('isDeleted', '!=', true)),
       (snap) => setBoqItems(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       (err) => handleFirestoreError(err, OperationType.LIST, 'boq_items')
     );
@@ -162,12 +162,30 @@ export function ActualCosts() {
   // ── Auto-load BOQ items for IPC tab ───────────────────────────────────────
   useEffect(() => {
     if (activeTab === 'ipc' && formData.projectId && formData.contractId) {
-      const items = boqItems
-        .filter(b => b.projectId === formData.projectId && b.contractId === formData.contractId)
-        .map(b => ({ boqItemId: b.id, itemCode: b.itemCode, description: b.description, unit: b.unit, rate: b.unitRateTotal, previousQty: 0, currentQty: 0, totalQty: 0, amount: 0 }));
+      const contractBoq = boqItems.filter(b => b.projectId === formData.projectId && b.contractId === formData.contractId);
+      const items = contractBoq.map(b => {
+        const previousQty = transactions
+          .filter(tx => tx.type === 'ipc' && tx.contractId === formData.contractId)
+          .reduce((sum, tx) => {
+            const match = (tx as any).items?.find((i: any) => i.boqItemId === b.id);
+            return sum + (match?.currentQty || 0);
+          }, 0);
+        return {
+          boqItemId: b.id,
+          itemCode: b.itemCode,
+          description: b.description,
+          unit: b.unit,
+          tenderQty: b.tenderQty,
+          rate: parseFloat((b.unitRateTotal || 0).toFixed(2)),
+          previousQty,
+          currentQty: 0,
+          totalQty: previousQty,
+          amount: 0,
+        };
+      });
       setFormData(prev => ({ ...prev, items }));
     }
-  }, [formData.projectId, formData.contractId, activeTab, boqItems]);
+  }, [formData.projectId, formData.contractId, activeTab, boqItems, transactions]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleSaveAccount = async (e: React.FormEvent) => {
@@ -280,6 +298,8 @@ export function ActualCosts() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const supplier = suppliers.find(s => s.id === formData.supplierId);
     const expenseAccount = accounts.find(a => a.id === formData.expenseAccountId);
     const supplierCoaAccount = accounts.find(a => a.supplierId === formData.supplierId && a.accountCode.startsWith('211'));
@@ -322,6 +342,8 @@ export function ActualCosts() {
       resetForm();
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'purchase_transactions');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -594,6 +616,7 @@ export function ActualCosts() {
                             <th className="p-2">{language === 'ar' ? 'كود' : 'Code'}</th>
                             <th className="p-2">{language === 'ar' ? 'البيان' : 'Desc'}</th>
                             <th className="p-2">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
+                            <th className="p-2">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
                             <th className="p-2">{language === 'ar' ? 'الفئة' : 'Rate'}</th>
                             <th className="p-2">{language === 'ar' ? 'سابق' : 'Prev'}</th>
                             <th className="p-2">{language === 'ar' ? 'حالي' : 'Curr'}</th>
@@ -606,7 +629,8 @@ export function ActualCosts() {
                               <td className="p-2 font-mono">{item.itemCode}</td>
                               <td className="p-2 max-w-[120px] truncate">{item.description}</td>
                               <td className="p-2">{item.unit}</td>
-                              <td className="p-2"><input type="number" className="w-20 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500 font-mono" value={item.rate || ''} onChange={e => handleItemRateChange(idx, Number(e.target.value))} /></td>
+                              <td className="p-2 font-mono text-gray-400">{((item as any).tenderQty ?? 0).toLocaleString()}</td>
+                              <td className="p-2"><input type="number" step="0.01" className="w-20 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500 font-mono" value={item.rate ? parseFloat(item.rate.toFixed(2)) : ''} onChange={e => handleItemRateChange(idx, Number(e.target.value))} /></td>
                               <td className="p-2 font-mono text-gray-500">{item.previousQty}</td>
                               <td className="p-2"><input type="number" className="w-16 bg-gray-800 border-none rounded p-1 text-center outline-none focus:ring-1 focus:ring-blue-500" value={item.currentQty || ''} onChange={e => handleItemQtyChange(idx, Number(e.target.value))} /></td>
                               <td className="p-2 font-mono font-bold">{(item.totalQty * item.rate).toLocaleString()}</td>
@@ -676,7 +700,7 @@ export function ActualCosts() {
                 </div>
 
                 <div className="flex gap-4 pt-2">
-                  <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-500 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20 text-white">{language === 'ar' ? 'حفظ المعاملة' : 'Save Transaction'}</button>
+                  <button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-900/20 text-white flex items-center justify-center gap-2">{isSubmitting && <Loader2 className="animate-spin" size={18} />}{isSubmitting ? (language === 'ar' ? 'جاري الحفظ...' : 'Saving...') : (language === 'ar' ? 'حفظ المعاملة' : 'Save Transaction')}</button>
                   <button type="button" onClick={() => setShowModal(false)} className={cn('flex-1 py-3 rounded-xl font-bold transition-all', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}>{t('cancel')}</button>
                 </div>
               </form>

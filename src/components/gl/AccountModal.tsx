@@ -51,8 +51,19 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
         status:        editingAccount.status || 'active',
       });
     } else {
+      let nextCode = '';
+      if (defaultParentCode) {
+        const children = accounts.filter(a => a.accountCode.startsWith(defaultParentCode) && a.accountCode !== defaultParentCode && !a.accountCode.slice(defaultParentCode.length).includes('.'));
+        const codes = children.map(a => parseInt(a.accountCode, 10)).filter(n => !isNaN(n));
+        if (codes.length > 0) {
+          nextCode = String(Math.max(...codes) + 1);
+        } else {
+          nextCode = defaultParentCode + '001';
+        }
+      }
       setForm({
         ...EMPTY_FORM,
+        accountCode: nextCode,
         parentCode: defaultParentCode || '',
         type: defaultType || 'asset',
       });

@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Download, Calculator, X, Loader2 } from 'lucide-react';
+import { Plus, Download, Calculator, X, Loader2, Printer } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
@@ -277,7 +277,7 @@ export function IPCFormModal({
                                   <td className="p-2 text-center text-gray-400">{item.unit}</td>
                                   <td className="p-2 font-mono text-gray-400">{item.tenderQty?.toLocaleString()}</td>
                                   <td className="p-2">
-                                    <input type="number" step="0.01" inputMode="decimal" className={cn('w-24 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-green-400' : 'bg-white border-gray-300 text-green-700')} value={item.rate || ''} onChange={(e) => onItemRateChange(idx, Number(e.target.value))} />
+                                    <input type="number" step="0.01" inputMode="decimal" className={cn('w-24 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-green-400' : 'bg-white border-gray-300 text-green-700')} value={item.rate ? parseFloat(item.rate.toFixed(2)) : ''} onChange={(e) => onItemRateChange(idx, Number(e.target.value))} />
                                   </td>
                                   <td className="p-2 font-mono text-gray-500">{item.previousQty}</td>
                                   <td className="p-2">

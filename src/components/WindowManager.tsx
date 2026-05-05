@@ -8,7 +8,6 @@ import { Projects } from './Projects';
 import { BOQ } from './BOQ';
 import { Billing } from './Billing';
 import { ActualCosts } from './ActualCosts';
-import { Purchases } from './Purchases';
 import { Reports } from './Reports';
 import { Settings } from './Settings';
 import { LiquidityReport } from './LiquidityReport';
@@ -29,7 +28,6 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
   boq: BOQ,
   billing: Billing,
   costs: ActualCosts,
-  suppliers: Purchases,
   liquidity: LiquidityReport,
   reports: Reports,
   settings: Settings,
@@ -42,7 +40,6 @@ const MODULE_LABELS: Record<string, { ar: string; en: string }> = {
   boq:       { ar: 'جداول الكميات', en: 'BOQ' },
   costs:     { ar: 'التكاليف الفعلية', en: 'Actual Costs' },
   billing:   { ar: 'المستخلصات', en: 'Billing (IPC)' },
-  suppliers: { ar: 'المشتريات', en: 'Purchases' },
   liquidity: { ar: 'تقرير السيولة', en: 'Liquidity Report' },
   reports:   { ar: 'التقارير', en: 'Reports' },
   settings:  { ar: 'الإعدادات', en: 'Settings' },

@@ -44,11 +44,12 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 | `Billing.tsx` | `billing`, `boq_items`, `contracts` |
 | `GeneralLedger.tsx` | `transactions`, `chart_of_accounts`, `contracts`, `projects` |
 | `ActualCosts.tsx` | `purchase_transactions`, `suppliers`, `chart_of_accounts`, `boq_items`, `contracts`, `transactions` |
-| `Purchases.tsx` | `purchase_transactions`, `suppliers` (legacy — kept for window routing only) |
 | `Reports.tsx` | reads all collections + `contracts` for contract filter |
 | `Settings.tsx` | `settings/company_info`, `chart_of_accounts` |
 | `Dashboard.tsx` | `projects`, `transactions`, `boq_items` |
 | `LiquidityReport.tsx` | `billing`, `transactions`, `contracts`, `projects`, `chart_of_accounts` |
+
+> `Purchases.tsx` **removed** from Sidebar and WindowManager. The file still exists on disk but is no longer routed or accessible.
 
 ### Data Integrity Rules
 
@@ -61,7 +62,7 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 - **projectId vs costCenterId**: On `transactions`, `costCenterId` = contract ID and `projectId` = actual project ID. Never set `projectId` to a contract ID. In `GLJournalEntries`, derive `projectId` from `contracts.find(c => c.id === costCenterId)?.projectId`.
 - **Budget alert**: `ActualCosts.tsx` computes `boqBudgetByContract` and `spentByContract` via `useMemo` (no extra Firestore reads). A yellow warning banner appears when `spent + newAmount > BOQ budget` for the selected contract — non-blocking, user can still save.
 - **Dashboard collection split**: `Dashboard.tsx` distinguishes two types of cash inflows. `totalCollected` (shown in التحصيلات النقدية card) includes both IPC collections (`RECEIVABLES` credit) and advance payments (`ADVANCE_PAYMENT` credit). `ipcCollected` tracks only IPC receipts. `pendingBilling = totalRevenue - ipcCollected` — advance payments must NOT reduce pending billing because they are a liability, not a reduction of IPC receivables. Cash/bank detection uses `startsWith('121')` to cover all banks (`12101xxx`) and cash funds (`12102xxx`).
-- **Sub-account shortcut**: In `GLChartOfAccounts.tsx`, hovering a row shows a green `+` button. Clicking it opens `AccountModal` with `defaultParentCode` and `defaultType` pre-filled from the parent account, so the user doesn't have to select the parent manually.
+- **Sub-account shortcut**: In `GLChartOfAccounts.tsx`, hovering a row shows a green `+` button **only when `acc.isGroup === true`** (levels 1–4). Level-5 leaf accounts (`isGroup: false`) never show this button. Clicking it opens `AccountModal` with `defaultParentCode` and `defaultType` pre-filled, and the modal auto-computes the next sequential code under that parent (max existing child code + 1, or `parentCode + '001'` if no children yet).
 
 ### Accounting — Account Codes
 
@@ -217,6 +218,19 @@ Firestore offline persistence is enabled in production via `initializeFirestore`
 - Always use `normalizeDate(item.startDate)` from `src/lib/utils.ts` before any date arithmetic to avoid UTC timezone shifts.
 - End date is calculated as: `new Date(sy, sm-1, sd + expectedDuration)` using local-midnight construction — never use `getTime() + ms` arithmetic on ISO strings.
 - Work status has four states: **done** (≥99.9% progress), **not started** (start > today), **late** (end < today and not complete), **running** (in progress).
+- **Excel import date handling**: `XLSX.read(data, { type: 'array', cellDates: true })` is required so dates are returned as `Date` objects. After reading, convert: if `instanceof Date` → `.toISOString().split('T')[0]`; if numeric (Excel serial) → `new Date(Math.round((n - 25569) * 86400 * 1000)).toISOString().split('T')[0]`.
+
+## BOQ — Item Form (`BOQItemFormModal.tsx`)
+
+The add/edit item modal uses **cascading dropdowns** driven by `existingItems` (the current contract's BOQ items passed as a prop):
+
+1. **Chapter code** → dropdown of unique chapters from existing items + "➕ فصل جديد". Selecting fills `chapterName` automatically.
+2. **Work Type code** → filtered by selected chapter + "➕ نوع عمل جديد".
+3. **Section code** → filtered by chapter + workType + "➕ قسم جديد". Selecting fills `sectionName` automatically.
+4. **Item code** → auto-suggested as the next sequential code within the selected section (increments the last numeric segment of the highest existing `itemCode`). User can override.
+5. Choosing "➕ جديد" shows inline text inputs for the new code/name — these are resolved into `formData` at submit time.
+
+**`onSubmit` signature**: `(e: React.FormEvent, resolved: FormData) => void` — the modal passes the fully-resolved `FormData` (with "new" values substituted) as the second argument. `BOQ.tsx → handleSubmit` accepts this as `resolvedData` and uses it instead of stale component state.
 
 ## Actual Costs Module
 

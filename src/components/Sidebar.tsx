@@ -6,7 +6,6 @@ import {
   Receipt,
   TrendingUp,
   Settings,
-  Users,
   BarChart3,
   BookOpen,
   LogOut,
@@ -33,7 +32,6 @@ const ALL_MENU_ITEMS = [
   { id: 'boq',       labelKey: 'boq',       icon: FileText },
   { id: 'costs',     labelKey: 'costs',     icon: Receipt },
   { id: 'billing',   labelKey: 'billing',   icon: TrendingUp },
-  { id: 'suppliers', labelKey: 'suppliers', icon: Users },
   { id: 'reports',   labelKey: 'reports',   icon: BarChart3 },
   { id: 'settings',  labelKey: 'settings',  icon: Settings },
 ] as const;

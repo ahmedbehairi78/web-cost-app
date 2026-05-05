@@ -1168,20 +1168,20 @@ export function Settings() {
                   </div>
                 </div>
 
-                {/* ── Danger Zone ── */}
-                <div className={cn('border rounded-2xl overflow-hidden', theme === 'dark' ? 'border-red-900/50' : 'border-red-200')}>
+                {/* ── Data Maintenance ── */}
+                <div className={cn('border rounded-2xl overflow-hidden', theme === 'dark' ? 'border-gray-700' : 'border-gray-200')}>
                   <button
                     type="button"
                     onClick={() => setDangerOpen((o) => !o)}
                     className={cn(
                       'w-full flex items-center justify-between px-5 py-4 transition-colors',
                       language === 'ar' ? 'text-right' : 'text-left',
-                      theme === 'dark' ? 'bg-red-950/40 hover:bg-red-950/60 text-red-400' : 'bg-red-50 hover:bg-red-100 text-red-600'
+                      theme === 'dark' ? 'bg-gray-800/60 hover:bg-gray-800 text-gray-300' : 'bg-gray-50 hover:bg-gray-100 text-gray-700'
                     )}
                   >
                     <div className="flex items-center gap-3">
-                      <AlertTriangle size={20} />
-                      <span className="font-bold">{language === 'ar' ? 'منطقة الخطر — حذف البيانات' : 'Danger Zone — Clear Data'}</span>
+                      <HardDrive size={20} />
+                      <span className="font-bold">{language === 'ar' ? 'صيانة البيانات' : 'Data Maintenance'}</span>
                     </div>
                     {dangerOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                   </button>

@@ -191,14 +191,16 @@ export function Billing() {
       handleFirestoreError(error, OperationType.LIST, 'billing');
     });
 
-    // Fetch BOQ Items
+    // Fetch BOQ Items (exclude soft-deleted)
     const qBoq = query(
       collection(db, 'boq_items'),
       where('contractId', '==', selectedContractId),
-      orderBy('itemCode')
+      where('isDeleted', '!=', true)
     );
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as BOQItem))
+        .sort((a, b) => a.itemCode.localeCompare(b.itemCode, undefined, { numeric: true }));
       setBoqItems(data);
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'boq_items');
@@ -355,7 +357,10 @@ export function Billing() {
       setFormData({
         billingNumber: ipc.billingNumber,
         date: normalizeDate(ipc.date),
-        items: ipc.items,
+        items: ipc.items.map(item => {
+          const boq = boqItems.find(b => b.id === item.boqItemId);
+          return { ...item, tenderQty: item.tenderQty ?? boq?.tenderQty };
+        }),
         vatPct: safePct(ipc.vatAmount, ipc.worksValueExVat, BILLING_DEFAULTS.VAT_PCT),
         execGuaranteePct: safePct(ipc.execGuaranteeAmount, ipc.worksValueExVat, BILLING_DEFAULTS.EXEC_GUARANTEE_PCT),
         whtPct: safePct(ipc.whtAmount, ipc.worksValueExVat, BILLING_DEFAULTS.WHT_PCT),

@@ -156,12 +156,14 @@ export function BOQ() {
     }
     setLoading(true);
     const q = query(
-      collection(db, 'boq_items'), 
+      collection(db, 'boq_items'),
       where('contractId', '==', selectedContractId),
-      orderBy('itemCode')
+      where('isDeleted', '!=', true)
     );
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as BOQItem));
+      const data = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as BOQItem))
+        .sort((a, b) => a.itemCode.localeCompare(b.itemCode, undefined, { numeric: true }));
       setItems(data);
       setLoading(false);
     }, (error) => {
@@ -228,23 +230,21 @@ export function BOQ() {
     }
   };
 
-  const calculateRates = () => {
-    const direct = formData.rateMaterials + formData.rateLabour + formData.rateEquipment;
-    const overheadAmt = direct * (formData.rateOverheadPct / 100);
-    const subtotal = direct + overheadAmt;
-    const profitAmt = subtotal * (formData.rateProfitPct / 100);
-    const total = subtotal + profitAmt;
-    return { direct, total, tenderAmount: total * formData.tenderQty };
-  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent, resolvedData?: typeof formData) => {
     e.preventDefault();
     setIsSubmitting(true);
-    const { direct, total, tenderAmount } = calculateRates();
-    
+    const data = resolvedData || formData;
+    const direct = data.rateMaterials + data.rateLabour + data.rateEquipment;
+    const overheadAmt = direct * (data.rateOverheadPct / 100);
+    const subtotal = direct + overheadAmt;
+    const profitAmt = subtotal * (data.rateProfitPct / 100);
+    const total = subtotal + profitAmt;
+    const tenderAmount = total * data.tenderQty;
+
     try {
       const itemData = {
-        ...formData,
+        ...data,
         projectId: selectedProjectId,
         contractId: selectedContractId,
         rateDirect: direct,
@@ -431,7 +431,7 @@ export function BOQ() {
     const reader = new FileReader();
     reader.onload = async (event) => {
       const data = new Uint8Array(event.target?.result as ArrayBuffer);
-      const workbook = XLSX.read(data, { type: 'array' });
+      const workbook = XLSX.read(data, { type: 'array', cellDates: true });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       const jsonData = XLSX.utils.sheet_to_json(worksheet);
@@ -462,7 +462,12 @@ export function BOQ() {
           const rateEquipment = Number(getVal(row, 'تكلفة المعدات', 0));
           const rateOverheadPct = Number(getVal(row, 'نسبة المصاريف العمومية %', 10));
           const rateProfitPct = Number(getVal(row, 'نسبة الربح %', 12));
-          const startDate = getVal(row, 'تاريخ بدء العمل', '');
+          const rawDate = getVal(row, 'تاريخ بدء العمل', '');
+          const startDate = rawDate instanceof Date
+            ? rawDate.toISOString().split('T')[0]
+            : typeof rawDate === 'number'
+              ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]
+              : String(rawDate);
           const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
 
           if (!itemCode || !description) continue;
@@ -946,6 +951,7 @@ export function BOQ() {
           onClose={() => { setIsModalOpen(false); setEditingItem(null); }}
           theme={theme}
           language={language}
+          existingItems={items}
         />
       </AnimatePresence>
     </div>
