@@ -987,6 +987,7 @@ export function Settings() {
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [currentUserRole, setCurrentUserRole] = useState<string>('user');
+  const [defaultModule, setDefaultModule] = useState<string>('ledger');
 
   // Clear data state
   const [dangerOpen, setDangerOpen] = useState(false);
@@ -1040,11 +1041,27 @@ export function Settings() {
     const fetchUserRole = async () => {
       if (auth.currentUser) {
         const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
-        if (userDoc.exists()) setCurrentUserRole(userDoc.data().role || 'user');
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          setCurrentUserRole(data.role || 'user');
+          setDefaultModule(data.defaultModule || 'ledger');
+        }
       }
     };
     fetchUserRole();
   }, []);
+
+  const handleDefaultModuleChange = async (moduleId: string) => {
+    setDefaultModule(moduleId);
+    if (!auth.currentUser) return;
+    try {
+      await updateDoc(doc(db, 'users', auth.currentUser.uid), { defaultModule: moduleId });
+      toast.success(language === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
+    } catch (err) {
+      console.error('Error saving default module:', err);
+      toast.error(language === 'ar' ? 'خطأ في الحفظ' : 'Error saving');
+    }
+  };
 
   const handleSave = async () => {
     setLoading(true);
@@ -1302,6 +1319,49 @@ export function Settings() {
                       <span className="font-bold text-sm">{mode.label}</span>
                     </button>
                   ))}
+                </div>
+
+                {/* Default Screen Setting */}
+                <div className={cn(
+                  'mt-6 rounded-2xl border p-5 space-y-3',
+                  theme === 'dark' ? 'border-gray-700 bg-gray-900/40' : theme === 'soft' ? 'border-[#b0bec5] bg-white/60' : 'border-gray-200 bg-white'
+                )}>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Monitor size={18} className="text-blue-500" />
+                    <span className="font-bold text-sm">{t('default_screen')}</span>
+                  </div>
+                  <p className={cn('text-xs', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                    {t('default_screen_hint')}
+                  </p>
+                  <select
+                    value={defaultModule}
+                    onChange={(e) => handleDefaultModuleChange(e.target.value)}
+                    aria-label={t('default_screen')}
+                    className={cn(
+                      'w-full rounded-xl border px-4 py-2.5 text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500',
+                      theme === 'dark'
+                        ? 'bg-gray-800 border-gray-600 text-white'
+                        : theme === 'soft'
+                        ? 'bg-white border-[#b0bec5] text-[#37474f]'
+                        : 'bg-gray-50 border-gray-300 text-gray-900'
+                    )}
+                    dir={dir}
+                  >
+                    {[
+                      { id: 'dashboard', ar: 'لوحة التحكم',       en: 'Dashboard' },
+                      { id: 'ledger',    ar: 'الأستاذ العام',      en: 'General Ledger' },
+                      { id: 'projects',  ar: 'المشاريع',           en: 'Projects' },
+                      { id: 'boq',       ar: 'جداول الكميات',      en: 'BOQ' },
+                      { id: 'costs',     ar: 'التكاليف الفعلية',   en: 'Actual Costs' },
+                      { id: 'billing',   ar: 'المستخلصات',         en: 'Billing (IPC)' },
+                      { id: 'reports',   ar: 'التقارير',           en: 'Reports' },
+                      { id: 'liquidity', ar: 'تقرير السيولة',      en: 'Liquidity Report' },
+                    ].map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {language === 'ar' ? m.ar : m.en}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </motion.div>
             )}

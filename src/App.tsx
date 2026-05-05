@@ -25,6 +25,8 @@ export default function App() {
   // ── Window management ────────────────────────────────────────────────────────
   const [windows, setWindows] = useState<AppWindow[]>([]);
   const zBase = useRef(10);
+  const defaultModuleRef = useRef<string>('ledger');
+  const hasOpenedDefault = useRef(false);
 
   const nextZ = () => {
     zBase.current += 1;
@@ -135,6 +137,7 @@ export default function App() {
             const data = userSnap.data();
             setUserRole(data.role || 'user');
             setUserPermissions(data.permissions || ALL_PERMISSIONS);
+            defaultModuleRef.current = data.defaultModule || 'ledger';
           }
         }
       } catch (error) {
@@ -146,6 +149,14 @@ export default function App() {
     });
     return () => unsubscribe();
   }, []);
+
+  // ── Open default module once after login ─────────────────────────────────────
+  useEffect(() => {
+    if (!loading && user && !hasOpenedDefault.current) {
+      hasOpenedDefault.current = true;
+      openWindow(defaultModuleRef.current);
+    }
+  }, [loading, user, openWindow]);
 
   // ── Render ───────────────────────────────────────────────────────────────────
   if (loading) {
