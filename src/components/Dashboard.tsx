@@ -30,6 +30,10 @@ import { AccountCodes } from '../services/accountingService';
 // @ts-ignore
 import html2pdf from 'html2pdf.js';
 
+// Support both post-migration (11xxxxx) and pre-migration (12xxxxx) account codes
+const isBankCash    = (c?: string) => !!c && (c.startsWith('111') || c === '12101001' || c === '12102001');
+const isReceivables = (c?: string) => c === AccountCodes.RECEIVABLES || c === '12201001';
+
 export function Dashboard() {
   const { t, language, theme, locale } = useLanguage();
   const [loading, setLoading] = useState(true);
@@ -69,10 +73,10 @@ export function Dashboard() {
       });
 
       const cashDebits = tx.entries
-        .filter((e: JournalEntry) => e.accountCode?.startsWith('111') && (e.debit || 0) > 0)
+        .filter((e: JournalEntry) => isBankCash(e.accountCode) && (e.debit || 0) > 0)
         .reduce((s: number, e: JournalEntry) => s + (e.debit || 0), 0);
       if (cashDebits > 0) {
-        const isIpcCollection = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.RECEIVABLES && (e.credit || 0) > 0);
+        const isIpcCollection = tx.entries.some((e: JournalEntry) => isReceivables(e.accountCode) && (e.credit || 0) > 0);
         const isAdvancePayment = tx.entries.some((e: JournalEntry) => e.accountCode === AccountCodes.ADVANCE_PAYMENT && (e.credit || 0) > 0);
         if (isIpcCollection || isAdvancePayment) {
           totalCollected += cashDebits;

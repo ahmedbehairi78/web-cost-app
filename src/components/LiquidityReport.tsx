@@ -7,6 +7,13 @@ import { normalizeDate } from '../lib/utils';
 import { AccountCodes } from '../services/accountingService';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
+// Support both post-migration codes (11xxxxx) and pre-migration codes (12xxxxx)
+// that may still exist in older Firestore transaction entries.
+const isBankCash     = (c?: string) => !!c && (c.startsWith('111') || c === '12101001' || c === '12102001');
+const isReceivables  = (c?: string) => c === AccountCodes.RECEIVABLES  || c === '12201001';
+const isAdvToSupp    = (c?: string) => c === AccountCodes.ADVANCE_TO_SUPPLIERS       || c === '12301001';
+const isAdvToSub     = (c?: string) => c === AccountCodes.ADVANCE_TO_SUBCONTRACTORS  || c === '12302001';
+
 interface Contract { id: string; contractName: string; contractNumber: string; projectId: string }
 interface Project  { id: string; projectName: string }
 interface BillingDoc {
@@ -61,10 +68,11 @@ export function LiquidityReport() {
   }, [projects]);
 
   const cashBalance = useMemo(() =>
-    glTxs.reduce((sum, tx) => {
-      const cashEntries = (tx.entries ?? []).filter(e => e.accountCode?.startsWith('111'));
-      return sum + cashEntries.reduce((s, e) => s + ((e.debit || 0) - (e.credit || 0)), 0);
-    }, 0),
+    glTxs.reduce((sum, tx) =>
+      sum + (tx.entries ?? []).reduce((s, e) => isBankCash(e.accountCode)
+        ? s + (e.debit || 0) - (e.credit || 0)
+        : s, 0),
+    0),
   [glTxs]);
 
   const contractRows = useMemo(() => {
@@ -81,18 +89,16 @@ export function LiquidityReport() {
       // IPC collections: bank debit paired with RECEIVABLES credit
       const ipcCollected = contractTxs.reduce((sum, tx) => {
         const entries = tx.entries ?? [];
-        const cashDebit = entries
-          .filter(e => e.accountCode?.startsWith('111') && (e.debit || 0) > 0)
+        const cashDebit = entries.filter(e => isBankCash(e.accountCode) && (e.debit || 0) > 0)
           .reduce((s, e) => s + (e.debit || 0), 0);
-        const hasRecv = entries.some(e => e.accountCode === AccountCodes.RECEIVABLES && (e.credit || 0) > 0);
+        const hasRecv = entries.some(e => isReceivables(e.accountCode) && (e.credit || 0) > 0);
         return hasRecv ? sum + cashDebit : sum;
       }, 0);
 
       // Advance payments received from client (bank debit + ADVANCE_PAYMENT credit)
       const clientAdvances = contractTxs.reduce((sum, tx) => {
         const entries = tx.entries ?? [];
-        const cashDebit = entries
-          .filter(e => e.accountCode?.startsWith('111') && (e.debit || 0) > 0)
+        const cashDebit = entries.filter(e => isBankCash(e.accountCode) && (e.debit || 0) > 0)
           .reduce((s, e) => s + (e.debit || 0), 0);
         const hasAdv = entries.some(e => e.accountCode === AccountCodes.ADVANCE_PAYMENT && (e.credit || 0) > 0);
         return hasAdv ? sum + cashDebit : sum;
@@ -101,9 +107,7 @@ export function LiquidityReport() {
       // Advances paid out to suppliers/subcontractors (cash outflows)
       const supplierAdvancesPaid = contractTxs.reduce((sum, tx) =>
         sum + (tx.entries ?? [])
-          .filter(e =>
-            (e.accountCode === AccountCodes.ADVANCE_TO_SUPPLIERS || e.accountCode === AccountCodes.ADVANCE_TO_SUBCONTRACTORS) &&
-            (e.debit || 0) > 0)
+          .filter(e => (isAdvToSupp(e.accountCode) || isAdvToSub(e.accountCode)) && (e.debit || 0) > 0)
           .reduce((s, e) => s + (e.debit || 0), 0),
       0);
 
