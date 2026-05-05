@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { X, Minus, Maximize2, Minimize2 } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
+import { MODULE_LABELS } from '../constants/modules';
 import { Dashboard } from './Dashboard';
 import { GeneralLedger } from './GeneralLedger';
 import { Projects } from './Projects';
@@ -33,17 +34,6 @@ const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
   settings: Settings,
 };
 
-const MODULE_LABELS: Record<string, { ar: string; en: string }> = {
-  dashboard: { ar: 'لوحة التحكم', en: 'Dashboard' },
-  ledger:    { ar: 'الأستاذ العام', en: 'General Ledger' },
-  projects:  { ar: 'المشاريع', en: 'Projects' },
-  boq:       { ar: 'جداول الكميات', en: 'BOQ' },
-  costs:     { ar: 'التكاليف الفعلية', en: 'Actual Costs' },
-  billing:   { ar: 'المستخلصات', en: 'Billing (IPC)' },
-  liquidity: { ar: 'تقرير السيولة', en: 'Liquidity Report' },
-  reports:   { ar: 'التقارير', en: 'Reports' },
-  settings:  { ar: 'الإعدادات', en: 'Settings' },
-};
 
 // ─── Single window frame ──────────────────────────────────────────────────────
 

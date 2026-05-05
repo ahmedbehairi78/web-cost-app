@@ -43,6 +43,7 @@ import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { type UserPermissions, ALL_PERMISSIONS, MODULES, type AppUser } from '../types';
+import { STARTUP_MODULES, DEFAULT_MODULE } from '../constants/modules';
 
 const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
@@ -1039,27 +1040,32 @@ export function Settings() {
 
   useEffect(() => {
     const fetchUserRole = async () => {
-      if (auth.currentUser) {
+      if (!auth.currentUser) return;
+      try {
         const userDoc = await getDoc(doc(db, 'users', auth.currentUser.uid));
         if (userDoc.exists()) {
           const data = userDoc.data();
           setCurrentUserRole(data.role || 'user');
-          setDefaultModule(data.defaultModule || 'ledger');
+          setDefaultModule(data.defaultModule || DEFAULT_MODULE);
         }
+      } catch (err) {
+        handleFirestoreError(err, OperationType.GET, 'users');
       }
     };
     fetchUserRole();
   }, []);
 
   const handleDefaultModuleChange = async (moduleId: string) => {
-    setDefaultModule(moduleId);
     if (!auth.currentUser) return;
+    const prev = defaultModule;
+    setDefaultModule(moduleId);
     try {
       await updateDoc(doc(db, 'users', auth.currentUser.uid), { defaultModule: moduleId });
-      toast.success(language === 'ar' ? 'تم الحفظ بنجاح' : 'Saved successfully');
+      toast.success(t('saved_successfully'));
     } catch (err) {
+      setDefaultModule(prev);
       console.error('Error saving default module:', err);
-      toast.error(language === 'ar' ? 'خطأ في الحفظ' : 'Error saving');
+      toast.error(t('error_saving'));
     }
   };
 
@@ -1347,16 +1353,7 @@ export function Settings() {
                     )}
                     dir={dir}
                   >
-                    {[
-                      { id: 'dashboard', ar: 'لوحة التحكم',       en: 'Dashboard' },
-                      { id: 'ledger',    ar: 'الأستاذ العام',      en: 'General Ledger' },
-                      { id: 'projects',  ar: 'المشاريع',           en: 'Projects' },
-                      { id: 'boq',       ar: 'جداول الكميات',      en: 'BOQ' },
-                      { id: 'costs',     ar: 'التكاليف الفعلية',   en: 'Actual Costs' },
-                      { id: 'billing',   ar: 'المستخلصات',         en: 'Billing (IPC)' },
-                      { id: 'reports',   ar: 'التقارير',           en: 'Reports' },
-                      { id: 'liquidity', ar: 'تقرير السيولة',      en: 'Liquidity Report' },
-                    ].map((m) => (
+                    {STARTUP_MODULES.filter((m) => m.id !== 'settings').map((m) => (
                       <option key={m.id} value={m.id}>
                         {language === 'ar' ? m.ar : m.en}
                       </option>

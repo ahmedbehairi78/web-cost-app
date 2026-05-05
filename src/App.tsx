@@ -14,6 +14,7 @@ import { Loader2 } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { cn } from './lib/utils';
 import { type UserPermissions, ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from './types';
+import { DEFAULT_MODULE } from './constants/modules';
 
 export default function App() {
   const { dir, language, theme } = useLanguage();
@@ -25,7 +26,7 @@ export default function App() {
   // ── Window management ────────────────────────────────────────────────────────
   const [windows, setWindows] = useState<AppWindow[]>([]);
   const zBase = useRef(10);
-  const defaultModuleRef = useRef<string>('ledger');
+  const defaultModuleRef = useRef<string>(DEFAULT_MODULE);
   const hasOpenedDefault = useRef(false);
 
   const nextZ = () => {
@@ -133,11 +134,12 @@ export default function App() {
 
             setUserRole(role);
             setUserPermissions(permissions);
+            defaultModuleRef.current = DEFAULT_MODULE;
           } else {
             const data = userSnap.data();
             setUserRole(data.role || 'user');
             setUserPermissions(data.permissions || ALL_PERMISSIONS);
-            defaultModuleRef.current = data.defaultModule || 'ledger';
+            defaultModuleRef.current = data.defaultModule || DEFAULT_MODULE;
           }
         }
       } catch (error) {
