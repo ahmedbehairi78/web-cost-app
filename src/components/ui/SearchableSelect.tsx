@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { shellInteractiveFocus } from '../../lib/shellTheme';
 
 export interface SelectOption {
   value: string;
@@ -56,26 +57,27 @@ export function SearchableSelect({ options, value, onChange, placeholder, theme,
     if (open) inputRef.current?.focus();
   }, [open]);
 
-  // auto-select when exactly one result remains
-  useEffect(() => {
-    if (open && query.trim() && filtered.length === 1) {
-      handleSelect(filtered[0].value);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtered]);
-
   const handleSelect = (val: string) => {
     onChange(val);
     setOpen(false);
     setQuery('');
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') { setOpen(false); setQuery(''); }
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Escape') {
+      setOpen(false);
+      setQuery('');
+      return;
+    }
+    if (e.key === 'Enter' && query.trim() && filtered.length === 1) {
+      e.preventDefault();
+      handleSelect(filtered[0].value);
+    }
   };
 
   const triggerCls = cn(
     'w-full flex items-center justify-between px-4 py-2 rounded-lg border transition-all outline-none cursor-pointer',
+    shellInteractiveFocus,
     open ? 'ring-2 ring-blue-500 border-blue-500' : '',
     theme === 'dark'
       ? 'bg-gray-900 border-gray-800 text-white hover:border-gray-700'
@@ -131,7 +133,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, theme,
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onKeyDown={handleSearchKeyDown}
               placeholder={searchPlaceholder}
               className={cn(
                 'flex-1 text-sm outline-none bg-transparent',
@@ -143,7 +145,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, theme,
                 type="button"
                 onClick={() => setQuery('')}
                 aria-label={isRtl ? 'مسح البحث' : 'Clear search'}
-                className="text-gray-400 hover:text-gray-200 transition-colors"
+                className={cn('text-gray-400 hover:text-gray-200 transition-colors rounded', shellInteractiveFocus)}
               >
                 <X size={14} />
               </button>
@@ -160,7 +162,7 @@ export function SearchableSelect({ options, value, onChange, placeholder, theme,
                   key={opt.value}
                   type="button"
                   onClick={() => handleSelect(opt.value)}
-                  className={optionCls(value === opt.value)}
+                  className={cn(optionCls(value === opt.value), shellInteractiveFocus)}
                 >
                   {opt.secondary && (
                     <span

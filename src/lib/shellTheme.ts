@@ -84,3 +84,7 @@ export function shellTheme(mode: AppTheme): ShellThemePalette {
     emptyDesktop: 'text-gray-400',
   };
 }
+
+/** Use on sidebar / window chrome buttons for keyboard focus (high contrast without theme-offset hacks). */
+export const shellInteractiveFocus =
+  'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';

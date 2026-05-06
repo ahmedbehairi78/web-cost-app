@@ -66,7 +66,8 @@ Pick **one**:
 ### C1 — Implement chosen Dashboard query strategy
 
 - [x] Adjust `transactions` (and related) queries on Dashboard / overview screens.
-- [ ] If Firebase console reports missing index → add to `firestore.indexes.json` and deploy indexes before prod reliance.
+- [x] If Firebase console reports missing index → add to `firestore.indexes.json` and deploy indexes before prod reliance.  
+  _(Dashboard `isDeleted` + `orderBy('date','desc')` + `limit` uses the composite index already declared on `transactions` in `firestore.indexes.json` — redeploy indexes if production is out of sync.)_
 
 ### C2 — Indexes & deploy
 
@@ -88,17 +89,17 @@ Pick **one**:
 
 ### D1 — Focus visibility
 
-- [ ] Add `:focus-visible` styles for sidebar, window controls, taskbar buttons.
+- [x] Add `:focus-visible` styles for sidebar, window controls, taskbar buttons (`shellInteractiveFocus` in `shellTheme.ts`).
 - [ ] Keyboard-only smoke test through main flows.
 
 ### D2 — Scrollbars & theme consistency
 
-- [ ] Ensure scrollbars match **light / soft** (no dark thumb on light background).
-- [ ] Check portals: toasts/modals inherit active theme where applicable.
+- [x] Ensure scrollbars match **light / soft** (no dark thumb on light background).
+- [x] Check portals: toasts/modals inherit active theme where applicable (`ThemedToaster.tsx`).
 
 ### D3 — `SearchableSelect` behavior
 
-- [ ] Adjust or remove auto-select when a single filtered result remains (e.g. only on **Enter** or explicit confirm).
+- [x] Adjust or remove auto-select when a single filtered result remains (e.g. only on **Enter** or explicit confirm).
 - [ ] Manual test: partial typing should not unexpectedly change selection.
 
 ---

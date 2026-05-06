@@ -134,8 +134,35 @@ body:has(.soft) {
   @apply bg-transparent;
 }
 
-::-webkit-scrollbar-thumb {
-  @apply bg-gray-800 rounded-full hover:bg-gray-700;
+/* Light (no html.dark / html.soft) */
+:root:not(.dark):not(.soft) ::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+:root:not(.dark):not(.soft) ::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full hover:bg-gray-600;
+}
+
+html.soft ::-webkit-scrollbar-thumb {
+  background-color: #b0bec5;
+  border-radius: 9999px;
+}
+html.soft ::-webkit-scrollbar-thumb:hover {
+  background-color: #90a4ae;
+}
+
+/* Firefox */
+:root:not(.dark):not(.soft) {
+  scrollbar-color: #cbd5e1 transparent;
+}
+html.dark {
+  scrollbar-color: #4b5563 transparent;
+}
+html.soft {
+  scrollbar-color: #b0bec5 transparent;
 }
 
 /* Hide number input spinners */

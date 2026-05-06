@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { X, Minus, Maximize2, Minimize2, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { shellTheme } from '../lib/shellTheme';
+import { shellTheme, shellInteractiveFocus } from '../lib/shellTheme';
 import { useLanguage } from '../context/LanguageContext';
 import { MODULE_LABELS } from '../constants/modules';
 
@@ -161,7 +161,7 @@ function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUp
             type="button"
             onClick={(e) => { e.stopPropagation(); onMinimize(); }}
             title={language === 'ar' ? 'تصغير' : 'Minimize'}
-            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-yellow-400 transition-colors rounded"
+            className={cn('w-5 h-5 flex items-center justify-center text-gray-400 hover:text-yellow-400 transition-colors rounded', shellInteractiveFocus)}
           >
             <Minus size={14} />
           </button>
@@ -169,7 +169,7 @@ function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUp
             type="button"
             onClick={(e) => { e.stopPropagation(); onMaximizeToggle(); }}
             title={language === 'ar' ? (isMaximized ? 'استعادة' : 'تكبير') : (isMaximized ? 'Restore' : 'Maximize')}
-            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-green-400 transition-colors rounded"
+            className={cn('w-5 h-5 flex items-center justify-center text-gray-400 hover:text-green-400 transition-colors rounded', shellInteractiveFocus)}
           >
             {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
           </button>
@@ -177,7 +177,7 @@ function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUp
             type="button"
             onClick={(e) => { e.stopPropagation(); onClose(); }}
             title={language === 'ar' ? 'إغلاق' : 'Close'}
-            className="w-5 h-5 flex items-center justify-center text-gray-400 hover:text-red-400 transition-colors rounded"
+            className={cn('w-5 h-5 flex items-center justify-center text-gray-400 hover:text-red-400 transition-colors rounded', shellInteractiveFocus)}
           >
             <X size={14} />
           </button>
@@ -268,7 +268,7 @@ export function WindowManager({
                 key={win.id}
                 type="button"
                 onClick={() => onRestoreMinimized(win.id)}
-                className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors', taskBtnCls)}
+                className={cn('flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors', taskBtnCls, shellInteractiveFocus)}
               >
                 <span style={{ direction: language === 'ar' ? 'rtl' : 'ltr' }}>{title}</span>
                 <X

@@ -16,7 +16,7 @@ import {
 import { signOut } from 'firebase/auth';
 import { auth } from '../firebase';
 import { cn } from '../lib/utils';
-import { shellTheme } from '../lib/shellTheme';
+import { shellTheme, shellInteractiveFocus } from '../lib/shellTheme';
 import { useLanguage } from '../context/LanguageContext';
 import { type UserPermissions } from '../types';
 
@@ -61,6 +61,7 @@ export function Sidebar({ openModuleIds, openWindow, closeAllWindows, permission
     'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200',
     language === 'ar' ? 'text-right' : 'text-left',
     shell.navMuted,
+    shellInteractiveFocus,
   );
 
   return (
@@ -87,6 +88,7 @@ export function Sidebar({ openModuleIds, openWindow, closeAllWindows, permission
               className={cn(
                 'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200',
                 language === 'ar' ? 'text-right' : 'text-left',
+                shellInteractiveFocus,
                 isOpen
                   ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/20'
                   : shell.navMuted,
@@ -162,6 +164,7 @@ export function Sidebar({ openModuleIds, openWindow, closeAllWindows, permission
             'w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200',
             language === 'ar' ? 'text-right' : 'text-left',
             shell.logoutRow,
+            shellInteractiveFocus,
           )}
         >
           <LogOut size={20} className="flex-shrink-0" />
