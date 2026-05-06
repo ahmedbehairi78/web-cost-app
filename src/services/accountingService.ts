@@ -106,52 +106,54 @@ export interface Transaction {
   isDeleted?: boolean;
 }
 
+/** Creates a balanced journal entry (module-level so callers never rely on `this`). */
+async function createTransaction(
+  transaction: Omit<Transaction, 'createdAt' | 'createdBy' | 'isDeleted'>
+): Promise<string> {
+  if (!auth.currentUser) throw new Error('User not authenticated');
+
+  const totalDebit = transaction.entries.reduce((sum, e) => sum + e.debit, 0);
+  const totalCredit = transaction.entries.reduce((sum, e) => sum + e.credit, 0);
+
+  const hasDebit = transaction.entries.some(e => e.debit > 0);
+  const hasCredit = transaction.entries.some(e => e.credit > 0);
+
+  if (!hasDebit || !hasCredit) {
+    throw new Error('Transaction must have at least one debit entry and one credit entry');
+  }
+
+  if (Math.abs(totalDebit - totalCredit) > 0.005) {
+    throw new Error(`Transaction is not balanced: Total Debit (${totalDebit.toFixed(2)}) must equal Total Credit (${totalCredit.toFixed(2)})`);
+  }
+
+  // Validate all account codes exist in the Chart of Accounts as active leaf accounts.
+  // If this throws, go to Settings → Database → "إكمال الحسابات الناقصة" then retry.
+  const validCodes = await getValidAccountCodes();
+  const invalidCodes = transaction.entries
+    .map(e => e.accountCode)
+    .filter(code => code && !validCodes.has(code));
+  if (invalidCodes.length > 0) {
+    throw new Error(
+      `الأكواد التالية غير موجودة في شجرة الحسابات كحسابات ختامية نشطة: ${invalidCodes.join(', ')}` +
+      ` — يرجى الذهاب إلى الإعدادات › قاعدة البيانات وتشغيل "إكمال الحسابات الناقصة".`
+    );
+  }
+
+  const reference = transaction.reference ||
+    `JV-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+  const docRef = await addDoc(collection(db, 'transactions'), {
+    ...transaction,
+    reference,
+    createdAt: serverTimestamp(),
+    createdBy: auth.currentUser.uid,
+    isDeleted: false
+  });
+  return docRef.id;
+}
+
 export const accountingService = {
-  /**
-   * Creates a balanced journal entry
-   */
-  async createTransaction(transaction: Omit<Transaction, 'createdAt' | 'createdBy' | 'isDeleted'>) {
-    if (!auth.currentUser) throw new Error('User not authenticated');
-
-    const totalDebit = transaction.entries.reduce((sum, e) => sum + e.debit, 0);
-    const totalCredit = transaction.entries.reduce((sum, e) => sum + e.credit, 0);
-
-    const hasDebit = transaction.entries.some(e => e.debit > 0);
-    const hasCredit = transaction.entries.some(e => e.credit > 0);
-
-    if (!hasDebit || !hasCredit) {
-      throw new Error('Transaction must have at least one debit entry and one credit entry');
-    }
-
-    if (Math.abs(totalDebit - totalCredit) > 0.005) {
-      throw new Error(`Transaction is not balanced: Total Debit (${totalDebit.toFixed(2)}) must equal Total Credit (${totalCredit.toFixed(2)})`);
-    }
-
-    // Validate all account codes exist in the Chart of Accounts as active leaf accounts.
-    // If this throws, go to Settings → Database → "إكمال الحسابات الناقصة" then retry.
-    const validCodes = await getValidAccountCodes();
-    const invalidCodes = transaction.entries
-      .map(e => e.accountCode)
-      .filter(code => code && !validCodes.has(code));
-    if (invalidCodes.length > 0) {
-      throw new Error(
-        `الأكواد التالية غير موجودة في شجرة الحسابات كحسابات ختامية نشطة: ${invalidCodes.join(', ')}` +
-        ` — يرجى الذهاب إلى الإعدادات › قاعدة البيانات وتشغيل "إكمال الحسابات الناقصة".`
-      );
-    }
-
-    const reference = transaction.reference ||
-      `JV-${Date.now()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-
-    const docRef = await addDoc(collection(db, 'transactions'), {
-      ...transaction,
-      reference,
-      createdAt: serverTimestamp(),
-      createdBy: auth.currentUser.uid,
-      isDeleted: false
-    });
-    return docRef.id;
-  },
+  createTransaction,
 
   /**
    * Records an expense and generates a journal entry
@@ -190,7 +192,7 @@ export const accountingService = {
       return txId;
     }
 
-    return this.createTransaction(transactionData);
+    return createTransaction(transactionData);
   },
 
   /**
@@ -208,7 +210,7 @@ export const accountingService = {
       { accountCode: AccountCodes.REVENUE, debit: 0, credit: params.amount }
     ];
 
-    return this.createTransaction({
+    return createTransaction({
       date: params.date,
       description: params.description,
       projectId: params.projectId,
@@ -272,7 +274,7 @@ export const accountingService = {
       return txId;
     }
 
-    return this.createTransaction(transactionData);
+    return createTransaction(transactionData);
   },
 
   /**
@@ -290,7 +292,7 @@ export const accountingService = {
       { accountCode: AccountCodes.RECEIVABLES, debit: 0, credit: params.amount }
     ];
 
-    return this.createTransaction({
+    return createTransaction({
       date: params.date,
       description: params.description,
       projectId: params.projectId,
@@ -343,7 +345,7 @@ export const accountingService = {
       return txId;
     }
 
-    return this.createTransaction(transactionData);
+    return createTransaction(transactionData);
   },
 
   /**
@@ -399,7 +401,7 @@ export const accountingService = {
       return txId;
     }
 
-    return this.createTransaction(transactionData);
+    return createTransaction(transactionData);
   },
 
   /**

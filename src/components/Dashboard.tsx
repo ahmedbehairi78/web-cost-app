@@ -20,7 +20,7 @@ import {
   Line,
   Legend
 } from 'recharts';
-import { collection, onSnapshot, query, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { motion } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -34,6 +34,9 @@ import html2pdf from 'html2pdf.js';
 const isBankCash    = (c?: string) => !!c && (c.startsWith('111') || c === '12101001' || c === '12102001');
 const isReceivables = (c?: string) => c === AccountCodes.RECEIVABLES || c === '12201001';
 
+/** Keeps Dashboard reads bounded; totals may omit older history — see capped notice in UI when hit. */
+const DASHBOARD_TRANSACTION_LIMIT = 5000;
+
 export function Dashboard() {
   const { t, language, theme, locale } = useLanguage();
   const [loading, setLoading] = useState(true);
@@ -41,6 +44,7 @@ export function Dashboard() {
   const [rawProjects, setRawProjects] = useState<Project[]>([]);
   const [rawTransactions, setRawTransactions] = useState<Transaction[]>([]);
   const [rawBoqItems, setRawBoqItems] = useState<BOQItem[]>([]);
+  const [transactionsCapped, setTransactionsCapped] = useState(false);
 
   const { stats, chartData, recentTransactions } = useMemo(() => {
     let totalSpent = 0;
@@ -124,6 +128,7 @@ export function Dashboard() {
 
   useEffect(() => {
     setLoading(true);
+    setTransactionsCapped(false);
     const unsubs: (() => void)[] = [];
 
     const unsubProjects = onSnapshot(query(collection(db, 'projects'), where('isDeleted', '==', false)), (snapshot) => {
@@ -134,8 +139,14 @@ export function Dashboard() {
       setLoading(false);
     });
 
-    const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false), orderBy('date', 'desc')), (snapshot) => {
+    const unsubTransactions = onSnapshot(query(
+      collection(db, 'transactions'),
+      where('isDeleted', '==', false),
+      orderBy('date', 'desc'),
+      limit(DASHBOARD_TRANSACTION_LIMIT),
+    ), (snapshot) => {
       setRawTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction)));
+      setTransactionsCapped(snapshot.docs.length >= DASHBOARD_TRANSACTION_LIMIT);
       setLoading(false);
     }, (err) => {
       handleFirestoreError(err, OperationType.LIST, 'transactions');
@@ -278,6 +289,24 @@ export function Dashboard() {
           </button>
         </div>
       </header>
+
+      {transactionsCapped && (
+        <p
+          className={cn(
+            'text-xs rounded-lg px-3 py-2 border',
+            theme === 'dark'
+              ? 'border-amber-700/60 bg-amber-950/30 text-amber-200'
+              : theme === 'soft'
+                ? 'border-amber-200 bg-amber-50 text-amber-950'
+                : 'border-amber-200 bg-amber-50 text-amber-900',
+          )}
+          role="status"
+        >
+          {language === 'ar'
+            ? `تم احتساب المؤشرات أدناه من أحدث ${DASHBOARD_TRANSACTION_LIMIT.toLocaleString('ar-EG')} قيود يومية فقط؛ قد لا تعكس كل التاريخ المحاسبي. لمشاهدة كامل الدفتر افتح وحدة الأستاذ العام.`
+            : `Figures below are based on up to ${DASHBOARD_TRANSACTION_LIMIT.toLocaleString('en-US')} most recent journal rows only — they may not equal full-history totals. Open General Ledger for the complete book.`}
+        </p>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

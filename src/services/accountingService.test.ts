@@ -1,11 +1,20 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const mockDocRef = { id: 'mock-doc-ref' };
-const { mockAddDoc, mockUpdateDoc, mockDoc, mockCollection } = vi.hoisted(() => ({
+
+const coaSnapAllCodes = (codes: string[]) => ({
+  docs: codes.map(accountCode => ({
+    id: accountCode,
+    data: () => ({ accountCode, isGroup: false, status: 'active' as const }),
+  })),
+});
+
+const { mockAddDoc, mockUpdateDoc, mockDoc, mockCollection, mockGetDocs } = vi.hoisted(() => ({
   mockAddDoc: vi.fn().mockResolvedValue({ id: 'new-tx-id' }),
   mockUpdateDoc: vi.fn().mockResolvedValue(undefined),
   mockDoc: vi.fn().mockReturnValue({ id: 'mock-doc-ref' }),
   mockCollection: vi.fn().mockReturnValue('mock-collection'),
+  mockGetDocs: vi.fn(),
 }));
 
 vi.mock('firebase/firestore', () => ({
@@ -17,7 +26,7 @@ vi.mock('firebase/firestore', () => ({
   query: vi.fn(),
   where: vi.fn(),
   onSnapshot: vi.fn(),
-  getDocs: vi.fn(),
+  getDocs: mockGetDocs,
   Timestamp: class {},
 }));
 
@@ -26,13 +35,22 @@ vi.mock('../firebase', () => ({
   auth: { currentUser: { uid: 'test-user-uid' } },
 }));
 
-import { accountingService, AccountCodes } from './accountingService';
+import { accountingService, AccountCodes, invalidateCoaCache } from './accountingService';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  invalidateCoaCache();
   mockAddDoc.mockResolvedValue({ id: 'new-tx-id' });
   mockUpdateDoc.mockResolvedValue(undefined);
   mockDoc.mockReturnValue(mockDocRef);
+  const coaCodes = [
+    ...new Set([
+      '1101',
+      '4100',
+      ...(Object.values(AccountCodes) as string[]),
+    ]),
+  ];
+  mockGetDocs.mockResolvedValue(coaSnapAllCodes(coaCodes));
 });
 
 // ─── createTransaction ────────────────────────────────────────────────────────
@@ -51,14 +69,14 @@ describe('createTransaction', () => {
     ).rejects.toThrow('not balanced');
   });
 
-  it('allows entries within 0.1 rounding tolerance', async () => {
+  it('allows small imbalance within rounding tolerance', async () => {
     await expect(
       accountingService.createTransaction({
         date: '2024-01-01',
         description: 'Rounding',
         entries: [
-          { accountCode: '1101', debit: 100.05, credit: 0 },
-          { accountCode: '4100', debit: 0, credit: 100.00 },
+          { accountCode: '1101', debit: 100.004, credit: 0 },
+          { accountCode: '4100', debit: 0, credit: 100.001 },
         ],
       })
     ).resolves.toBe('new-tx-id');
@@ -92,7 +110,7 @@ describe('createTransaction', () => {
     });
 
     const payload = mockAddDoc.mock.calls[0][1];
-    expect(payload.reference).toMatch(/^JV-\d+$/);
+    expect(payload.reference).toMatch(/^JV-\d+-[A-Z0-9]+$/);
   });
 
   it('uses provided reference', async () => {

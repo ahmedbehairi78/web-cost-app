@@ -1,17 +1,31 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { X, Minus, Maximize2, Minimize2 } from 'lucide-react';
+import React, { useRef, useEffect, useCallback, lazy, Suspense } from 'react';
+import { X, Minus, Maximize2, Minimize2, Loader2 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { shellTheme } from '../lib/shellTheme';
 import { useLanguage } from '../context/LanguageContext';
 import { MODULE_LABELS } from '../constants/modules';
-import { Dashboard } from './Dashboard';
-import { GeneralLedger } from './GeneralLedger';
-import { Projects } from './Projects';
-import { BOQ } from './BOQ';
-import { Billing } from './Billing';
-import { ActualCosts } from './ActualCosts';
-import { Reports } from './Reports';
-import { Settings } from './Settings';
-import { LiquidityReport } from './LiquidityReport';
+
+const DashboardLazy = lazy(() => import('./Dashboard').then(m => ({ default: m.Dashboard })));
+const GeneralLedgerLazy = lazy(() => import('./GeneralLedger').then(m => ({ default: m.GeneralLedger })));
+const ProjectsLazy = lazy(() => import('./Projects').then(m => ({ default: m.Projects })));
+const BOQLazy = lazy(() => import('./BOQ').then(m => ({ default: m.BOQ })));
+const BillingLazy = lazy(() => import('./Billing').then(m => ({ default: m.Billing })));
+const ActualCostsLazy = lazy(() => import('./ActualCosts').then(m => ({ default: m.ActualCosts })));
+const LiquidityReportLazy = lazy(() => import('./LiquidityReport').then(m => ({ default: m.LiquidityReport })));
+const ReportsLazy = lazy(() => import('./Reports').then(m => ({ default: m.Reports })));
+const SettingsLazy = lazy(() => import('./Settings').then(m => ({ default: m.Settings })));
+
+const MODULE_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
+  dashboard: DashboardLazy,
+  ledger: GeneralLedgerLazy,
+  projects: ProjectsLazy,
+  boq: BOQLazy,
+  billing: BillingLazy,
+  costs: ActualCostsLazy,
+  liquidity: LiquidityReportLazy,
+  reports: ReportsLazy,
+  settings: SettingsLazy,
+};
 
 export interface AppWindow {
   id: string;
@@ -22,18 +36,21 @@ export interface AppWindow {
   zIndex: number;
 }
 
-const MODULE_COMPONENTS: Record<string, React.ComponentType> = {
-  dashboard: Dashboard,
-  ledger: GeneralLedger,
-  projects: Projects,
-  boq: BOQ,
-  billing: Billing,
-  costs: ActualCosts,
-  liquidity: LiquidityReport,
-  reports: Reports,
-  settings: Settings,
-};
-
+function ModuleLoadFallback() {
+  const { theme, language } = useLanguage();
+  const shell = shellTheme(theme);
+  return (
+    <div
+      className={cn(
+        'flex flex-1 items-center justify-center gap-3 py-12 min-h-[160px]',
+        shell.wmModuleLoader,
+      )}
+    >
+      <Loader2 className="animate-spin text-blue-500 shrink-0" size={28} />
+      <span className="text-sm">{language === 'ar' ? 'جاري تحميل الوحدة…' : 'Loading module…'}</span>
+    </div>
+  );
+}
 
 // ─── Single window frame ──────────────────────────────────────────────────────
 
@@ -48,6 +65,7 @@ interface WindowFrameProps {
 
 function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUpdatePosition }: WindowFrameProps) {
   const { language, theme } = useLanguage();
+  const shell = shellTheme(theme);
   const windowRef = useRef<HTMLDivElement>(null);
   const posRef = useRef(win.position);
   const isMaximized = win.windowState === 'maximized';
@@ -95,20 +113,9 @@ function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUp
   const title = MODULE_LABELS[win.moduleId]?.[language] ?? win.moduleId;
   const ModuleComponent = MODULE_COMPONENTS[win.moduleId];
 
-  // Theme-aware colours
-  const titleBarCls = theme === 'dark'
-    ? 'bg-[#1c1d22] border-gray-700/60'
-    : theme === 'soft'
-      ? 'bg-[#e4e9ec] border-[#cfd8dc]'
-      : 'bg-gray-100 border-gray-200';
-
-  const windowCls = theme === 'dark'
-    ? 'bg-[#0d0e11] border-gray-700/60 shadow-2xl shadow-black/60'
-    : theme === 'soft'
-      ? 'bg-white border-[#cfd8dc] shadow-xl shadow-black/10'
-      : 'bg-white border-gray-200 shadow-xl shadow-black/10';
-
-  const titleTextCls = theme === 'dark' ? 'text-gray-200' : 'text-gray-700';
+  const titleBarCls = shell.wmTitleBar;
+  const windowCls = shell.wmWindow;
+  const titleTextCls = shell.wmTitleText;
 
   const style: React.CSSProperties = isMaximized
     ? { position: 'absolute', inset: 0, zIndex: win.zIndex }
@@ -179,7 +186,11 @@ function WindowFrame({ win, onClose, onMinimize, onMaximizeToggle, onFocus, onUp
 
       {/* ── Module content ─────────────────────────────────────────────── */}
       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
-        {ModuleComponent && <ModuleComponent />}
+        {ModuleComponent && (
+          <Suspense fallback={<ModuleLoadFallback />}>
+            <ModuleComponent />
+          </Suspense>
+        )}
       </div>
     </div>
   );
@@ -207,21 +218,13 @@ export function WindowManager({
   onRestoreMinimized,
 }: WindowManagerProps) {
   const { language, theme } = useLanguage();
+  const shell = shellTheme(theme);
 
   const minimized = windows.filter(w => w.windowState === 'minimized');
   const visible   = windows.filter(w => w.windowState !== 'minimized');
 
-  const taskbarCls = theme === 'dark'
-    ? 'bg-[#151619] border-gray-800'
-    : theme === 'soft'
-      ? 'bg-white border-[#cfd8dc]'
-      : 'bg-gray-50 border-gray-200';
-
-  const taskBtnCls = theme === 'dark'
-    ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-    : theme === 'soft'
-      ? 'bg-[#eceff1] text-[#546e7a] hover:bg-[#cfd8dc]'
-      : 'bg-gray-200 text-gray-700 hover:bg-gray-300';
+  const taskbarCls = shell.taskbar;
+  const taskBtnCls = shell.taskbarBtn;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -229,7 +232,7 @@ export function WindowManager({
       <div className="relative flex-1 overflow-hidden">
         {windows.length === 0 && (
           <div className={cn('absolute inset-0 flex flex-col items-center justify-center gap-3',
-            theme === 'dark' ? 'text-gray-600' : 'text-gray-400')}>
+            shell.emptyDesktop)}>
             <Maximize2 size={48} className="opacity-30" />
             <p className="text-base">
               {language === 'ar'

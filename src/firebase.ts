@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, connectAuthEmulator } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import {
   getFirestore,
   initializeFirestore,
@@ -7,10 +7,10 @@ import {
   persistentMultipleTabManager,
   doc,
   getDocFromServer,
-  connectFirestoreEmulator,
 } from 'firebase/firestore';
+import appletDefaults from '../firebase-applet-config.json';
 
-const REQUIRED_ENV_VARS = [
+const REQUIRED_ENV_KEYS = [
   'VITE_FIREBASE_API_KEY',
   'VITE_FIREBASE_AUTH_DOMAIN',
   'VITE_FIREBASE_PROJECT_ID',
@@ -19,22 +19,42 @@ const REQUIRED_ENV_VARS = [
   'VITE_FIREBASE_MESSAGING_SENDER_ID',
 ] as const;
 
-for (const key of REQUIRED_ENV_VARS) {
-  if (!import.meta.env[key]) {
-    throw new Error(`Missing required environment variable: ${key}`);
-  }
+/** Non-empty `import.meta.env` string, otherwise `undefined`. */
+function envTrimmed(key: string): string | undefined {
+  const v = import.meta.env[key as keyof ImportMetaEnv] as unknown;
+  if (v === undefined || v === null || String(v).trim() === '') return undefined;
+  return String(v).trim();
 }
 
+/**
+ * Prefer `.env` (VITE_*); in **development** only, falls back to `firebase-applet-config.json`
+ * so `npm run dev` works without a local `.env`. Production builds still require `.env`/CI secrets.
+ */
+function requiredFirebaseValue(key: (typeof REQUIRED_ENV_KEYS)[number], devFallback?: string): string {
+  const fromEnv = envTrimmed(key);
+  if (fromEnv) return fromEnv;
+  const fb = devFallback?.trim();
+  if (import.meta.env.DEV && fb) return fb;
+  throw new Error(
+    `${key} is not set. Add it to web-cost-app/.env (see .env.example) or set Firebase env vars in your host/CI. ` +
+    'In development, you can also rely on values in firebase-applet-config.json for the applet project.',
+  );
+}
+
+const applet = appletDefaults;
+
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  apiKey: requiredFirebaseValue('VITE_FIREBASE_API_KEY', applet.apiKey),
+  authDomain: requiredFirebaseValue('VITE_FIREBASE_AUTH_DOMAIN', applet.authDomain),
+  projectId: requiredFirebaseValue('VITE_FIREBASE_PROJECT_ID', applet.projectId),
+  appId: requiredFirebaseValue('VITE_FIREBASE_APP_ID', applet.appId),
+  storageBucket: requiredFirebaseValue('VITE_FIREBASE_STORAGE_BUCKET', applet.storageBucket),
+  messagingSenderId: requiredFirebaseValue('VITE_FIREBASE_MESSAGING_SENDER_ID', applet.messagingSenderId),
 };
 
-const databaseId = import.meta.env.VITE_FIREBASE_DATABASE_ID;
+const databaseId =
+  envTrimmed('VITE_FIREBASE_DATABASE_ID') ||
+  (import.meta.env.DEV && applet.firestoreDatabaseId?.trim() ? applet.firestoreDatabaseId.trim() : undefined);
 const useEmulators = import.meta.env.VITE_USE_EMULATORS === 'true';
 
 // Initialize Firebase SDK
