@@ -20,6 +20,8 @@ interface PurchaseTransaction {
   id: string;
   type: 'invoice' | 'ipc';
   supplierId: string;
+  /** `chart_of_accounts` doc linked to creditor (fills when picker uses COA or after record). */
+  supplierAccountId?: string;
   supplierName: string;
   projectId: string;
   contractId: string;
@@ -50,6 +52,29 @@ interface BillingItem {
 
 type ActiveTab = 'invoice' | 'ipc' | 'custody';
 
+const DEFAULT_CREDITOR_HEADER_CODES = new Set(['21101001', '21102001']);
+
+/** Leaf creditors for purchase invoice (suppliers) vs IPC (subcontractors), from COA only. */
+function matchesCreditorLedgerForTab(account: any, tab: 'invoice' | 'ipc'): boolean {
+  if (!account || account.isGroup || account.status === 'disabled') return false;
+  const code = String(account.accountCode || '');
+  const parent = String(account.parentCode || '');
+  if (!code && !parent) return false;
+  if (DEFAULT_CREDITOR_HEADER_CODES.has(code)) return false;
+  if (tab === 'invoice') {
+    return (
+      (code.startsWith('21101') && !code.startsWith('21102')) ||
+      parent === '21101' ||
+      parent === '21101001'
+    );
+  }
+  return (
+    code.startsWith('21102') ||
+    parent === '21102' ||
+    parent === '21102001'
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function ActualCosts() {
@@ -75,7 +100,7 @@ export function ActualCosts() {
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ── Form state ─────────────────────────────────────────────────────────────
+  // ── Form state (`supplierId` kept for field name compat = chart_of_accounts creditor doc id used in picker) ─
   const [formData, setFormData] = useState({
     supplierId: '',
     projectId: '',
@@ -230,7 +255,7 @@ export function ActualCosts() {
       });
       await batch.commit();
       invalidateCoaCache();
-      setFormData(prev => ({ ...prev, supplierId: supplierRef.id }));
+      setFormData(prev => ({ ...prev, supplierId: accountRef.id }));
       setShowSupplierModal(false);
       setNewSupplierData({ name: '', nameEn: '', taxNumber: '', phone: '', address: '', type: 'subcontractor' });
     } catch (err) {
@@ -300,10 +325,30 @@ export function ActualCosts() {
     e.preventDefault();
     if (isSubmitting) return;
     setIsSubmitting(true);
-    const supplier = suppliers.find(s => s.id === formData.supplierId);
     const expenseAccount = accounts.find(a => a.id === formData.expenseAccountId);
-    const supplierCoaAccount = accounts.find(a => a.supplierId === formData.supplierId && a.accountCode?.startsWith('211'));
-    const resolvedSupplierName = supplier?.name || supplierCoaAccount?.accountName || '';
+    /** Picker value = `chart_of_accounts` creditor document id */
+    const supplierCoaAccount = accounts.find(
+      a => a.id === formData.supplierId && matchesCreditorLedgerForTab(a, activeTab as 'invoice' | 'ipc'),
+    );
+    if (!supplierCoaAccount?.accountCode) {
+      alert(language === 'ar' ? 'اختر حساباً صالحاً من الموردين (211…) أو مقاولي الباطن (21102…).' : 'Pick a supplier (211…) or subcontractor (21102…) ledger account.');
+      setIsSubmitting(false);
+      return;
+    }
+    if (activeTab === 'invoice' && !expenseAccount) {
+      alert(language === 'ar' ? 'اختر حساب المصروف.' : 'Select an expense account.');
+      setIsSubmitting(false);
+      return;
+    }
+    const supplierFromDirectory = supplierCoaAccount.supplierId
+      ? suppliers.find(s => s.id === supplierCoaAccount.supplierId)
+      : undefined;
+    const resolvedSupplierName =
+      (language === 'ar' ? supplierFromDirectory?.name : supplierFromDirectory?.nameEn) ||
+      supplierFromDirectory?.name ||
+      supplierCoaAccount.accountName ||
+      supplierCoaAccount.accountNameEn ||
+      '';
     const { worksValue, vat, exec, wht, insurance, levy, advance, net } =
       activeTab === 'invoice'
         ? { worksValue: formData.amount, vat: formData.amount * (formData.vatPct / 100), wht: formData.amount * (formData.whtPct / 100), exec: 0, insurance: 0, levy: 0, advance: 0, net: formData.amount + (formData.amount * (formData.vatPct / 100)) - (formData.amount * (formData.whtPct / 100)) }
@@ -313,7 +358,7 @@ export function ActualCosts() {
       if (activeTab === 'invoice' && expenseAccount) {
         transactionId = await accountingService.recordPurchaseInvoice({
           baseAmount: formData.amount, vatAmount: vat, whtAmount: wht, totalAmount: net,
-          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount?.accountCode,
+          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount.accountCode,
           expenseAccountCode: expenseAccount.accountCode,
           expenseAccountName: expenseAccount.accountName,
           description: formData.description || `${t('invoice_entry')} - ${resolvedSupplierName}`,
@@ -323,13 +368,16 @@ export function ActualCosts() {
         transactionId = await accountingService.recordSubcontractorIPC({
           worksValue, vatAmount: vat, netPayable: net, execGuarantee: exec, whtAmount: wht,
           labourInsurance: insurance, manpowerLevy: levy, advancePaymentRecovery: advance,
-          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount?.accountCode,
+          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount.accountCode,
           description: formData.description || `${t('ipc_entry')} - ${resolvedSupplierName}`,
           projectId: formData.projectId, contractId: formData.contractId, date: formData.date
         });
       }
       await addDoc(collection(db, 'purchase_transactions'), {
-        type: activeTab, supplierId: formData.supplierId, supplierName: resolvedSupplierName,
+        type: activeTab,
+        supplierId: supplierFromDirectory?.id || supplierCoaAccount.supplierId || '',
+        supplierAccountId: supplierCoaAccount.id,
+        supplierName: resolvedSupplierName,
         projectId: formData.projectId, contractId: formData.contractId,
         expenseAccountId: formData.expenseAccountId, expenseAccountName: expenseAccount?.accountName || '',
         date: formData.date, referenceNumber: formData.referenceNumber,
@@ -391,6 +439,19 @@ export function ActualCosts() {
     return map;
   }, [transactions]);
 
+  const creditorAccountSelectOptions = useMemo(() => {
+    if (activeTab === 'custody') return [];
+    const tab = activeTab as 'invoice' | 'ipc';
+    return accounts
+      .filter(a => matchesCreditorLedgerForTab(a, tab))
+      .sort((x, y) => String(x.accountCode || '').localeCompare(String(y.accountCode || ''), undefined, { numeric: true }))
+      .map(a => ({
+        value: a.id as string,
+        secondary: a.accountCode as string,
+        label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName || ''),
+      }));
+  }, [accounts, activeTab, language]);
+
   const newEntryAmount = activeTab === 'invoice' ? formData.amount : formData.items.reduce((s, i) => s + i.amount, 0);
   const contractBudget = boqBudgetByContract.get(formData.contractId) || 0;
   const contractSpent = spentByContract.get(formData.contractId) || 0;
@@ -416,30 +477,33 @@ export function ActualCosts() {
           <h2 className="text-3xl font-bold tracking-tight">{language === 'ar' ? 'التكاليف الفعلية' : 'Actual Costs'}</h2>
           <p className="text-gray-400 mt-1 text-sm">{language === 'ar' ? 'فواتير المشتريات — مستخلصات مقاولي الباطن — تسويات العهد' : 'Purchase invoices · Subcontractor IPCs · Custody settlements'}</p>
         </div>
+      </header>
+
+      {/* Tab bar + new entry (next to custody tab) */}
+      <div className={cn('flex flex-wrap items-center gap-3 mb-6')}>
+        <div className={cn('flex gap-1 p-1 rounded-xl w-fit', theme === 'dark' ? 'bg-gray-900' : 'bg-gray-100')}>
+          {TABS.map(tab => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all', activeTab === tab.id ? 'bg-blue-600 text-white shadow' : theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800')}
+            >
+              {tab.icon}
+              {language === 'ar' ? tab.labelAr : tab.labelEn}
+            </button>
+          ))}
+        </div>
         {activeTab !== 'custody' && (
           <button
+            type="button"
             onClick={() => setShowModal(true)}
-            className={cn('px-6 py-2 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg text-white', activeTab === 'invoice' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20')}
+            className={cn('px-5 py-2 rounded-xl font-bold transition-all flex items-center gap-2 shadow-lg text-white shrink-0', activeTab === 'invoice' ? 'bg-blue-600 hover:bg-blue-500 shadow-blue-900/20' : 'bg-purple-600 hover:bg-purple-500 shadow-purple-900/20')}
           >
             <Plus size={20} />
             {activeTab === 'invoice' ? (language === 'ar' ? 'فاتورة جديدة' : 'New Invoice') : (language === 'ar' ? 'مستخلص جديد' : 'New IPC')}
           </button>
         )}
-      </header>
-
-      {/* Tab bar */}
-      <div className={cn('flex gap-1 mb-6 p-1 rounded-xl w-fit', theme === 'dark' ? 'bg-gray-900' : 'bg-gray-100')}>
-        {TABS.map(tab => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className={cn('flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-bold transition-all', activeTab === tab.id ? 'bg-blue-600 text-white shadow' : theme === 'dark' ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-800')}
-          >
-            {tab.icon}
-            {language === 'ar' ? tab.labelAr : tab.labelEn}
-          </button>
-        ))}
       </div>
 
       {/* ── CUSTODY TAB ──────────────────────────────────────────────────── */}
@@ -555,14 +619,7 @@ export function ActualCosts() {
                     </div>
                     <SearchableSelect value={formData.supplierId} onChange={v => setFormData(p => ({ ...p, supplierId: v }))} theme={theme} dir={dir}
                       placeholder={language === 'ar' ? 'اختر المورد/المقاول' : 'Select Supplier'}
-                      options={accounts.filter(a =>
-                        (a.accountCode?.startsWith('21101') || a.accountCode?.startsWith('21102')) &&
-                        a.accountCode?.length === 8 && !a.isGroup && a.supplierId
-                      ).map(a => ({
-                        value: a.supplierId,
-                        secondary: a.accountCode,
-                        label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
-                      }))} />
+                      options={creditorAccountSelectOptions} />
                   </div>
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{t('invoice_date')}</label>
