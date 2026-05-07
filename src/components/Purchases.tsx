@@ -20,7 +20,7 @@ import {
   Trash2,
   AlertTriangle
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, writeBatch, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, limit, writeBatch, doc } from 'firebase/firestore';
 import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService, invalidateCoaCache } from '../services/accountingService';
@@ -29,6 +29,7 @@ import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
 import { SearchableSelect } from './ui/SearchableSelect';
+import { LISTENER_PURCHASE_BOQ_CAP, LISTENER_PURCHASE_TX_CAP } from '../constants/dataLimits';
 
 interface PurchaseTransaction {
   id: string;
@@ -127,7 +128,12 @@ export function Purchases() {
     setLoading(true);
     
     // Listen to transactions
-    const qTx = query(collection(db, 'purchase_transactions'), where('isDeleted', '==', false), orderBy('createdAt', 'desc'));
+    const qTx = query(
+      collection(db, 'purchase_transactions'),
+      where('isDeleted', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(LISTENER_PURCHASE_TX_CAP),
+    );
     const unsubTx = onSnapshot(qTx, (snapshot) => {
       setTransactions(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PurchaseTransaction)));
       setLoading(false);
@@ -169,7 +175,11 @@ export function Purchases() {
     });
 
     // Listen to BOQ items for IPCs
-    const qBoq = query(collection(db, 'boq_items'));
+    const qBoq = query(
+      collection(db, 'boq_items'),
+      where('isDeleted', '==', false),
+      limit(LISTENER_PURCHASE_BOQ_CAP),
+    );
     const unsubBoq = onSnapshot(qBoq, (snapshot) => {
       setBoqItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => {

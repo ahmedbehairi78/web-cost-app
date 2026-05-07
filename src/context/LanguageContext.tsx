@@ -1,4 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from 'react';
 import { cn } from '../lib/utils';
 
 type Language = 'ar' | 'en';
@@ -293,16 +300,21 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   const [language, setLanguage] = useState<Language>('ar');
   const [theme, setTheme] = useState<Theme>('dark');
 
-  const t = (key: string) => {
+  const t = useCallback((key: string) => {
     const val = translations[language][key];
     if (val === undefined && import.meta.env.DEV) {
       console.warn(`[i18n] Missing translation key: "${key}" for language "${language}"`);
     }
     return val ?? key;
-  };
+  }, [language]);
 
   const dir = language === 'ar' ? 'rtl' : 'ltr';
   const locale = language === 'ar' ? 'ar-EG' : 'en-US';
+
+  const contextValue = useMemo(
+    () => ({ language, setLanguage, theme, setTheme, t, dir, locale }),
+    [language, theme, t, dir, locale],
+  );
 
   useEffect(() => {
     document.documentElement.dir = dir;
@@ -316,7 +328,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
   }, [language, dir, theme]);
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, theme, setTheme, t, dir, locale }}>
+    <LanguageContext.Provider value={contextValue}>
       <div className={cn(theme === 'dark' ? 'dark' : '', theme === 'soft' ? 'soft' : '')}>
         {children}
       </div>

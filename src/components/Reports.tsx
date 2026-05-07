@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { collection, onSnapshot, query, orderBy, doc, getDoc, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy, limit, doc, getDoc, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -23,6 +23,11 @@ import {
   ChevronLeft,
   Clock
 } from 'lucide-react';
+import {
+  LISTENER_REPORTS_ACTUAL_COSTS_CAP,
+  LISTENER_REPORTS_PURCHASE_CAP,
+  LISTENER_REPORTS_TRANSACTIONS_CAP,
+} from '../constants/dataLimits';
 import { 
   BarChart, 
   Bar, 
@@ -134,11 +139,20 @@ export function Reports() {
       console.error("Projects listener error:", err);
     });
 
-    const unsubCosts = onSnapshot(query(collection(db, 'actual_costs'), where('isDeleted', '==', false)), (snap) => {
-      setCosts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cost)));
-    }, (err) => {
+    const unsubCosts = onSnapshot(
+      query(
+        collection(db, 'actual_costs'),
+        where('isDeleted', '==', false),
+        orderBy('date', 'desc'),
+        limit(LISTENER_REPORTS_ACTUAL_COSTS_CAP),
+      ),
+      (snap) => {
+        setCosts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Cost)));
+      },
+      (err) => {
       console.error("Costs listener error:", err);
-    });
+      }
+    );
 
     const unsubBillings = onSnapshot(query(collection(db, 'billing'), where('isDeleted', '==', false)), (snap) => {
       setBillings(snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Billing)));
@@ -146,17 +160,35 @@ export function Reports() {
       console.error("Billings listener error:", err);
     });
 
-    const unsubPurchaseTransactions = onSnapshot(query(collection(db, 'purchase_transactions'), where('isDeleted', '==', false)), (snap) => {
+    const unsubPurchaseTransactions = onSnapshot(
+      query(
+        collection(db, 'purchase_transactions'),
+        where('isDeleted', '==', false),
+        orderBy('createdAt', 'desc'),
+        limit(LISTENER_REPORTS_PURCHASE_CAP),
+      ),
+      (snap) => {
       setPurchaseTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
+      },
+      (err) => {
       console.error("Reports purchase transactions listener error:", err);
-    });
+      }
+    );
 
-    const unsubTransactions = onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '==', false)), (snap) => {
+    const unsubTransactions = onSnapshot(
+      query(
+        collection(db, 'transactions'),
+        where('isDeleted', '==', false),
+        orderBy('date', 'desc'),
+        limit(LISTENER_REPORTS_TRANSACTIONS_CAP),
+      ),
+      (snap) => {
       setTransactions(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (err) => {
+      },
+      (err) => {
       console.error("Reports transactions listener error:", err);
-    });
+      }
+    );
 
     const unsubAccounts = onSnapshot(collection(db, 'chart_of_accounts'), (snap) => {
       setAccounts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, query, where, orderBy, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import { normalizeDate } from '../lib/utils';
 import { AccountCodes } from '../services/accountingService';
+import { LISTENER_GL_TX_GENERAL_CAP } from '../constants/dataLimits';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 // Support both post-migration codes (11xxxxx) and pre-migration codes (12xxxxx)
@@ -51,9 +52,16 @@ export function LiquidityReport() {
       onSnapshot(query(collection(db, 'billing'),      where('isDeleted', '!=', true)),
         s => { setBilling(s.docs.map(d => ({ id: d.id, ...d.data() } as BillingDoc))); setLoading(false); },
         e => { handleFirestoreError(e, OperationType.LIST, 'billing'); setLoading(false); }),
-      onSnapshot(query(collection(db, 'transactions'), where('isDeleted', '!=', true)),
+      onSnapshot(
+        query(
+          collection(db, 'transactions'),
+          where('isDeleted', '==', false),
+          orderBy('date', 'desc'),
+          limit(LISTENER_GL_TX_GENERAL_CAP),
+        ),
         s => setGlTxs(s.docs.map(d => ({ id: d.id, ...d.data() } as GlTx))),
-        e => handleFirestoreError(e, OperationType.LIST, 'transactions')),
+        e => handleFirestoreError(e, OperationType.LIST, 'transactions'),
+      ),
       onSnapshot(query(collection(db, 'chart_of_accounts'), where('isGroup', '==', false)),
         s => setGlAccounts(s.docs.map(d => ({ ...(d.data() as { accountCode: string; accountName: string }) }))),
         e => handleFirestoreError(e, OperationType.LIST, 'chart_of_accounts')),

@@ -3,7 +3,7 @@ import {
   Plus, Search, ShoppingCart, X, FileText, Receipt, Loader2,
   Download, Upload, Trash2, AlertTriangle, CheckCircle2, Clock, Filter
 } from 'lucide-react';
-import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, writeBatch, doc } from 'firebase/firestore';
+import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, limit, writeBatch, doc } from 'firebase/firestore';
 import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService, invalidateCoaCache } from '../services/accountingService';
@@ -13,6 +13,10 @@ import { useLanguage } from '../context/LanguageContext';
 import * as XLSX from 'xlsx';
 import { SearchableSelect } from './ui/SearchableSelect';
 import { GLCustodySettlement } from './gl/GLCustodySettlement';
+import {
+  LISTENER_GL_TX_SCREEN_CAP,
+  LISTENER_PURCHASE_TX_CAP,
+} from '../constants/dataLimits';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -147,7 +151,12 @@ export function ActualCosts() {
   useEffect(() => {
     setLoading(true);
     const unsubTx = onSnapshot(
-      query(collection(db, 'purchase_transactions'), where('isDeleted', '==', false), orderBy('createdAt', 'desc')),
+      query(
+        collection(db, 'purchase_transactions'),
+        where('isDeleted', '==', false),
+        orderBy('createdAt', 'desc'),
+        limit(LISTENER_PURCHASE_TX_CAP),
+      ),
       (snap) => { setTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() } as PurchaseTransaction))); setLoading(false); },
       (err) => { handleFirestoreError(err, OperationType.LIST, 'purchase_transactions'); setLoading(false); }
     );
@@ -177,7 +186,12 @@ export function ActualCosts() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'boq_items')
     );
     const unsubGl = onSnapshot(
-      query(collection(db, 'transactions'), where('isDeleted', '!=', true)),
+      query(
+        collection(db, 'transactions'),
+        where('isDeleted', '==', false),
+        orderBy('date', 'desc'),
+        limit(LISTENER_GL_TX_SCREEN_CAP),
+      ),
       (snap) => setGlTransactions(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
       (err) => handleFirestoreError(err, OperationType.LIST, 'transactions')
     );
