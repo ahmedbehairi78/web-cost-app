@@ -11,15 +11,19 @@ Construction cost management system built with React + TypeScript + Firebase (Fi
 
 ## Commands
 
+From **`web-cost-app/`** (or use the repo-root `package.json` which forwards `--prefix web-cost-app`):
+
 ```bash
-npm run dev       # Start dev server on :3000 (hits production Firestore)
-npm run emulate   # Start dev server using local Firebase emulators
+npm run dev       # Vite dev server — :3000, 0.0.0.0 (production Firestore unless emulators wired manually)
 npm run lint      # Type-check only (tsc --noEmit)
+npm run test      # Vitest
 npm run build     # Production build
 firebase deploy --only firestore:indexes   # Deploy composite indexes
 firebase deploy --only firestore:rules     # Deploy security rules
-firebase emulators:start                   # Start local emulators (Auth :9099, Firestore :8080, UI :4000)
+firebase emulators:start                   # Optional: local emulators (see Environment)
 ```
+
+Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / `build` / `lint` / `test` / `preview` into `web-cost-app/` for convenience when the shell cwd is one level above the app.
 
 ## Architecture
 
@@ -27,13 +31,16 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 
 | File | Purpose |
 |------|---------|
-| `src/firebase.ts` | Firebase init (offline persistence), emulator wiring, `handleFirestoreError` |
-| `src/services/accountingService.ts` | GL journal entries, IPC recording, Chart of Accounts seeding |
-| `src/context/LanguageContext.tsx` | i18n (ar/en) + theme (dark/soft/light) — all UI strings must have both variants |
+| `src/firebase.ts` | Firebase init (offline persistence), `handleFirestoreError`; **dev** falls back to `firebase-applet-config.json` when `VITE_*` vars are empty; production/CI requires env |
+| `src/services/accountingService.ts` | GL journal entries, IPC recording, COA cache + `invalidateCoaCache()`, journal creation via module-level `createTransaction()` (no `this`) |
+| `src/context/LanguageContext.tsx` | i18n (ar/en) + theme (dark/soft/light); context value stabilized with `useMemo`/`useCallback` to limit re-renders |
 | `src/lib/utils.ts` | `cn()` for class merging, `normalizeDate()` for date normalization |
+| `src/lib/shellTheme.ts` | Shared sidebar / window-shell Tailwind maps + `shellInteractiveFocus` (`:focus-visible`) |
+| `src/constants/dataLimits.ts` | `limit()` caps on heavy `onSnapshot` queries (Reports, ActualCosts, Liquidity, Purchases, Dashboard tx list) |
 | `src/types.ts` | Shared types: `UserPermissions`, `ALL_PERMISSIONS`, `DEFAULT_PERMISSIONS` |
+| `src/main.tsx` | `ThemedToaster` (toast styles follow active theme) |
 | `firestore.rules` | Security rules |
-| `firestore.indexes.json` | Composite indexes for all `where + orderBy` queries |
+| `firestore.indexes.json` | Composite indexes for `where + orderBy` queries |
 
 ### Components
 
@@ -43,13 +50,15 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 | `BOQ.tsx` | `boq_items`, `contracts`, `billing` (progress) |
 | `Billing.tsx` | `billing`, `boq_items`, `contracts` |
 | `GeneralLedger.tsx` | `transactions`, `chart_of_accounts`, `contracts`, `projects` |
-| `ActualCosts.tsx` | `purchase_transactions`, `suppliers`, `chart_of_accounts`, `boq_items`, `contracts`, `transactions` |
-| `Reports.tsx` | reads all collections + `contracts` for contract filter |
+| `ActualCosts.tsx` | `purchase_transactions` (capped), `suppliers`, `chart_of_accounts`, `boq_items`, `contracts`, `transactions` (capped, ordered) |
+| `Reports.tsx` | Many collections — **transactions / purchase_transactions / actual_costs** snapshots are **capped** via `src/constants/dataLimits.ts` (see Performance) |
 | `Settings.tsx` | `settings/company_info`, `chart_of_accounts` |
-| `Dashboard.tsx` | `projects`, `transactions`, `boq_items` |
-| `LiquidityReport.tsx` | `billing`, `transactions`, `contracts`, `projects`, `chart_of_accounts` |
+| `Dashboard.tsx` | `projects`, **`transactions`** (latest N + banner if cap hit), `boq_items` |
+| `LiquidityReport.tsx` | `billing`, **`transactions`** (capped recent), `contracts`, `projects`, `chart_of_accounts` |
 
-> `Purchases.tsx` **removed** from Sidebar and WindowManager. The file still exists on disk but is no longer routed or accessible.
+**Shell / routing:** `WindowManager.tsx` **lazy-loads** feature modules (`React.lazy` + `Suspense`) to reduce initial JS.
+
+> `Purchases.tsx` — **removed** from Sidebar / `WindowManager`. The file remains on disk (also uses capped listeners if ever re-wired).
 
 ### Data Integrity Rules
 
@@ -61,6 +70,7 @@ firebase emulators:start                   # Start local emulators (Auth :9099, 
 - **Batched Writes rule**: Any operation that writes to more than one collection must use `writeBatch` to guarantee atomicity.
 - **projectId vs costCenterId**: On `transactions`, `costCenterId` = contract ID and `projectId` = actual project ID. Never set `projectId` to a contract ID. In `GLJournalEntries`, derive `projectId` from `contracts.find(c => c.id === costCenterId)?.projectId`.
 - **Budget alert**: `ActualCosts.tsx` computes `boqBudgetByContract` and `spentByContract` via `useMemo` (no extra Firestore reads). A yellow warning banner appears when `spent + newAmount > BOQ budget` for the selected contract — non-blocking, user can still save.
+- **Actual Costs — creditor picker**: Invoice / IPC modals select **chart_of_accounts** leaf accounts under supplier (`21101…`) or subcontractor (`21102…`) branches by **document `id`**, not only rows with `supplierId`. Optional `supplierAccountId` is written on new `purchase_transactions` rows when saving; journal lines use `supplierAccountCode` from the chosen COA row. Custody tab still uses **`GLCustodySettlement`** embedded.
 - **Dashboard collection split**: `Dashboard.tsx` distinguishes two types of cash inflows. `totalCollected` (shown in التحصيلات النقدية card) includes both IPC collections (`RECEIVABLES` credit) and advance payments (`ADVANCE_PAYMENT` credit). `ipcCollected` tracks only IPC receipts. `pendingBilling = totalRevenue - ipcCollected` — advance payments must NOT reduce pending billing because they are a liability, not a reduction of IPC receivables. Cash/bank detection uses `startsWith('121')` to cover all banks (`12101xxx`) and cash funds (`12102xxx`).
 - **Sub-account shortcut**: In `GLChartOfAccounts.tsx`, hovering a row shows a green `+` button **only when `acc.isGroup === true`** (levels 1–4). Level-5 leaf accounts (`isGroup: false`) never show this button. Clicking it opens `AccountModal` with `defaultParentCode` and `defaultType` pre-filled, and the modal auto-computes the next sequential code under that parent (max existing child code + 1, or `parentCode + '001'` if no children yet).
 
@@ -147,7 +157,7 @@ Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field 
 - Supplier `chart_of_accounts` entries must use **8-digit sequential codes** under `parentCode: '21101'` for suppliers or `parentCode: '21102'` for subcontractors (e.g. `21101002`, `21101003`…, `21102002`…). Never use `Math.random()` to generate account codes — it produces duplicate and non-compliant codes.
 - Every `chart_of_accounts` entry created for a supplier must include a `supplierId` field linking back to the supplier doc.
 - Always use `AccountCodes` enum constants — never hardcode account code strings.
-- When recording journal entries for purchase invoices or subcontractor IPCs, look up the supplier's specific COA account via `accounts.find(a => a.supplierId === supplierId && a.accountCode.startsWith('211'))` and pass it as `supplierAccountCode` to `recordPurchaseInvoice` / `recordSubcontractorIPC`. Both functions accept an optional `supplierAccountCode` and fall back to the generic `AccountCodes.SUPPLIERS` / `AccountCodes.SUBCONTRACTORS` if not provided.
+- When recording purchase invoices / subcontractor IPCs from **`ActualCosts`**, resolve the creditor from the **selected COA account document** (`id` → `accountCode` / names). Pass **`supplierAccountCode`** into `recordPurchaseInvoice` / `recordSubcontractorIPC`. Fallback to generic **`AccountCodes.SUPPLIERS` / `AccountCodes.SUBCONTRACTORS`** only if no specific code is provided. Other modules may still link `suppliers` collection `id` to COA via `supplierId` when present.
 
 ### Soft Deletes & Batching
 - All deletions must use `isDeleted: true` (soft delete). Never call `deleteDoc()` directly on user data.
@@ -173,9 +183,14 @@ Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field 
 - `useCallback` is required for event handlers passed to table row components to prevent full-table re-renders.
 
 ### Firebase Config
-- Validate all required `VITE_*` environment variables at startup in `firebase.ts`. Throw a clear error immediately if any are missing.
+- **Production / `vite build`:** required `VITE_FIREBASE_*` variables must be set (see `web-cost-app/.env.example`). Missing vars throw at startup.
+- **`vite` dev (`npm run dev`):** if `VITE_FIREBASE_*` are empty, `firebase.ts` falls back to **`firebase-applet-config.json`** so local runs work without copying `.env`. Prefer explicit `.env` for a non-applet Firebase project.
 
----
+### Performance (listeners & rendering)
+- **`src/constants/dataLimits.ts`** — central caps (`limit(...)`) on high-volume **`onSnapshot`** queries (Reports, ActualCosts—including GL subset for custody, LiquidityReport, Purchases file, Dashboard transactions). Larger orgs tune these numbers trade-off: **speed vs. full history on screen**.
+- **Dashboard** additionally caps **`transactions`** with UI notice when the cap may skew aggregates.
+- **Language context** avoids new object/function identity each render (`useMemo` + `useCallback` for context value / `t`).
+- **Charts / motion:** keep derived data in **`useMemo`**; avoid heavy work inside snapshot callbacks (only **`setState`**).
 
 ---
 
@@ -185,14 +200,14 @@ Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field 
 feature branch → PR → /review → merge to main
 ```
 
-- Always run `npm run lint` before committing
-- After each phase of the fix plan, test golden paths: create IPC, create purchase invoice, clear BOQ, open Dashboard
+- Always run `npm run lint` (and **`npm run test`** when touching `accountingService` or regressions).
+- Golden paths after changes: create IPC, purchase invoice via Actual Costs, GL journal, Dashboard, capped reports if relevant.
 - Firestore index changes require `firebase deploy --only firestore:indexes`
-- Use `npm run emulate` for local dev to avoid touching production data
+- **Emulators:** not wired in root `package.json`. Set **`VITE_USE_EMULATORS=true`** in `.env`, run **`firebase emulators:start`**, and ensure `firebase.ts` emulator helpers match your ports if you extend them.
 
 ## Firebase Emulators
 
-Set `VITE_USE_EMULATORS=true` (done automatically by `npm run emulate`) to connect the app to local emulators instead of production. Emulator UI is at http://localhost:4000.
+With **`VITE_USE_EMULATORS=true`**, persistence uses **`getFirestore`** (no IndexedDB persistence) per `firebase.ts`. Emulator UI is typically **`http://localhost:4000`** when started via the Firebase CLI.
 
 ## Offline Persistence
 
@@ -234,17 +249,17 @@ The add/edit item modal uses **cascading dropdowns** driven by `existingItems` (
 
 ## Actual Costs Module
 
-`ActualCosts.tsx` consolidates three transaction types into a single tabbed module:
+`ActualCosts.tsx` consolidates three transaction types into a single tabbed module. **Tabs + “فاتورة جديدة” / “مستخلص جديد”** sit in **one row** (new-document button beside **تسوية عهدة** when invoice/IPC tab is active).
 
 | Tab | `type` value | Description |
 |-----|-------------|-------------|
-| فاتورة مشتريات | `invoice` | Purchase invoice from a supplier — calls `accountingService.recordPurchaseInvoice()` |
-| مستخلص مقاول | `ipc` | Subcontractor IPC (BOQ-based) — calls `accountingService.recordSubcontractorIPC()` |
-| تسوية عهدة | `custody` | Renders `<GLCustodySettlement>` inline — no `purchase_transactions` write |
+| فاتورة مشتريات | `invoice` | Purchase invoice — `recordPurchaseInvoice()`; creditor from **21101…** COA leaf |
+| مستخلص مقاول | `ipc` | Subcontractor IPC — `recordSubcontractorIPC()`; creditor from **21102…** COA leaf |
+| تسوية عهدة | `custody` | `<GLCustodySettlement>` inline — no `purchase_transactions` write |
 
-- All invoice and IPC records are stored in `purchase_transactions` with `type` = `'invoice'` or `'ipc'` and `isDeleted: false`.
-- The custody tab does **not** write to `purchase_transactions`; it writes directly to `transactions` via `accountingService.createTransaction()`.
-- The `GLCustodySettlement` component is embedded in the custody tab and receives `contracts` as a prop so each expense item can be assigned a `contractId` (cost center). Items are grouped by `contractId` on submit; each group becomes its own balanced transaction with `costCenterId` set.
+- Invoice / IPC saves write **`supplierAccountId`** (COA doc id) plus **`supplierId`** when linked to **`suppliers`**. **`supplierName`** resolves from supplier directory names or COA labels.
+- The custody tab does **not** write to `purchase_transactions`; it writes **`transactions`** via **`accountingService.createTransaction`**.
+- `GLCustodySettlement` receives `accounts`, `transactions` (recent subset passed from parent snapshots — see caps), `contracts`; items group by **`contractId`** into balanced postings with **`costCenterId`**.
 
 ## Custody Settlement — Contract Allocation
 
@@ -261,15 +276,16 @@ This ensures each contract group is independently balanced and can be traced in 
 - **Summary cards**: live cash & banks balance (net debit on all `111xxx` accounts), total billed IPCs, total collected, net uncollected.
 - **Per-contract table**: contract name, project, billed (submitted/approved/paid billing docs), collections (cash debit + RECEIVABLES credit per contract), advances (ADVANCE_PAYMENT credits), retention, net uncollected, and a collection % progress bar.
 
-The report loads `billing`, `transactions`, `contracts`, `projects`, and `chart_of_accounts` via `onSnapshot` listeners. All computation is in `useMemo`.
+The report loads `billing`, **`transactions`** (recent cap), `contracts`, `projects`, and `chart_of_accounts` via `onSnapshot`. All computation is in `useMemo`. Very old journals may fall outside the cap — raise **`LISTENER_GL_TX_GENERAL_CAP`** in `dataLimits.ts` if needed.
 
 The `liquidity` module ID is registered in `WindowManager` (`MODULE_COMPONENTS` + `MODULE_LABELS`). The Sidebar footer button highlights when the window is open (`openModuleIds.has('liquidity')`).
 
 ## Known Constraints
 
-- All `where(...) + orderBy(...)` combos require composite indexes — see `firestore.indexes.json`. Adding a new `orderBy` without a matching index will throw at runtime.
+- All **`where(...) + orderBy(...)` (+ `limit`)** combos require composite indexes — see **`firestore.indexes.json`**. Adding a new `orderBy` without a matching index will throw at runtime (Firebase Console link in the error).
 - `firestoreDatabaseId` in `firebase-applet-config.json` targets a named (non-default) Firestore database.
 - Arabic (`ar`) is the primary language; all UI strings must use `t('key')` from `useLanguage()` — never hardcode Arabic/English text in JSX.
 - `boq_items` and `contracts` collections use `isDeleted != true` (inequality) rather than `== false` — keep consistent to avoid index conflicts.
-- `GeneralLedger.tsx` uses paginated transaction loading (`limit(transactionLimit)` + "Load More"). Do not remove this pattern.
+- `GeneralLedger.tsx` uses paginated transaction loading (`limit(transactionLimit)` + fiscal year filter + "Load More"). Do not remove this pattern without replacing with another bounded strategy.
+- **Capped report / screen data:** totals that depend on **full** GL history may differ from capped listeners (Reports, Liquidity, custody context in Actual Costs). For audit-grade full history use GL / exports or planned server-side aggregates.
 - **Journal entry `SearchableSelect` onChange**: Never call `handleEntryChange` twice from the same `onChange` handler — React batches both updates from the same stale closure and the second call wins, silently dropping the first field's value. Instead, make `handleEntryChange` handle related field side-effects internally (e.g., auto-fill `accountName` when `accountCode` changes).
