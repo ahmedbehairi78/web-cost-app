@@ -308,7 +308,7 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     return val ?? key;
   }, [language]);
 
-  const dir = language === 'ar' ? 'rtl' : 'ltr';
+  const dir: 'rtl' | 'ltr' = language === 'ar' ? 'rtl' : 'ltr';
   const locale = language === 'ar' ? 'ar-EG' : 'en-US';
 
   const contextValue = useMemo(
