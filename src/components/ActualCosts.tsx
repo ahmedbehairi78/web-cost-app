@@ -520,14 +520,17 @@ export function ActualCosts() {
   const creditorAccountSelectOptions = useMemo(() => {
     if (activeTab === 'custody') return [];
     const tab = activeTab as 'invoice' | 'ipc';
-    return accounts
-      .filter(a => {
-        const code = normalizeAccountCode(a.accountCode);
-        // The invoice picker must show all supplier accounts under 21101,
-        // even when imported COA rows have inconsistent parent/isGroup flags.
-        if (codeBelongsToCreditorTab(code, tab)) return true;
-        return matchesCreditorBranchForTab(a, tab);
-      })
+    const directPrefix = tab === 'invoice' ? SUPPLIER_PARENT_CODE : SUBCONTRACTOR_PARENT_CODE;
+    const byCode = accounts.filter(a => normalizeAccountCode(a.accountCode).startsWith(directPrefix));
+    const fallbackByName = accounts.filter(a => {
+      const code = normalizeAccountCode(a.accountCode);
+      return code.startsWith('211') && creditorNameMatchesTab(a, tab);
+    });
+    const uniqueAccounts = new Map<string, ActualCostAccount>();
+    [...byCode, ...fallbackByName].forEach(account => {
+      if (account.id) uniqueAccounts.set(account.id, account);
+    });
+    return Array.from(uniqueAccounts.values())
       .sort((x, y) => String(x.accountCode || '').localeCompare(String(y.accountCode || ''), undefined, { numeric: true }))
       .map(a => ({
         value: a.id as string,
