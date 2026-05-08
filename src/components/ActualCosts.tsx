@@ -79,6 +79,12 @@ function isDisabledAccount(account: Pick<Account, 'status'>): boolean {
   return String(account.status ?? '').trim().toLowerCase() === 'disabled';
 }
 
+function codeBelongsToCreditorTab(code: string, tab: 'invoice' | 'ipc'): boolean {
+  return tab === 'invoice'
+    ? code.startsWith(SUPPLIER_PARENT_CODE)
+    : code.startsWith(SUBCONTRACTOR_PARENT_CODE);
+}
+
 function creditorNameMatchesTab(account: ActualCostAccount, tab: 'invoice' | 'ipc'): boolean {
   const text = `${account.accountName || ''} ${account.accountNameEn || ''}`.toLowerCase();
   if (tab === 'invoice') {
@@ -97,7 +103,7 @@ function matchesCreditorBranchForTab(account: ActualCostAccount | undefined, tab
     return (
       code === SUPPLIER_PARENT_CODE ||
       code === AccountCodes.SUPPLIERS ||
-      code.startsWith(SUPPLIER_PARENT_CODE) ||
+      codeBelongsToCreditorTab(code, tab) ||
       parent === SUPPLIER_PARENT_CODE ||
       parent === AccountCodes.SUPPLIERS ||
       (code.startsWith('211') && creditorNameMatchesTab(account, tab))
@@ -107,7 +113,7 @@ function matchesCreditorBranchForTab(account: ActualCostAccount | undefined, tab
   return (
     code === SUBCONTRACTOR_PARENT_CODE ||
     code === AccountCodes.SUBCONTRACTORS ||
-    code.startsWith(SUBCONTRACTOR_PARENT_CODE) ||
+    codeBelongsToCreditorTab(code, tab) ||
     parent === SUBCONTRACTOR_PARENT_CODE ||
     parent === AccountCodes.SUBCONTRACTORS ||
     (code.startsWith('211') && creditorNameMatchesTab(account, tab))
@@ -116,10 +122,10 @@ function matchesCreditorBranchForTab(account: ActualCostAccount | undefined, tab
 
 /** Posting account must be an active, non-group, 8-digit COA account. */
 function isCreditorPostingAccount(account: ActualCostAccount | undefined, tab: 'invoice' | 'ipc'): boolean {
-  return !!account &&
-    !isGroupAccount(account) &&
-    normalizeAccountCode(account.accountCode).length === AccountCodes.SUPPLIERS.length &&
-    matchesCreditorBranchForTab(account, tab);
+  if (!account || isGroupAccount(account)) return false;
+  const code = normalizeAccountCode(account.accountCode);
+  return code.length === AccountCodes.SUPPLIERS.length &&
+    (codeBelongsToCreditorTab(code, tab) || matchesCreditorBranchForTab(account, tab));
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -389,7 +395,11 @@ export function ActualCosts() {
     const expenseAccount = accounts.find(a => a.id === formData.expenseAccountId);
     /** Picker value = `chart_of_accounts` creditor document id */
     const supplierCoaAccount = accounts.find(
-      a => a.id === formData.supplierId && matchesCreditorBranchForTab(a, activeTab as 'invoice' | 'ipc'),
+      a => {
+        const tab = activeTab as 'invoice' | 'ipc';
+        const code = normalizeAccountCode(a.accountCode);
+        return a.id === formData.supplierId && (codeBelongsToCreditorTab(code, tab) || matchesCreditorBranchForTab(a, tab));
+      },
     );
     const supplierPostingAccount = supplierCoaAccount
       ? (
@@ -511,7 +521,13 @@ export function ActualCosts() {
     if (activeTab === 'custody') return [];
     const tab = activeTab as 'invoice' | 'ipc';
     return accounts
-      .filter(a => matchesCreditorBranchForTab(a, tab))
+      .filter(a => {
+        const code = normalizeAccountCode(a.accountCode);
+        // The invoice picker must show all supplier accounts under 21101,
+        // even when imported COA rows have inconsistent parent/isGroup flags.
+        if (codeBelongsToCreditorTab(code, tab)) return true;
+        return matchesCreditorBranchForTab(a, tab);
+      })
       .sort((x, y) => String(x.accountCode || '').localeCompare(String(y.accountCode || ''), undefined, { numeric: true }))
       .map(a => ({
         value: a.id as string,
