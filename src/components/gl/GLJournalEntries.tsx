@@ -204,7 +204,7 @@ export function GLJournalEntries({
   const isBalanced = Math.abs(totalDebit - totalCredit) < 0.01;
 
   const modalBg = cn('border rounded-2xl w-full overflow-hidden shadow-2xl transition-colors', theme === 'dark' ? 'bg-[#151619] border-gray-800' : theme === 'soft' ? 'bg-white border-[#cfd8dc]' : 'bg-white border-gray-200');
-  const modalHeader = cn('p-6 border-b flex justify-between items-center transition-colors', theme === 'dark' ? 'bg-gray-900/50 border-gray-800' : theme === 'soft' ? 'bg-[#eceff1] border-[#cfd8dc]' : 'bg-gray-50 border-gray-200');
+  const modalHeader = cn('p-6 border-b flex justify-between items-center shrink-0 transition-colors', theme === 'dark' ? 'bg-gray-900/50 border-gray-800' : theme === 'soft' ? 'bg-[#eceff1] border-[#cfd8dc]' : 'bg-gray-50 border-gray-200');
 
   return (
     <>
@@ -289,12 +289,12 @@ export function GLJournalEntries({
       <AnimatePresence>
         {isEntryModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={cn(modalBg, 'max-w-4xl')}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={cn(modalBg, 'max-w-4xl max-h-[90vh] flex flex-col')}>
               <div className={modalHeader}>
                 <h3 className="text-xl font-bold">{language === 'ar' ? 'إضافة قيد محاسبي جديد' : 'Add New Journal Entry'}</h3>
                 <button onClick={() => setIsEntryModalOpen(false)} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
               </div>
-              <form onSubmit={handleSaveEntry} className="p-6 space-y-6">
+              <form onSubmit={handleSaveEntry} className="p-6 space-y-6 overflow-y-auto">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'التاريخ' : 'Date'}</label>
@@ -454,27 +454,29 @@ export function GLJournalEntries({
       <AnimatePresence>
         {selectedTransaction && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={cn(modalBg, 'max-w-2xl')}>
+            <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className={cn(modalBg, 'max-w-3xl max-h-[90vh] flex flex-col')}>
               <div className={modalHeader}>
                 <div><h3 className="text-xl font-bold">{language === 'ar' ? 'تفاصيل القيد' : 'Journal Entry Details'}</h3><p className="text-xs text-gray-500 mt-1 font-mono">{selectedTransaction.reference}</p></div>
                 <button onClick={() => setSelectedTransaction(null)} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
               </div>
-              <div className="p-6 space-y-6">
+              <div className="p-6 space-y-6 overflow-y-auto">
                 <div className="grid grid-cols-2 gap-6">
                   <div><p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'التاريخ' : 'Date'}</p><p className="text-sm font-bold">{selectedTransaction.date}</p></div>
                   <div><p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'مركز التكلفة' : 'Cost Center'}</p><p className="text-sm font-bold">{(() => { const c = contractsMap.get(selectedTransaction.costCenterId!); const p = projectsMap.get(c?.projectId || ''); return c ? `${c.contractName} (${p?.projectName || '...'})` : '-'; })()}</p></div>
                   <div className="col-span-2"><p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'البيان' : 'Description'}</p><p className="text-sm font-bold">{selectedTransaction.description}</p></div>
                 </div>
                 <div className="border border-gray-800 rounded-xl overflow-hidden">
-                  <table className="w-full text-right">
-                    <thead><tr className="bg-gray-900/50 border-b border-gray-800"><th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الحساب' : 'Account'}</th><th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'مدين' : 'Debit'}</th><th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'دائن' : 'Credit'}</th></tr></thead>
-                    <tbody className="divide-y divide-gray-800">
-                      {selectedTransaction.entries.map((e, idx) => (
-                        <tr key={idx} className="hover:bg-gray-800/20"><td className="px-4 py-3"><div className="flex flex-col"><span className="text-sm font-medium">{e.accountName}</span><span className="text-[10px] text-gray-500 font-mono">{e.accountCode}</span></div></td><td className="px-4 py-3 text-sm font-mono text-blue-400">{e.debit > 0 ? e.debit.toLocaleString() : '-'}</td><td className="px-4 py-3 text-sm font-mono text-red-400">{e.credit > 0 ? e.credit.toLocaleString() : '-'}</td></tr>
-                      ))}
-                    </tbody>
-                    <tfoot><tr className="bg-gray-900/50 font-bold border-t border-gray-800"><td className="px-4 py-3 text-sm">{language === 'ar' ? 'الإجمالي' : 'Total'}</td><td className="px-4 py-3 text-sm font-mono text-blue-400">{selectedTransaction.entries.reduce((s, e) => s + e.debit, 0).toLocaleString()}</td><td className="px-4 py-3 text-sm font-mono text-red-400">{selectedTransaction.entries.reduce((s, e) => s + e.credit, 0).toLocaleString()}</td></tr></tfoot>
-                  </table>
+                  <div className="max-h-[50vh] overflow-auto">
+                    <table className="w-full text-right">
+                      <thead className="sticky top-0 z-10"><tr className="bg-gray-900/50 border-b border-gray-800"><th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'الحساب' : 'Account'}</th><th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'مدين' : 'Debit'}</th><th className="px-4 py-3 text-[10px] font-bold text-gray-400 uppercase">{language === 'ar' ? 'دائن' : 'Credit'}</th></tr></thead>
+                      <tbody className="divide-y divide-gray-800">
+                        {selectedTransaction.entries.map((e, idx) => (
+                          <tr key={idx} className="hover:bg-gray-800/20"><td className="px-4 py-3"><div className="flex flex-col"><span className="text-sm font-medium">{e.accountName}</span><span className="text-[10px] text-gray-500 font-mono">{e.accountCode}</span></div></td><td className="px-4 py-3 text-sm font-mono text-blue-400">{e.debit > 0 ? e.debit.toLocaleString() : '-'}</td><td className="px-4 py-3 text-sm font-mono text-red-400">{e.credit > 0 ? e.credit.toLocaleString() : '-'}</td></tr>
+                        ))}
+                      </tbody>
+                      <tfoot><tr className="bg-gray-900/50 font-bold border-t border-gray-800"><td className="px-4 py-3 text-sm">{language === 'ar' ? 'الإجمالي' : 'Total'}</td><td className="px-4 py-3 text-sm font-mono text-blue-400">{selectedTransaction.entries.reduce((s, e) => s + e.debit, 0).toLocaleString()}</td><td className="px-4 py-3 text-sm font-mono text-red-400">{selectedTransaction.entries.reduce((s, e) => s + e.credit, 0).toLocaleString()}</td></tr></tfoot>
+                    </table>
+                  </div>
                 </div>
                 <div className={cn('flex gap-3 justify-end pt-4 border-t', theme === 'dark' ? 'border-gray-800' : 'border-gray-100')}>
                   <button onClick={() => handleDeleteTransaction(selectedTransaction)} className="px-6 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-500 rounded-lg text-sm font-bold transition-colors flex items-center gap-2 mr-auto"><Trash2 size={16} />{language === 'ar' ? 'حذف القيد' : 'Delete Entry'}</button>

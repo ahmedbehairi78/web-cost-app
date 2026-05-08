@@ -6,7 +6,7 @@ import {
 import { collection, onSnapshot, query, addDoc, serverTimestamp, where, orderBy, limit, writeBatch, doc } from 'firebase/firestore';
 import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { accountingService, invalidateCoaCache } from '../services/accountingService';
+import { accountingService, Account, AccountCodes, invalidateCoaCache } from '../services/accountingService';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
@@ -56,26 +56,30 @@ interface BillingItem {
 
 type ActiveTab = 'invoice' | 'ipc' | 'custody';
 
-const DEFAULT_CREDITOR_HEADER_CODES = new Set(['21101001', '21102001']);
+type ActualCostAccount = Account & {
+  supplierId?: string;
+};
+
+const SUPPLIER_PARENT_CODE = AccountCodes.SUPPLIERS.slice(0, 5);
+const SUBCONTRACTOR_PARENT_CODE = AccountCodes.SUBCONTRACTORS.slice(0, 5);
 
 /** Leaf creditors for purchase invoice (suppliers) vs IPC (subcontractors), from COA only. */
-function matchesCreditorLedgerForTab(account: any, tab: 'invoice' | 'ipc'): boolean {
+function matchesCreditorLedgerForTab(account: ActualCostAccount | undefined, tab: 'invoice' | 'ipc'): boolean {
   if (!account || account.isGroup || account.status === 'disabled') return false;
   const code = String(account.accountCode || '');
   const parent = String(account.parentCode || '');
-  if (!code && !parent) return false;
-  if (DEFAULT_CREDITOR_HEADER_CODES.has(code)) return false;
+  if (code.length !== AccountCodes.SUPPLIERS.length) return false;
   if (tab === 'invoice') {
     return (
-      (code.startsWith('21101') && !code.startsWith('21102')) ||
-      parent === '21101' ||
-      parent === '21101001'
+      code.startsWith(SUPPLIER_PARENT_CODE) ||
+      parent === SUPPLIER_PARENT_CODE ||
+      parent === AccountCodes.SUPPLIERS
     );
   }
   return (
-    code.startsWith('21102') ||
-    parent === '21102' ||
-    parent === '21102001'
+    code.startsWith(SUBCONTRACTOR_PARENT_CODE) ||
+    parent === SUBCONTRACTOR_PARENT_CODE ||
+    parent === AccountCodes.SUBCONTRACTORS
   );
 }
 
@@ -92,7 +96,7 @@ export function ActualCosts() {
   const [suppliers, setSuppliers] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [contracts, setContracts] = useState<any[]>([]);
-  const [accounts, setAccounts] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<ActualCostAccount[]>([]);
   const [boqItems, setBoqItems] = useState<any[]>([]);
   const [glTransactions, setGlTransactions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -137,10 +141,10 @@ export function ActualCosts() {
   });
 
   const computedSupplierCode = useMemo(() => {
-    const parentCode = newSupplierData.type === 'supplier' ? '21101' : '21102';
-    const defaultBase = newSupplierData.type === 'supplier' ? 21101001 : 21102001;
+    const parentCode = newSupplierData.type === 'supplier' ? SUPPLIER_PARENT_CODE : SUBCONTRACTOR_PARENT_CODE;
+    const defaultBase = Number(newSupplierData.type === 'supplier' ? AccountCodes.SUPPLIERS : AccountCodes.SUBCONTRACTORS);
     const existingCodes = accounts
-      .filter(a => a.parentCode === parentCode)
+      .filter(a => String(a.accountCode || '').startsWith(parentCode) && String(a.accountCode || '').length === AccountCodes.SUPPLIERS.length)
       .map(a => parseInt(a.accountCode, 10))
       .filter(n => !isNaN(n));
     const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : defaultBase;
@@ -176,8 +180,8 @@ export function ActualCosts() {
       (err) => handleFirestoreError(err, OperationType.LIST, 'contracts')
     );
     const unsubAccounts = onSnapshot(
-      query(collection(db, 'chart_of_accounts'), where('isGroup', '==', false)),
-      (snap) => setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() }))),
+      collection(db, 'chart_of_accounts'),
+      (snap) => setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as ActualCostAccount))),
       (err) => handleFirestoreError(err, OperationType.LIST, 'chart_of_accounts')
     );
     const unsubBoq = onSnapshot(
@@ -255,7 +259,7 @@ export function ActualCosts() {
       const supplierRef = doc(collection(db, 'suppliers'));
       batch.set(supplierRef, { ...newSupplierData, isDeleted: false, createdAt: serverTimestamp() });
 
-      const parentCode = newSupplierData.type === 'supplier' ? '21101' : '21102';
+      const parentCode = newSupplierData.type === 'supplier' ? SUPPLIER_PARENT_CODE : SUBCONTRACTOR_PARENT_CODE;
       const accountRef = doc(collection(db, 'chart_of_accounts'));
       batch.set(accountRef, {
         accountName: newSupplierData.name || newSupplierData.nameEn,
@@ -264,6 +268,7 @@ export function ActualCosts() {
         parentCode,
         type: 'liability',
         isGroup: false,
+        status: 'active',
         supplierId: supplierRef.id,
         createdAt: serverTimestamp()
       });
