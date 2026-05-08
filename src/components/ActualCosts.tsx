@@ -79,24 +79,47 @@ function isDisabledAccount(account: Pick<Account, 'status'>): boolean {
   return String(account.status ?? '').trim().toLowerCase() === 'disabled';
 }
 
-/** Leaf creditors for purchase invoice (suppliers) vs IPC (subcontractors), from COA only. */
-function matchesCreditorLedgerForTab(account: ActualCostAccount | undefined, tab: 'invoice' | 'ipc'): boolean {
-  if (!account || isGroupAccount(account) || isDisabledAccount(account)) return false;
+function creditorNameMatchesTab(account: ActualCostAccount, tab: 'invoice' | 'ipc'): boolean {
+  const text = `${account.accountName || ''} ${account.accountNameEn || ''}`.toLowerCase();
+  if (tab === 'invoice') {
+    return text.includes('supplier') || text.includes('vendor') || text.includes('مورد');
+  }
+  return text.includes('subcontractor') || text.includes('مقاول');
+}
+
+function matchesCreditorBranchForTab(account: ActualCostAccount | undefined, tab: 'invoice' | 'ipc'): boolean {
+  if (!account || isDisabledAccount(account)) return false;
   const code = normalizeAccountCode(account.accountCode);
   const parent = normalizeAccountCode(account.parentCode);
-  if (code.length !== AccountCodes.SUPPLIERS.length) return false;
+  if (!code) return false;
+
   if (tab === 'invoice') {
     return (
+      code === SUPPLIER_PARENT_CODE ||
+      code === AccountCodes.SUPPLIERS ||
       code.startsWith(SUPPLIER_PARENT_CODE) ||
       parent === SUPPLIER_PARENT_CODE ||
-      parent === AccountCodes.SUPPLIERS
+      parent === AccountCodes.SUPPLIERS ||
+      (code.startsWith('211') && creditorNameMatchesTab(account, tab))
     );
   }
+
   return (
+    code === SUBCONTRACTOR_PARENT_CODE ||
+    code === AccountCodes.SUBCONTRACTORS ||
     code.startsWith(SUBCONTRACTOR_PARENT_CODE) ||
     parent === SUBCONTRACTOR_PARENT_CODE ||
-    parent === AccountCodes.SUBCONTRACTORS
+    parent === AccountCodes.SUBCONTRACTORS ||
+    (code.startsWith('211') && creditorNameMatchesTab(account, tab))
   );
+}
+
+/** Posting account must be an active, non-group, 8-digit COA account. */
+function isCreditorPostingAccount(account: ActualCostAccount | undefined, tab: 'invoice' | 'ipc'): boolean {
+  return !!account &&
+    !isGroupAccount(account) &&
+    normalizeAccountCode(account.accountCode).length === AccountCodes.SUPPLIERS.length &&
+    matchesCreditorBranchForTab(account, tab);
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -366,9 +389,16 @@ export function ActualCosts() {
     const expenseAccount = accounts.find(a => a.id === formData.expenseAccountId);
     /** Picker value = `chart_of_accounts` creditor document id */
     const supplierCoaAccount = accounts.find(
-      a => a.id === formData.supplierId && matchesCreditorLedgerForTab(a, activeTab as 'invoice' | 'ipc'),
+      a => a.id === formData.supplierId && matchesCreditorBranchForTab(a, activeTab as 'invoice' | 'ipc'),
     );
-    if (!supplierCoaAccount?.accountCode) {
+    const supplierPostingAccount = supplierCoaAccount
+      ? (
+          isCreditorPostingAccount(supplierCoaAccount, activeTab as 'invoice' | 'ipc')
+            ? supplierCoaAccount
+            : accounts.find(a => isCreditorPostingAccount(a, activeTab as 'invoice' | 'ipc'))
+        )
+      : undefined;
+    if (!supplierPostingAccount?.accountCode) {
       alert(language === 'ar' ? 'اختر حساباً صالحاً من الموردين (211…) أو مقاولي الباطن (21102…).' : 'Pick a supplier (211…) or subcontractor (21102…) ledger account.');
       setIsSubmitting(false);
       return;
@@ -396,7 +426,7 @@ export function ActualCosts() {
       if (activeTab === 'invoice' && expenseAccount) {
         transactionId = await accountingService.recordPurchaseInvoice({
           baseAmount: formData.amount, vatAmount: vat, whtAmount: wht, totalAmount: net,
-          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount.accountCode,
+          supplierName: resolvedSupplierName, supplierAccountCode: supplierPostingAccount.accountCode,
           expenseAccountCode: expenseAccount.accountCode,
           expenseAccountName: expenseAccount.accountName,
           description: formData.description || `${t('invoice_entry')} - ${resolvedSupplierName}`,
@@ -406,7 +436,7 @@ export function ActualCosts() {
         transactionId = await accountingService.recordSubcontractorIPC({
           worksValue, vatAmount: vat, netPayable: net, execGuarantee: exec, whtAmount: wht,
           labourInsurance: insurance, manpowerLevy: levy, advancePaymentRecovery: advance,
-          supplierName: resolvedSupplierName, supplierAccountCode: supplierCoaAccount.accountCode,
+          supplierName: resolvedSupplierName, supplierAccountCode: supplierPostingAccount.accountCode,
           description: formData.description || `${t('ipc_entry')} - ${resolvedSupplierName}`,
           projectId: formData.projectId, contractId: formData.contractId, date: formData.date
         });
@@ -481,7 +511,7 @@ export function ActualCosts() {
     if (activeTab === 'custody') return [];
     const tab = activeTab as 'invoice' | 'ipc';
     return accounts
-      .filter(a => matchesCreditorLedgerForTab(a, tab))
+      .filter(a => matchesCreditorBranchForTab(a, tab))
       .sort((x, y) => String(x.accountCode || '').localeCompare(String(y.accountCode || ''), undefined, { numeric: true }))
       .map(a => ({
         value: a.id as string,
