@@ -63,11 +63,27 @@ type ActualCostAccount = Account & {
 const SUPPLIER_PARENT_CODE = AccountCodes.SUPPLIERS.slice(0, 5);
 const SUBCONTRACTOR_PARENT_CODE = AccountCodes.SUBCONTRACTORS.slice(0, 5);
 
+function normalizeAccountCode(value: unknown): string {
+  return String(value ?? '').trim();
+}
+
+function isGroupAccount(account: Pick<Account, 'isGroup'>): boolean {
+  const value = account.isGroup as unknown;
+  if (typeof value === 'string') {
+    return ['true', 'yes', '1'].includes(value.trim().toLowerCase());
+  }
+  return value === true || value === 1;
+}
+
+function isDisabledAccount(account: Pick<Account, 'status'>): boolean {
+  return String(account.status ?? '').trim().toLowerCase() === 'disabled';
+}
+
 /** Leaf creditors for purchase invoice (suppliers) vs IPC (subcontractors), from COA only. */
 function matchesCreditorLedgerForTab(account: ActualCostAccount | undefined, tab: 'invoice' | 'ipc'): boolean {
-  if (!account || account.isGroup || account.status === 'disabled') return false;
-  const code = String(account.accountCode || '');
-  const parent = String(account.parentCode || '');
+  if (!account || isGroupAccount(account) || isDisabledAccount(account)) return false;
+  const code = normalizeAccountCode(account.accountCode);
+  const parent = normalizeAccountCode(account.parentCode);
   if (code.length !== AccountCodes.SUPPLIERS.length) return false;
   if (tab === 'invoice') {
     return (
@@ -144,7 +160,10 @@ export function ActualCosts() {
     const parentCode = newSupplierData.type === 'supplier' ? SUPPLIER_PARENT_CODE : SUBCONTRACTOR_PARENT_CODE;
     const defaultBase = Number(newSupplierData.type === 'supplier' ? AccountCodes.SUPPLIERS : AccountCodes.SUBCONTRACTORS);
     const existingCodes = accounts
-      .filter(a => String(a.accountCode || '').startsWith(parentCode) && String(a.accountCode || '').length === AccountCodes.SUPPLIERS.length)
+      .filter(a => {
+        const code = normalizeAccountCode(a.accountCode);
+        return code.startsWith(parentCode) && code.length === AccountCodes.SUPPLIERS.length;
+      })
       .map(a => parseInt(a.accountCode, 10))
       .filter(n => !isNaN(n));
     const maxCode = existingCodes.length > 0 ? Math.max(...existingCodes) : defaultBase;
@@ -466,7 +485,7 @@ export function ActualCosts() {
       .sort((x, y) => String(x.accountCode || '').localeCompare(String(y.accountCode || ''), undefined, { numeric: true }))
       .map(a => ({
         value: a.id as string,
-        secondary: a.accountCode as string,
+        secondary: normalizeAccountCode(a.accountCode),
         label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName || ''),
       }));
   }, [accounts, activeTab, language]);
@@ -750,8 +769,11 @@ export function ActualCosts() {
                   </div>
                   <SearchableSelect value={formData.expenseAccountId} onChange={v => setFormData(p => ({ ...p, expenseAccountId: v }))} theme={theme} dir={dir}
                     placeholder={t('select_account')}
-                    options={accounts.filter(a => a.accountCode?.startsWith('5') && a.accountCode?.length === 8 && !a.isGroup && a.status !== 'disabled').map(a => ({
-                      value: a.id, secondary: a.accountCode, label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
+                    options={accounts.filter(a => {
+                      const code = normalizeAccountCode(a.accountCode);
+                      return code.startsWith('5') && code.length === 8 && !isGroupAccount(a) && !isDisabledAccount(a);
+                    }).map(a => ({
+                      value: a.id, secondary: normalizeAccountCode(a.accountCode), label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
                     }))} />
                 </div>
 
