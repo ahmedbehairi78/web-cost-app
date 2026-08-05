@@ -373,8 +373,6 @@ export type ConsumptionOrderPrintData = {
     boqItemCode?: string;
     boqDescription?: string;
     quantity: number;
-    unitCost: number;
-    totalCost: number;
   }>;
   /** Optional typed names printed under the signature line. */
   requesterName?: string;
@@ -383,11 +381,11 @@ export type ConsumptionOrderPrintData = {
   formatQuantity: (n: number) => string;
 };
 
-/** Warehouse issue slip (إذن صرف) — signature footer: requester · receiver · storekeeper. */
+/** Warehouse issue slip (إذن صرف) — quantities only; signature footer: requester · receiver · storekeeper. */
 export function buildConsumptionOrderSections(
   data: ConsumptionOrderPrintData,
   language: 'ar' | 'en',
-  formatMoney: (n: number) => string,
+  _formatMoney?: (n: number) => string,
 ): ReportDocSection[] {
   const isAr = language === 'ar';
 
@@ -406,13 +404,11 @@ export function buildConsumptionOrderSections(
   }
 
   const columns: ReportDocColumn[] = [
-    { key: 'code', header: isAr ? 'كود الصنف' : 'Code', width: 10, align: 'center' },
-    { key: 'material', header: isAr ? 'الصنف' : 'Material', width: 22 },
-    { key: 'unit', header: isAr ? 'الوحدة' : 'Unit', width: 6, align: 'center' },
-    { key: 'boq', header: isAr ? 'بند BOQ' : 'BOQ Item', width: 18 },
-    { key: 'qty', header: isAr ? 'الكمية' : 'Qty', width: 8, numeric: true },
-    { key: 'unitCost', header: isAr ? 'التكلفة' : 'Unit Cost', width: 10, money: true },
-    { key: 'total', header: isAr ? 'القيمة' : 'Value', width: 12, money: true },
+    { key: 'code', header: isAr ? 'كود الصنف' : 'Code', width: 12, align: 'center' },
+    { key: 'material', header: isAr ? 'الصنف' : 'Material', width: 28 },
+    { key: 'unit', header: isAr ? 'الوحدة' : 'Unit', width: 8, align: 'center' },
+    { key: 'boq', header: isAr ? 'بند BOQ' : 'BOQ Item', width: 32 },
+    { key: 'qty', header: isAr ? 'الكمية' : 'Qty', width: 12, numeric: true },
   ];
 
   const rows: ReportDocRow[] = data.lines.map((line) => ({
@@ -421,11 +417,7 @@ export function buildConsumptionOrderSections(
     unit: line.unit || '—',
     boq: [line.boqItemCode, line.boqDescription].filter(Boolean).join(' — ') || '—',
     qty: data.formatQuantity(line.quantity),
-    unitCost: line.unitCost,
-    total: line.totalCost,
   }));
-
-  const totalValue = data.lines.reduce((s, l) => s + (Number(l.totalCost) || 0), 0);
 
   const sections: ReportDocSection[] = [
     { kind: 'keyValue', items: meta, columnsPerRow: 3 },
@@ -435,18 +427,6 @@ export function buildConsumptionOrderSections(
       columns,
       rows,
       flow: true,
-      totals: { total: totalValue },
-      totalsLabel: isAr ? 'إجمالي قيمة الصرف' : 'Total Issue Value',
-    },
-    {
-      kind: 'summary',
-      items: [
-        {
-          label: isAr ? 'إجمالي قيمة الصرف' : 'Total Issue Value',
-          value: formatMoney(totalValue),
-          emphasize: true,
-        },
-      ],
     },
   ];
   if (data.notes?.trim()) {

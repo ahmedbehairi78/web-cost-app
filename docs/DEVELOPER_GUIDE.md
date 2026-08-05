@@ -405,6 +405,15 @@ npm run electron:build:shell
 | **مرتجع** | اختيار عدة بنود صرف قابلة للإرجاع؛ قيد GL على الخادم `returnInventoryJournal` (مجموعات مصروف) |
 | **تحويل** | متعدد الأصناف مسبقاً — تلميح UI فقط |
 
+### 6.5.0d صورة Railway أخف (2026-08-05)
+
+| بند | تفصيل |
+|-----|--------|
+| deps | حزم الواجهة/البناء (`react` · `vite` · `xlsx` · …) في `devDependencies` — تُبنى في المرحلة الأولى ثم `npm prune` |
+| Docker | `deploy/railway-api.Dockerfile` يحتفظ بـ Prisma CLI للـ migrate؛ يحذف Electron/UI من الصورة النهائية |
+| .dockerignore | يستبعد `release` · `release-build` · `electron` · `public/imports` من سياق البناء |
+| أداء | لا تغيير على runtime — الـ SPA من `dist/` والـ API كما هو |
+
 ### 6.5.1 البنوك — رصيد GL في النماذج (2026-06-28)
 
 عند إنشاء **شيك** أو **حركة بنكية** (تحويل / إيداع / سحب)، يظهر تحت اختيار الحساب تلميح **read-only** للرصيد من الأستاذ:

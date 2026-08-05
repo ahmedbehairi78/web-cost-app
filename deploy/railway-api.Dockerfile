@@ -5,6 +5,9 @@
 # Uses Debian (glibc) instead of Alpine (musl): Windows-generated lockfiles often
 # skip optional platform binaries under npm ci (npm/cli#4828), which breaks
 # Vite/Rollup/lightningcss/Tailwind oxide on Alpine.
+#
+# Size: UI/build packages live in devDependencies — pruned after Vite/tsc build.
+# Runtime image keeps Express + Prisma + server natives only (SPA is static `dist/`).
 
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
@@ -43,8 +46,66 @@ RUN node scripts/copy-coa-seed.mjs
 RUN node scripts/generate-vite-env.mjs
 RUN npm run build
 RUN npx tsc -p server/tsconfig.build.json
-# Prune dev deps once native modules (bcrypt, better-sqlite3) are built.
-RUN npm prune --omit=dev
+
+# Keep Prisma CLI for migrate deploy (devDependency) before prune removes it.
+RUN mkdir -p /opt/keep \
+ && cp -a node_modules/prisma /opt/keep/prisma \
+ && cp -a node_modules/@prisma/engines /opt/keep/engines 2>/dev/null || true \
+ && cp -a node_modules/@prisma/engines-version /opt/keep/engines-version 2>/dev/null || true \
+ && cp -a node_modules/@prisma/fetch-engine /opt/keep/fetch-engine 2>/dev/null || true \
+ && cp -a node_modules/@prisma/get-platform /opt/keep/get-platform 2>/dev/null || true
+
+# Drop Vite/React/UI toolchain — already baked into dist/.
+# Explicit rm covers packages npm may keep as peerOptional after prune.
+RUN npm prune --omit=dev \
+ && rm -rf \
+      node_modules/electron-updater \
+      node_modules/react \
+      node_modules/react-dom \
+      node_modules/scheduler \
+      node_modules/lucide-react \
+      node_modules/recharts \
+      node_modules/motion \
+      node_modules/framer-motion \
+      node_modules/firebase \
+      node_modules/vite \
+      node_modules/@vitejs \
+      node_modules/@tailwindcss \
+      node_modules/tailwindcss \
+      node_modules/tailwind-merge \
+      node_modules/xlsx \
+      node_modules/html2canvas \
+      node_modules/react-hook-form \
+      node_modules/@hookform \
+      node_modules/react-hot-toast \
+      node_modules/goober \
+      node_modules/clsx \
+      node_modules/@google \
+      node_modules/arabic-reshaper \
+      node_modules/bidi-js \
+      node_modules/electron \
+      node_modules/electron-builder \
+      node_modules/app-builder-bin \
+      node_modules/app-builder-lib \
+      node_modules/typescript \
+      node_modules/vitest \
+      node_modules/@vitest \
+      node_modules/tsx \
+      node_modules/knip \
+      node_modules/concurrently \
+      node_modules/esbuild \
+      node_modules/@esbuild \
+      node_modules/rollup \
+      node_modules/@rollup \
+      node_modules/lightningcss \
+ && cp -a /opt/keep/prisma node_modules/prisma \
+ && mkdir -p node_modules/@prisma \
+ && if [ -d /opt/keep/engines ]; then cp -a /opt/keep/engines node_modules/@prisma/engines; fi \
+ && if [ -d /opt/keep/engines-version ]; then cp -a /opt/keep/engines-version node_modules/@prisma/engines-version; fi \
+ && if [ -d /opt/keep/fetch-engine ]; then cp -a /opt/keep/fetch-engine node_modules/@prisma/fetch-engine; fi \
+ && if [ -d /opt/keep/get-platform ]; then cp -a /opt/keep/get-platform node_modules/@prisma/get-platform; fi \
+ && npm cache clean --force \
+ && rm -rf /tmp/* /root/.npm /opt/keep
 
 FROM node:22-bookworm-slim
 WORKDIR /app
@@ -59,9 +120,6 @@ COPY --from=build /app/dist-server ./dist-server
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/config ./config
 COPY scripts/start-api-production.mjs ./scripts/
-
-# prisma CLI is devDependency — required for `migrate deploy` at container start.
-RUN npm install --no-save prisma@^7.8.0
 
 EXPOSE 3001
 

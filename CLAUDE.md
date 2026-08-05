@@ -179,7 +179,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `server/src/permissions.ts` | Server-side `PermissionKey`, role presets |
 | `server/src/middleware/auth.ts` | `requireAuth`, `requirePermission`, `requireRole` middlewares |
 | `server/sqlite/migrations/` | **001–013**; legacy local SQLite — **disabled in production** (`SQLITE_CORE_ENABLED=false`) |
-| `deploy/railway-api.Dockerfile` | Railway full-stack image: Vite SPA + Express API + `prisma migrate deploy` on start |
+| `deploy/railway-api.Dockerfile` | Railway full-stack: Vite build then prune UI deps; Express + Prisma runtime; SPA in `dist/` |
 | `railway.toml` | Railway project config (Dockerfile builder, `/api/health` check) |
 | `scripts/generate-vite-env.mjs` | Writes `.env.production` from `VITE_*` (Railway build vars or local `.env`) |
 | `scripts/start-api-production.mjs` | Production entrypoint: migrate deploy → `dist-server/index.js` |

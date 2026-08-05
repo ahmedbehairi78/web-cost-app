@@ -2772,8 +2772,6 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
             boqItemCode: line.boqItemCode,
             boqDescription: line.boqDescription,
             quantity: Number(line.quantity) || 0,
-            unitCost: Number(line.unitCost) || 0,
-            totalCost: Number(line.totalCost) || 0,
           })),
           requesterName: printNames.requester,
           receiverName: printNames.receiver,
@@ -2781,7 +2779,6 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
           formatQuantity: (n) => formatQuantity(n, language),
         },
         language,
-        formatMoneyPrint,
       ),
       filename: `consumption-${printOrder.orderNumber}`,
     });

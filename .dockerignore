@@ -2,6 +2,7 @@ node_modules
 dist
 dist-server
 .git
+.github
 .env
 .env.*
 !.env.example
@@ -12,6 +13,15 @@ coverage
 .vite
 .cursor
 .claude
+.vs
 backups
+release
+release-build
+electron
 **/*.md
 !docs/RAILWAY_DEPLOY.md
+server/data
+public/imports
+*.exe
+*.log
+agent-transcripts

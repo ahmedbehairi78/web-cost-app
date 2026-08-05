@@ -568,8 +568,6 @@ describe('buildConsumptionOrderSections', () => {
             unit: 'طن',
             boqItemCode: '1.1',
             quantity: 2,
-            unitCost: 100,
-            totalCost: 200,
           },
         ],
         requesterName: 'أحمد',
@@ -578,8 +576,15 @@ describe('buildConsumptionOrderSections', () => {
         formatQuantity: (n) => String(n),
       },
       'ar',
-      (n) => n.toFixed(2),
     );
+    const table = sections.find((s) => s.kind === 'table');
+    expect(table?.kind).toBe('table');
+    if (table?.kind === 'table') {
+      expect(table.columns.map((c) => c.key)).toEqual(['code', 'material', 'unit', 'boq', 'qty']);
+      expect(table.columns.some((c) => c.money)).toBe(false);
+      expect(table.totals).toBeUndefined();
+    }
+    expect(sections.some((s) => s.kind === 'summary')).toBe(false);
     const sig = sections.find((s) => s.kind === 'signatures');
     expect(sig?.kind).toBe('signatures');
     if (sig?.kind !== 'signatures') return;
@@ -601,5 +606,8 @@ describe('buildConsumptionOrderSections', () => {
     expect(html).toContain('طالب الصرف');
     expect(html).toContain('أحمد');
     expect(html).toContain('أسمنت');
+    expect(html).not.toContain('التكلفة');
+    expect(html).not.toContain('القيمة');
+    expect(html).not.toContain('إجمالي قيمة');
   });
 });
