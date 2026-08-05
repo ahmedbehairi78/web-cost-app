@@ -369,7 +369,7 @@ export type ConsumptionOrderPrintData = {
     materialCode?: string;
     materialName: string;
     unit: string;
-    sectionName?: string;
+    chapterName?: string;
     quantity: number;
   }>;
   /** Optional typed names printed under the signature line. */
@@ -379,7 +379,7 @@ export type ConsumptionOrderPrintData = {
   formatQuantity: (n: number) => string;
 };
 
-/** Warehouse issue slip (إذن صرف) — quantities + section only; no expense/BOQ/cost on print. */
+/** Warehouse issue slip (إذن صرف) — quantities + chapter only; no expense/BOQ/cost on print. */
 export function buildConsumptionOrderSections(
   data: ConsumptionOrderPrintData,
   language: 'ar' | 'en',
@@ -402,7 +402,7 @@ export function buildConsumptionOrderSections(
     { key: 'code', header: isAr ? 'كود الصنف' : 'Code', width: 12, align: 'center' },
     { key: 'material', header: isAr ? 'الصنف' : 'Material', width: 28 },
     { key: 'unit', header: isAr ? 'الوحدة' : 'Unit', width: 8, align: 'center' },
-    { key: 'section', header: isAr ? 'القسم' : 'Section', width: 32 },
+    { key: 'chapter', header: isAr ? 'الفصل' : 'Chapter', width: 32 },
     { key: 'qty', header: isAr ? 'الكمية' : 'Qty', width: 12, numeric: true },
   ];
 
@@ -410,7 +410,7 @@ export function buildConsumptionOrderSections(
     code: line.materialCode || '—',
     material: line.materialName,
     unit: line.unit || '—',
-    section: line.sectionName?.trim() || '—',
+    chapter: line.chapterName?.trim() || '—',
     qty: data.formatQuantity(line.quantity),
   }));
 

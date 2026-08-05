@@ -566,7 +566,7 @@ describe('buildConsumptionOrderSections', () => {
             materialCode: 'M1',
             materialName: 'أسمنت',
             unit: 'طن',
-            sectionName: 'أعمال خرسانية',
+            chapterName: 'أعمال خرسانية',
             quantity: 2,
           },
         ],
@@ -580,7 +580,7 @@ describe('buildConsumptionOrderSections', () => {
     const table = sections.find((s) => s.kind === 'table');
     expect(table?.kind).toBe('table');
     if (table?.kind === 'table') {
-      expect(table.columns.map((c) => c.key)).toEqual(['code', 'material', 'unit', 'section', 'qty']);
+      expect(table.columns.map((c) => c.key)).toEqual(['code', 'material', 'unit', 'chapter', 'qty']);
       expect(table.columns.some((c) => c.money)).toBe(false);
       expect(table.totals).toBeUndefined();
     }
@@ -606,7 +606,9 @@ describe('buildConsumptionOrderSections', () => {
     expect(html).toContain('طالب الصرف');
     expect(html).toContain('أحمد');
     expect(html).toContain('أسمنت');
+    expect(html).toContain('الفصل');
     expect(html).toContain('أعمال خرسانية');
+    expect(html).not.toContain('القسم');
     expect(html).not.toContain('التكلفة');
     expect(html).not.toContain('القيمة');
     expect(html).not.toContain('إجمالي قيمة');

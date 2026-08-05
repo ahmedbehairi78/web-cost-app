@@ -67,7 +67,7 @@ async function loadOrderWithLines(client: DbClient, orderId: number) {
     boqIds.length > 0
       ? await client.boqItem.findMany({
           where: { id: { in: boqIds } },
-          select: { id: true, itemCode: true, description: true, sectionName: true, sectionCode: true },
+          select: { id: true, itemCode: true, description: true, chapterName: true, chapterCode: true },
         })
       : [];
   const boqMap = new Map(boqItems.map((b) => [b.id, b]));
@@ -85,7 +85,7 @@ async function loadOrderWithLines(client: DbClient, orderId: number) {
         materialUnit: line.materialCategory?.unit,
         boqItemCode: boq?.itemCode,
         boqDescription: boq?.description,
-        sectionName: boq?.sectionName || boq?.sectionCode || undefined,
+        chapterName: boq?.chapterName || boq?.chapterCode || undefined,
       };
     }),
   };
@@ -134,7 +134,7 @@ consumptionOrdersRouter.get(
       boqIds.length > 0
         ? await prisma.boqItem.findMany({
             where: { id: { in: boqIds } },
-            select: { id: true, itemCode: true, description: true, sectionName: true, sectionCode: true },
+            select: { id: true, itemCode: true, description: true, chapterName: true, chapterCode: true },
           })
         : [];
     const boqMap = new Map(boqItems.map((b) => [b.id, b]));
@@ -158,7 +158,7 @@ consumptionOrdersRouter.get(
               materialUnit: line.materialCategory?.unit,
               boqItemCode: boq?.itemCode,
               boqDescription: boq?.description,
-              sectionName: boq?.sectionName || boq?.sectionCode || undefined,
+              chapterName: boq?.chapterName || boq?.chapterCode || undefined,
             };
           }),
         };

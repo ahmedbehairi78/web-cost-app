@@ -76,7 +76,7 @@ type ConfirmedOrderForPrint = {
     materialCode?: string;
     materialName?: string;
     materialUnit?: string;
-    sectionName?: string;
+    chapterName?: string;
     quantity: number;
   }>;
 };
@@ -465,7 +465,7 @@ export function ConsumptionOrderModal({
             materialCode: line.materialCode,
             materialName: line.materialName || '—',
             unit: line.materialUnit || '—',
-            sectionName: line.sectionName,
+            chapterName: line.chapterName,
             quantity: Number(line.quantity) || 0,
           })),
           requesterName: names.requester,

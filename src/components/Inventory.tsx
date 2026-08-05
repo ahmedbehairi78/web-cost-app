@@ -105,6 +105,7 @@ interface ConsumptionOrderLine {
   boqItemCode?: string;
   boqDescription?: string;
   sectionName?: string;
+  chapterName?: string;
   quantity: number;
   unitCost: number;
   totalCost: number;
@@ -2766,7 +2767,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
             materialCode: line.materialCode,
             materialName: line.materialName || '—',
             unit: line.materialUnit || '—',
-            sectionName: line.sectionName,
+            chapterName: line.chapterName,
             quantity: Number(line.quantity) || 0,
           })),
           requesterName: printNames.requester,
