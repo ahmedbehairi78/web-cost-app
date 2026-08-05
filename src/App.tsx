@@ -60,6 +60,7 @@ import {
   retainErpUtilityWindows,
   isSameShellModuleSlot,
   shouldCoexistShellModule,
+  calculatorPanelGeometry,
 } from './lib/shellWindowPolicy';
 import {
   performAppLogout,
@@ -220,10 +221,11 @@ export default function App() {
       queueMicrotask(() => void logActivity({ kind, moduleId }));
       if (existing) {
         if (isCalc) {
-          // Calculator: just bring to front without touching other windows
+          // Calculator: keep floating panel size — never leave it maximized over other modules
+          const panel = calculatorPanelGeometry(sidebarW);
           return prev.map(w =>
             w.id === existing.id
-              ? { ...w, windowState: 'normal' as const, zIndex: nextZ() }
+              ? { ...w, ...panel, zIndex: nextZ() }
               : w
           );
         }
@@ -244,22 +246,15 @@ export default function App() {
       }
 
       if (isCalc) {
-        // Calculator opens as a small floating panel in the top-right area
-        const calcW = 240;
-        const calcH = 400;
+        // Small floating panel over whatever module is already open
+        const panel = calculatorPanelGeometry(sidebarW);
         const newWin: AppWindow = {
           id: `${moduleId}-${Date.now()}`,
           moduleId,
-          windowState: 'normal',
-          position: {
-            x: Math.max(sidebarW + 16, window.innerWidth - sidebarW - calcW - 24),
-            y: 24,
-          },
-          size: { width: calcW, height: calcH },
+          ...panel,
           zIndex: nextZ(),
           enterAnim: isErpTheme(theme),
         };
-        // Don't disturb other windows when opening the calculator
         return [...prev, newWin];
       }
 
@@ -405,13 +400,18 @@ export default function App() {
   const maximizeToggle = useCallback((id: string) => {
     setWindows(prev => prev.map(w => {
       if (w.id !== id) return w;
+      // Calculator stays a fixed floating panel — maximize would cover the active module
+      if (shouldCoexistShellModule(w.moduleId)) {
+        const panel = calculatorPanelGeometry(shellSidebarWidth(theme));
+        return { ...w, ...panel, zIndex: nextZ() };
+      }
       return {
         ...w,
         windowState: w.windowState === 'maximized' ? 'normal' : 'maximized',
         zIndex: nextZ(),
       };
     }));
-  }, []);
+  }, [theme]);
 
   const focusWindow = useCallback((id: string) => {
     setWindows(prev => {
@@ -446,13 +446,14 @@ export default function App() {
           detail: 'restore_taskbar',
         }),
       );
-      // Calculator coexists — restore without closing the active module
+      // Calculator coexists — restore as floating panel without closing the active module
       if (shouldCoexistShellModule(win.moduleId)) {
+        const panel = calculatorPanelGeometry(shellSidebarWidth(theme));
         return prev.map(w => {
           if (w.id !== id) return w;
           return {
             ...w,
-            windowState: 'normal' as const,
+            ...panel,
             zIndex: nextZ(),
             restoreToken: isErpTheme(theme) ? Date.now() : undefined,
             enterAnim: false,

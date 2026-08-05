@@ -29,6 +29,7 @@ import { buildConsumptionOrderSections } from '../lib/reportDocument';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import type { InventoryPrintRow } from '../lib/inventoryPrintData';
 import { ConsumptionOrderModal, type ProjectInventoryItemForConsume } from './inventory/ConsumptionOrderModal';
+import { WarehouseReceiptsPanel } from './inventory/WarehouseReceiptsPanel';
 import { ReturnOrderModal, type ReturnOrderLineContext } from './inventory/ReturnOrderModal';
 import { UnlinkedMaterialsReport } from './inventory/UnlinkedMaterialsReport';
 import { MaterialsTree } from './MaterialsTree';
@@ -65,6 +66,7 @@ interface ProjectInventoryItem {
   quantityReturned: number;
   quantityBalance: number;
   quantityReserved: number;
+  quantityUnpriced?: number;
   quantityAvailable: number;
   unitCost: number;
   avgUnitCost?: number;
@@ -120,7 +122,8 @@ interface ConsumptionOrder {
   contractNumber?: string;
   projectName?: string;
   orderDate: string;
-  status: 'draft' | 'confirmed';
+  status: 'draft' | 'confirmed' | 'pending_cost';
+  requiresCostApproval?: boolean;
   notes?: string;
   expenseAccountCode?: string;
   expenseAccountName?: string;
@@ -2660,6 +2663,9 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
 }) {
   const { language, theme, t, dir } = useLanguage();
   const ar = language === 'ar';
+  const { isAdmin, role, can } = usePermissions();
+  const canApproveCost =
+    isAdmin || role === 'projects_manager' || can('costs').edit === true;
   const moneyLocale = 'en-US';
   const formatMoneyPrint = (value: number) => formatMoneyLib(value, moneyLocale);
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
@@ -2677,6 +2683,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
   const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
   const [loading, setLoading] = useState(false);
   const [confirmingId, setConfirmingId] = useState<number | null>(null);
+  const [approvingCostId, setApprovingCostId] = useState<number | null>(null);
   const [returnModal, setReturnModal] = useState<{
     projectId: string;
     contractId: string;
@@ -2689,7 +2696,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
     storekeeper: '',
   });
   const [contractId, setContractId] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'confirmed'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'confirmed' | 'pending_cost'>('all');
   const [selectedHistoryKey, setSelectedHistoryKey] = useState<string | null>(null);
 
   useEffect(() => {
@@ -2713,9 +2720,11 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
     setLoading(true);
     try {
       const status = statusFilter === 'all' ? undefined : statusFilter;
+      const returnStatus =
+        statusFilter === 'draft' || statusFilter === 'confirmed' ? statusFilter : undefined;
       const [consumptionData, returnData] = await Promise.all([
         consumptionOrdersApi.list({ contractId: contractId || undefined, status }),
-        returnOrdersApi.list({ contractId: contractId || undefined, status }),
+        returnOrdersApi.list({ contractId: contractId || undefined, status: returnStatus }),
       ]);
       setOrders(Array.isArray(consumptionData) ? (consumptionData as ConsumptionOrder[]) : []);
       setReturnOrders(Array.isArray(returnData) ? (returnData as ReturnOrder[]) : []);
@@ -2943,6 +2952,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
   }, [rows]);
 
   const draftOrders = orders.filter((o) => o.status === 'draft');
+  const pendingCostOrders = orders.filter((o) => o.status === 'pending_cost');
 
   const handleConfirmDraft = async (orderId: number) => {
     setConfirmingId(orderId);
@@ -2956,6 +2966,26 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
     } finally {
       setConfirmingId(null);
     }
+  };
+
+  const handleApproveCost = async (orderId: number) => {
+    setApprovingCostId(orderId);
+    try {
+      await consumptionOrdersApi.approveCost(orderId);
+      toast.success(t('consume_cost_approved'));
+      onRefreshNeeded?.();
+      void load();
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : ar ? 'حدث خطأ' : 'Error');
+    } finally {
+      setApprovingCostId(null);
+    }
+  };
+
+  const statusLabel = (status: string) => {
+    if (status === 'confirmed') return ar ? 'مؤكد' : 'Confirmed';
+    if (status === 'pending_cost') return t('consume_status_pending_cost');
+    return ar ? 'مسودة' : 'Draft';
   };
 
   return (
@@ -2975,6 +3005,27 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
                 >
                   {confirmingId === o.id && <Loader2 className="w-3 h-3 animate-spin" />}
                   {o.orderNumber} — {ar ? 'تأكيد' : 'Confirm'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {pendingCostOrders.length > 0 && (
+          <div className={cn('mb-4 p-3 rounded-lg border', theme === 'dark' ? 'border-orange-800 bg-orange-900/20' : 'border-orange-200 bg-orange-50')}>
+            <p className="text-sm font-medium mb-2">{t('consume_pending_cost_banner')}</p>
+            <div className="flex flex-wrap gap-2">
+              {pendingCostOrders.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  disabled={!canApproveCost || approvingCostId === o.id}
+                  onClick={() => void handleApproveCost(o.id)}
+                  className="text-xs px-3 py-1.5 rounded bg-orange-600 hover:bg-orange-700 text-white disabled:opacity-50 inline-flex items-center gap-1"
+                  title={!canApproveCost ? t('consume_cost_approve_need_perm') : undefined}
+                >
+                  {approvingCostId === o.id && <Loader2 className="w-3 h-3 animate-spin" />}
+                  {o.orderNumber} — {t('consume_approve_cost')}
                 </button>
               ))}
             </div>
@@ -3083,9 +3134,11 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
                           'px-2 py-0.5 rounded-full text-xs font-medium',
                           r.status === 'confirmed'
                             ? 'text-green-700 bg-green-50 dark:bg-green-900/30 dark:text-green-400'
-                            : 'text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400',
+                            : r.status === 'pending_cost'
+                              ? 'text-orange-700 bg-orange-50 dark:bg-orange-900/30 dark:text-orange-400'
+                              : 'text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-400',
                         )}>
-                          {r.status === 'confirmed' ? (ar ? 'مؤكد' : 'Confirmed') : (ar ? 'مسودة' : 'Draft')}
+                          {statusLabel(r.status)}
                         </span>
                       </td>
                     )}
@@ -3114,7 +3167,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
                     )}
                     <td className="p-3 text-center align-top">
                       <div className="flex flex-col items-center gap-1">
-                        {r.kind === 'consumption' && r.showGroupCells && (
+                        {r.kind === 'consumption' && r.status === 'confirmed' && r.showGroupCells && (
                           <button
                             type="button"
                             onClick={() => openPrintNamesModal(r.orderId)}
@@ -3123,6 +3176,17 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
                           >
                             <Printer className="w-3 h-3" />
                             {t('consume_order_print')}
+                          </button>
+                        )}
+                        {r.kind === 'consumption' && r.status === 'pending_cost' && canApproveCost && r.showGroupCells && (
+                          <button
+                            type="button"
+                            disabled={approvingCostId === r.orderId}
+                            onClick={() => void handleApproveCost(r.orderId)}
+                            className="text-xs px-2.5 py-1 rounded-lg bg-orange-600 hover:bg-orange-700 text-white transition-colors inline-flex items-center gap-1 disabled:opacity-50"
+                          >
+                            {approvingCostId === r.orderId && <Loader2 className="w-3 h-3 animate-spin" />}
+                            {t('consume_approve_cost')}
                           </button>
                         )}
                         {r.kind === 'consumption' && r.status === 'confirmed' && r.projectId && (
@@ -3173,11 +3237,12 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
             <label className={splitLabelCls(theme)}>{ar ? 'تصفية حسب الحالة' : 'Filter by status'}</label>
             <select
               value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'draft' | 'confirmed')}
+              onChange={(e) => setStatusFilter(e.target.value as 'all' | 'draft' | 'confirmed' | 'pending_cost')}
               className={splitSelectCls(theme)}
             >
               <option value="all">{ar ? `الكل (${historySidebarEntries.length})` : `All (${historySidebarEntries.length})`}</option>
               <option value="confirmed">{ar ? 'مؤكد' : 'Confirmed'}</option>
+              <option value="pending_cost">{t('consume_status_pending_cost')}</option>
               <option value="draft">{ar ? 'مسودة' : 'Draft'}</option>
             </select>
           </div>
@@ -3209,7 +3274,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
                         {entry.kind === 'return' ? (ar ? 'إرجاع' : 'Return') : (ar ? 'صرف' : 'Issue')}
                       </span>
                       <span className="text-[10px] opacity-75 shrink-0">
-                        {entry.status === 'confirmed' ? (ar ? 'مؤكد' : 'Confirmed') : (ar ? 'مسودة' : 'Draft')}
+                        {statusLabel(entry.status)}
                       </span>
                     </div>
                   </button>
@@ -3387,14 +3452,20 @@ function InventorySetupGuide({ theme }: { theme: Theme }) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-type Tab = 'materials' | 'balance' | 'transfers' | 'history';
+type Tab = 'materials' | 'balance' | 'receipts' | 'transfers' | 'history';
 
 interface InventoryDraft {
   activeTab: Tab;
 }
 
 function isInventoryTab(value: string): value is Tab {
-  return value === 'materials' || value === 'balance' || value === 'transfers' || value === 'history';
+  return (
+    value === 'materials'
+    || value === 'balance'
+    || value === 'receipts'
+    || value === 'transfers'
+    || value === 'history'
+  );
 }
 
 export default function Inventory() {
@@ -3452,9 +3523,10 @@ export default function Inventory() {
 
   const contractRows = contracts;
 
-  const TAB_META: Record<Tab, { titleKey: 'inventory_menu_materials' | 'inventory_menu_balance' | 'inventory_menu_transfers' | 'inventory_menu_history'; subtitleKey: string }> = {
+  const TAB_META: Record<Tab, { titleKey: 'inventory_menu_materials' | 'inventory_menu_balance' | 'inventory_menu_receipts' | 'inventory_menu_transfers' | 'inventory_menu_history'; subtitleKey: string }> = {
     materials: { titleKey: 'inventory_menu_materials', subtitleKey: 'inventory_screen_materials_subtitle' },
     balance: { titleKey: 'inventory_menu_balance', subtitleKey: 'inventory_screen_balance_subtitle' },
+    receipts: { titleKey: 'inventory_menu_receipts', subtitleKey: 'inventory_screen_receipts_subtitle' },
     transfers: { titleKey: 'inventory_menu_transfers', subtitleKey: 'inventory_screen_transfers_subtitle' },
     history: { titleKey: 'inventory_menu_history', subtitleKey: 'inventory_screen_history_subtitle' },
   };
@@ -3462,6 +3534,7 @@ export default function Inventory() {
   const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
     { id: 'materials', label: t('inventory_menu_materials'), icon: <Package className="w-4 h-4" /> },
     { id: 'balance',   label: t('inventory_menu_balance'), icon: <Package className="w-4 h-4" /> },
+    { id: 'receipts',  label: t('inventory_menu_receipts'), icon: <Upload className="w-4 h-4" /> },
     { id: 'transfers', label: t('inventory_menu_transfers'), icon: <ArrowLeftRight className="w-4 h-4" /> },
     { id: 'history',   label: t('inventory_menu_history'), icon: <History className="w-4 h-4" /> },
   ];
@@ -3535,6 +3608,9 @@ export default function Inventory() {
             myContractIds={myContractIds}
             onRefreshNeeded={() => setRefreshKey((k) => k + 1)}
           />
+        )}
+        {activeTab === 'receipts' && (
+          <WarehouseReceiptsPanel onRefreshNeeded={() => setRefreshKey((k) => k + 1)} />
         )}
         {activeTab === 'transfers' && (
           <InventoryTransfers

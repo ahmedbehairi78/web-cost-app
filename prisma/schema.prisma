@@ -110,6 +110,7 @@ model Project {
   projectInventory     ProjectInventory[]
   consumptionOrders    ConsumptionOrder[]
   returnOrders         ReturnOrder[]
+  warehouseReceipts    WarehouseReceipt[]
   transfersFrom        ProjectInventoryTransfer[] @relation("TransferFromProject")
   transfersTo          ProjectInventoryTransfer[] @relation("TransferToProject")
   contractExpenseOrders ContractExpenseOrder[]
@@ -471,6 +472,7 @@ model MaterialCategory {
   projectInventory              ProjectInventory[]
   returnOrderLines              ReturnOrderLine[]
   projectInventoryTransferLines ProjectInventoryTransferLine[]
+  warehouseReceiptLines         WarehouseReceiptLine[]
 
   @@index([groupId])
   @@map("material_categories")
@@ -645,6 +647,8 @@ model ProjectInventory {
   quantityIssued     Decimal  @default(0) @map("quantity_issued") @db.Decimal(18, 3)
   quantityReturned   Decimal  @default(0) @map("quantity_returned") @db.Decimal(18, 3)
   quantityReserved   Decimal  @default(0) @map("quantity_reserved") @db.Decimal(18, 3)
+  /** Qty received awaiting purchasing cost approval (subset of physical stock). */
+  quantityUnpriced   Decimal  @default(0) @map("quantity_unpriced") @db.Decimal(18, 3)
   avgUnitCost        Decimal  @default(0) @map("avg_unit_cost") @db.Decimal(18, 3)
   quantityBalance    Decimal  @default(0) @map("quantity_balance") @db.Decimal(18, 3)
   createdAt          DateTime @default(now()) @map("created_at")
@@ -677,6 +681,49 @@ model ProjectInventoryMovement {
   @@map("project_inventory_movements")
 }
 
+/// Storekeeper receipt — qty enters as unpriced until purchasing approves costs + GL.
+model WarehouseReceipt {
+  id                   String    @id @default(uuid())
+  receiptNumber        String    @unique @map("receipt_number")
+  projectId            String    @map("project_id")
+  receiptDate          String    @map("receipt_date")
+  supplierInvoiceRef   String    @map("supplier_invoice_ref")
+  notes                String?
+  status               String    @default("draft")
+  createdBy            String    @map("created_by")
+  approvedBy           String?   @map("approved_by")
+  approvedAt           DateTime? @map("approved_at")
+  supplierAccountCode  String?   @map("supplier_account_code")
+  supplierAccountName  String?   @map("supplier_account_name")
+  transactionId        String?   @map("transaction_id")
+  purchaseTransactionId String?  @map("purchase_transaction_id")
+  createdAt            DateTime  @default(now()) @map("created_at")
+  updatedAt            DateTime  @updatedAt @map("updated_at")
+
+  project Project                @relation(fields: [projectId], references: [id])
+  lines   WarehouseReceiptLine[]
+
+  @@index([projectId, status])
+  @@index([status])
+  @@map("warehouse_receipts")
+}
+
+model WarehouseReceiptLine {
+  id                 Int      @id @default(autoincrement())
+  receiptId          String   @map("receipt_id")
+  materialCategoryId Int      @map("material_category_id")
+  quantity           Decimal  @db.Decimal(18, 3)
+  unitCost           Decimal? @map("unit_cost") @db.Decimal(18, 3)
+  totalCost          Decimal? @map("total_cost") @db.Decimal(18, 3)
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  receipt          WarehouseReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  materialCategory MaterialCategory @relation(fields: [materialCategoryId], references: [id])
+
+  @@index([receiptId])
+  @@map("warehouse_receipt_lines")
+}
+
 // migrations 004/007/010 — site consumption (issue) orders
 model ConsumptionOrder {
   id                 Int      @id @default(autoincrement())
@@ -686,6 +733,8 @@ model ConsumptionOrder {
   orderDate          String   @map("order_date")
   recordedBy         String   @map("recorded_by")
   status             String   @default("draft")
+  /** True when issue draws unpriced stock — awaiting purchasing cost approval. */
+  requiresCostApproval Boolean @default(false) @map("requires_cost_approval")
   expenseAccountCode String?  @map("expense_account_code")
   expenseAccountName String?  @map("expense_account_name")
   notes              String?

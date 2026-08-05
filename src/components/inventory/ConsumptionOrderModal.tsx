@@ -528,10 +528,20 @@ export function ConsumptionOrderModal({
         expenseAccountCode: firstExpense?.expenseAccountCode,
         expenseAccountName: firstExpense?.expenseAccountName,
         lines: flatLines,
-      })) as { ok?: boolean; order?: { id: number } };
+      })) as {
+        ok?: boolean;
+        order?: { id: number; status?: string; orderNumber?: string; requiresCostApproval?: boolean };
+      };
 
       const orderId = created?.order?.id;
       if (!orderId) throw new Error(t('consume_order_allocation_required'));
+
+      if (created.order?.status === 'pending_cost' || created.order?.requiresCostApproval) {
+        toast.success(t('consume_pending_cost_created'));
+        onSaved();
+        onClose();
+        return;
+      }
 
       const confirmed = (await consumptionOrdersApi.confirm(orderId)) as {
         ok?: boolean;

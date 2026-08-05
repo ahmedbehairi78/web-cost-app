@@ -58,6 +58,20 @@ describe('resolveNotificationNavigation', () => {
         entityId: 'con-1',
       }),
     ).toEqual({ moduleId: 'inventory', viewId: 'history' });
+    expect(
+      resolveNotificationNavigation({
+        type: 'consumption_pending_cost',
+        moduleId: 'inventory',
+        entityId: 'con-2',
+      }),
+    ).toEqual({ moduleId: 'inventory', viewId: 'history' });
+    expect(
+      resolveNotificationNavigation({
+        type: 'warehouse_receipt_pending',
+        moduleId: 'inventory',
+        entityId: 'wr-1',
+      }),
+    ).toEqual({ moduleId: 'inventory', viewId: 'receipts' });
   });
 
   it('maps bank cheques and movement drafts to transactions', () => {

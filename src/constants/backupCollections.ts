@@ -26,6 +26,8 @@ export const POSTGRES_BACKUP_COLLECTIONS = [
   'purchase_invoice_allocations',
   'project_inventory',
   'project_inventory_movements',
+  'warehouse_receipts',
+  'warehouse_receipt_lines',
   'consumption_orders',
   'consumption_order_lines',
   'consumption_allocation_templates',

@@ -508,6 +508,47 @@ export const consumptionOrdersApi = {
         lines?: Array<{ totalCost: number }>;
       };
     }>(`/consumption-orders/${id}/confirm`, {}),
+  approveCost: (id: number) =>
+    apiClient.post<{
+      ok: boolean;
+      order: {
+        id: number;
+        orderNumber: string;
+        projectId: string;
+        contractId: string;
+        orderDate: string;
+        totalCost: number;
+      };
+    }>(`/consumption-orders/${id}/approve-cost`, {}),
+};
+
+export const warehouseReceiptsApi = {
+  list: (params?: { projectId?: string; status?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.projectId) q.set('projectId', params.projectId);
+    if (params?.status) q.set('status', params.status);
+    const qs = q.toString();
+    return apiClient.get(`/warehouse-receipts${qs ? `?${qs}` : ''}`);
+  },
+  get: (id: string) => apiClient.get(`/warehouse-receipts/${id}`),
+  create: (data: {
+    projectId: string;
+    receiptDate: string;
+    supplierInvoiceRef: string;
+    notes?: string;
+    submit?: boolean;
+    lines: Array<{ materialCategoryId: number; quantity: number }>;
+  }) => apiClient.post('/warehouse-receipts', data),
+  submit: (id: string) => apiClient.post(`/warehouse-receipts/${id}/submit`, {}),
+  approve: (
+    id: string,
+    data: {
+      supplierAccountCode: string;
+      supplierAccountName?: string;
+      lines: Array<{ id: number; unitCost: number }>;
+    },
+  ) => apiClient.post(`/warehouse-receipts/${id}/approve`, data),
+  reject: (id: string) => apiClient.post(`/warehouse-receipts/${id}/reject`, {}),
 };
 
 export const consumptionAllocationTemplatesApi = {

@@ -12,6 +12,7 @@ import { db } from '../firebase';
 import { isLocalBackend } from '../lib/dataBackend';
 import { resolveHeaderLogo } from '../lib/concordPlusBrand';
 import { settingsApi } from '../services/local/modulesApi';
+import { shouldCoexistShellModule } from '../lib/shellWindowPolicy';
 import {
   playTap,
   playWindowClose,
@@ -221,6 +222,8 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
   const windowRef = useRef<HTMLDivElement>(null);
   const posRef = useRef(win.position);
   const isMaximized = win.windowState === 'maximized';
+  const isFloatingCalc = shouldCoexistShellModule(win.moduleId);
+  const useFixedPanel = !isMaximized || isFloatingCalc;
 
   useEffect(() => {
     if (win.restoreToken == null || !isErpTheme(theme)) return;
@@ -232,14 +235,14 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
   // Keep ref in sync when parent updates position (e.g. after drag ends)
   useEffect(() => {
     posRef.current = win.position;
-    if (windowRef.current && !isMaximized) {
+    if (windowRef.current && useFixedPanel) {
       windowRef.current.style.left = `${win.position.x}px`;
       windowRef.current.style.top  = `${win.position.y}px`;
     }
-  }, [win.position, isMaximized]);
+  }, [win.position, useFixedPanel]);
 
   const handleTitleMouseDown = useCallback((e: React.MouseEvent) => {
-    if (isMaximized) return;
+    if (!useFixedPanel) return;
     if ((e.target as HTMLElement).closest('button')) return;
     e.preventDefault();
     onFocus();
@@ -267,7 +270,7 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
 
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [isMaximized, onFocus, onUpdatePosition]);
+  }, [useFixedPanel, onFocus, onUpdatePosition]);
 
   const title = MODULE_LABELS[win.moduleId]?.[language] ?? win.moduleId;
   const ModuleComponent = MODULE_COMPONENTS[win.moduleId];
@@ -276,26 +279,26 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
   const windowCls = shell.wmWindow;
   const titleTextCls = shell.wmTitleText;
 
-  const style: React.CSSProperties = isMaximized
-    ? { position: 'absolute', inset: 0, zIndex: win.zIndex }
-    : {
+  const style: React.CSSProperties = useFixedPanel
+    ? {
         position: 'absolute',
         left: win.position.x,
         top:  win.position.y,
         width:  win.size.width,
         height: win.size.height,
         zIndex: win.zIndex,
-      };
+      }
+    : { position: 'absolute', inset: 0, zIndex: win.zIndex };
 
   const frame = (
     <div
       ref={windowRef}
       style={style}
-      className={cn(
+        className={cn(
         'flex flex-col border overflow-hidden shell-transition',
         overlayPointerEvents && 'pointer-events-auto',
         windowCls,
-        isMaximized ? 'rounded-none' : isErpTheme(theme) ? 'rounded-lg' : 'rounded-xl',
+        useFixedPanel ? (isErpTheme(theme) ? 'rounded-lg' : 'rounded-xl') : 'rounded-none',
         isErpTheme(theme) && win.enterAnim && 'erp-window-enter',
         isErpTheme(theme) && restoreFlash && 'erp-window-restore',
       )}
@@ -308,11 +311,12 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
         className={cn(
           'flex items-center gap-2 px-3 h-10 border-b flex-shrink-0 select-none',
           titleBarCls,
-          !isMaximized && 'cursor-move',
+          useFixedPanel && 'cursor-move',
         )}
         data-no-global-ui-sound
         onMouseDown={handleTitleMouseDown}
         onDoubleClick={() => {
+          if (isFloatingCalc) return;
           playTap();
           onMaximizeToggle();
         }}
@@ -342,18 +346,20 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
           >
             <Minus size={14} />
           </button>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              playTap();
-              onMaximizeToggle();
-            }}
-            title={language === 'ar' ? (isMaximized ? 'استعادة' : 'تكبير') : (isMaximized ? 'Restore' : 'Maximize')}
-            className={cn('w-5 h-5 flex items-center justify-center text-gray-400 hover:text-green-400 transition-colors rounded', shellInteractiveFocus)}
-          >
-            {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-          </button>
+          {!isFloatingCalc && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                playTap();
+                onMaximizeToggle();
+              }}
+              title={language === 'ar' ? (isMaximized ? 'استعادة' : 'تكبير') : (isMaximized ? 'Restore' : 'Maximize')}
+              className={cn('w-5 h-5 flex items-center justify-center text-gray-400 hover:text-green-400 transition-colors rounded', shellInteractiveFocus)}
+            >
+              {isMaximized ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {

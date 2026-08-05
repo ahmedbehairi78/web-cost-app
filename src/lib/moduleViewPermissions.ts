@@ -29,6 +29,7 @@ export const MODULE_VIEW_PERMISSION_MAP: Record<
   inventory: {
     materials: 'inventory',
     balance: 'inventory',
+    receipts: 'inventory',
     transfers: 'inventory',
     history: 'inventory',
   },

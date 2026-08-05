@@ -93,8 +93,11 @@ export function resolveNotificationNavigation(item: NotificationNavItem): Notifi
   if (INVENTORY_TRANSFER_TYPES.has(item.type)) {
     return { moduleId: 'inventory', viewId: 'transfers' };
   }
-  if (item.type === 'consumption_draft') {
+  if (item.type === 'consumption_draft' || item.type === 'consumption_pending_cost') {
     return { moduleId: 'inventory', viewId: 'history' };
+  }
+  if (item.type === 'warehouse_receipt_pending') {
+    return { moduleId: 'inventory', viewId: 'receipts' };
   }
   if (BANK_TRANSACTION_TYPES.has(item.type)) {
     return { moduleId: 'banks', viewId: 'transactions' };

@@ -151,6 +151,9 @@ inventoryRouter.get(
         materialName: row.materialCategory?.name,
         unitCost: obj.avgUnitCost ?? obj.unitCost,
         quantityAvailable: getProjectAvailableQuantity({ quantityBalance: balance }),
+        quantityUnpriced: num(
+          (row as { quantityUnpriced?: Prisma.Decimal | number | null }).quantityUnpriced,
+        ),
       };
     });
 

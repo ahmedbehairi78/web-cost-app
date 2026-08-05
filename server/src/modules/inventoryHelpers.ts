@@ -359,6 +359,7 @@ export type ProjectInventoryRow = {
   quantityReturned: number;
   quantityBalance: number;
   quantityReserved: number;
+  quantityUnpriced: number;
   avgUnitCost: number;
 };
 
@@ -382,12 +383,210 @@ export async function getProjectInventoryByMaterial(
     quantityReturned: num(row.quantityReturned),
     quantityBalance: num(row.quantityBalance),
     quantityReserved: num(row.quantityReserved),
+    quantityUnpriced: num((row as { quantityUnpriced?: Prisma.Decimal }).quantityUnpriced),
     avgUnitCost: num(row.avgUnitCost),
   };
 }
 
 export function getProjectAvailableQuantity(item: { quantityBalance: number }): number {
   return Number(item.quantityBalance ?? 0);
+}
+
+/** How much of available qty is already priced (avg cost known). */
+export function getPricedAvailableQuantity(item: {
+  quantityBalance: number;
+  quantityUnpriced: number;
+}): number {
+  return Math.max(0, toMoney(getProjectAvailableQuantity(item) - num(item.quantityUnpriced)));
+}
+
+/**
+ * True when issuing `quantity` would draw from unpriced stock
+ * (or avg is zero while unpriced remains).
+ */
+export function consumptionTouchesUnpriced(
+  item: { quantityBalance: number; quantityUnpriced: number; avgUnitCost: number },
+  quantity: number,
+): boolean {
+  const unpriced = num(item.quantityUnpriced);
+  if (unpriced <= EPSILON) return false;
+  const pricedAvail = getPricedAvailableQuantity(item);
+  if (quantity > pricedAvail + EPSILON) return true;
+  if (num(item.avgUnitCost) <= EPSILON && unpriced > EPSILON) return true;
+  return false;
+}
+
+/** Receive stock without unit cost — increases in + unpriced; avg unchanged. */
+export async function receiveUnpricedProjectInventory(
+  client: DbClient,
+  projectId: string,
+  materialCategoryId: number,
+  categoryName: string,
+  unit: string,
+  quantity: number,
+  options?: { referenceType?: string; referenceId?: string; notes?: string },
+): Promise<number> {
+  if (quantity <= EPSILON) throw new Error('Receipt quantity must be greater than zero');
+  const existing = await getProjectInventoryByMaterial(client, projectId, materialCategoryId);
+  if (!existing) {
+    const quantityBalance = computeProjectInventoryBalance({
+      quantityIn: quantity,
+      quantityIssued: 0,
+      quantityReturned: 0,
+      quantityReserved: 0,
+    });
+    const created = await client.projectInventory.create({
+      data: {
+        projectId,
+        materialCategoryId,
+        itemDescription: categoryName,
+        unit,
+        quantityIn: dec(quantity),
+        quantityUnpriced: dec(quantity),
+        avgUnitCost: dec(0),
+        quantityBalance: dec(quantityBalance),
+      },
+    });
+    await logProjectInventoryMovement(client, {
+      projectId,
+      materialCategoryId,
+      movementType: 'receipt',
+      quantity,
+      referenceType: options?.referenceType,
+      referenceId: options?.referenceId,
+      notes: options?.notes ?? 'unpriced receipt',
+    });
+    return created.id;
+  }
+
+  const full = await client.projectInventory.findUnique({ where: { id: existing.id } });
+  if (!full) throw new Error('Project inventory not found');
+  const quantityIn = num(full.quantityIn) + quantity;
+  const quantityUnpriced = num((full as { quantityUnpriced?: Prisma.Decimal }).quantityUnpriced) + quantity;
+  const quantityBalance = computeProjectInventoryBalance({
+    quantityIn,
+    quantityIssued: full.quantityIssued,
+    quantityReturned: full.quantityReturned,
+    quantityReserved: full.quantityReserved,
+  });
+  await client.projectInventory.update({
+    where: { id: existing.id },
+    data: {
+      quantityIn: dec(quantityIn),
+      quantityUnpriced: dec(quantityUnpriced),
+      itemDescription: full.itemDescription ?? categoryName,
+      quantityBalance: dec(quantityBalance),
+    },
+  });
+  await logProjectInventoryMovement(client, {
+    projectId,
+    materialCategoryId,
+    movementType: 'receipt',
+    quantity,
+    referenceType: options?.referenceType,
+    referenceId: options?.referenceId,
+    notes: options?.notes ?? 'unpriced receipt',
+  });
+  return existing.id;
+}
+
+/** Apply unit cost to previously unpriced qty — reduces unpriced, updates weighted avg. */
+export async function priceUnpricedProjectInventory(
+  client: DbClient,
+  projectId: string,
+  materialCategoryId: number,
+  quantity: number,
+  unitCost: number,
+  options?: { referenceType?: string; referenceId?: string },
+): Promise<void> {
+  if (quantity <= EPSILON) throw new Error('Price quantity must be greater than zero');
+  if (unitCost < 0) throw new Error('Unit cost cannot be negative');
+  const full = await client.projectInventory.findFirst({
+    where: { projectId, materialCategoryId },
+  });
+  if (!full) throw new Error('Project inventory not found');
+  const unpriced = num((full as { quantityUnpriced?: Prisma.Decimal }).quantityUnpriced);
+  if (quantity > unpriced + EPSILON) {
+    throw new Error(
+      `Cannot price more than unpriced qty. Unpriced: ${unpriced.toFixed(2)}, requested: ${quantity.toFixed(2)}`,
+    );
+  }
+  const physical = projectPhysicalQty(full);
+  const pricedBefore = Math.max(0, physical - unpriced);
+  const nextCost =
+    pricedBefore <= EPSILON
+      ? toMoney(unitCost)
+      : weightedAvgCost(pricedBefore, num(full.avgUnitCost), quantity, unitCost);
+  const quantityUnpriced = Math.max(0, unpriced - quantity);
+  await client.projectInventory.update({
+    where: { id: full.id },
+    data: {
+      quantityUnpriced: dec(quantityUnpriced),
+      avgUnitCost: dec(nextCost),
+    },
+  });
+  await logProjectInventoryMovement(client, {
+    projectId,
+    materialCategoryId,
+    movementType: 'receipt',
+    quantity,
+    unitCost,
+    referenceType: options?.referenceType,
+    referenceId: options?.referenceId,
+    notes: 'price unpriced receipt',
+  });
+}
+
+/** Reverse an unpriced receipt (reject after submit). */
+export async function reverseUnpricedProjectInventory(
+  client: DbClient,
+  projectId: string,
+  materialCategoryId: number,
+  quantity: number,
+  options?: { referenceType?: string; referenceId?: string },
+): Promise<void> {
+  if (quantity <= EPSILON) return;
+  const full = await client.projectInventory.findFirst({
+    where: { projectId, materialCategoryId },
+  });
+  if (!full) throw new Error('Project inventory not found');
+  const unpriced = num((full as { quantityUnpriced?: Prisma.Decimal }).quantityUnpriced);
+  if (quantity > unpriced + EPSILON) {
+    throw new Error(
+      `Cannot reverse more unpriced qty than available. Unpriced: ${unpriced.toFixed(2)}`,
+    );
+  }
+  const quantityIn = num(full.quantityIn) - quantity;
+  if (quantityIn < -EPSILON) throw new Error('Cannot reverse receipt: insufficient quantity in');
+  const quantityUnpriced = Math.max(0, unpriced - quantity);
+  const quantityBalance = computeProjectInventoryBalance({
+    quantityIn: Math.max(0, quantityIn),
+    quantityIssued: full.quantityIssued,
+    quantityReturned: full.quantityReturned,
+    quantityReserved: full.quantityReserved,
+  });
+  if (quantityBalance < -EPSILON) {
+    throw new Error(
+      'Cannot reject receipt: stock is reserved or issued against this unpriced quantity',
+    );
+  }
+  await client.projectInventory.update({
+    where: { id: full.id },
+    data: {
+      quantityIn: dec(Math.max(0, quantityIn)),
+      quantityUnpriced: dec(quantityUnpriced),
+      quantityBalance: dec(Math.max(0, quantityBalance)),
+    },
+  });
+  await logProjectInventoryMovement(client, {
+    projectId,
+    materialCategoryId,
+    movementType: 'issue',
+    quantity,
+    referenceType: options?.referenceType,
+    referenceId: options?.referenceId,
+    notes: 'reverse unpriced receipt',
+  });
 }
 
 export async function reserveProjectInventory(

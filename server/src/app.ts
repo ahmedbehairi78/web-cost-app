@@ -23,6 +23,7 @@ import { purchaseTransactionsRouter } from './modules/purchaseTransactions.js';
 import { custodySettlementsRouter } from './modules/custodySettlements.js';
 import { consumptionAllocationTemplatesRouter } from './modules/consumptionAllocationTemplates.js';
 import { returnOrdersRouter } from './modules/returnOrders.js';
+import { warehouseReceiptsRouter } from './modules/warehouseReceipts.js';
 import { inventoryMaintenanceRouter } from './modules/inventoryMaintenance.js';
 import { financialMaintenanceRouter } from './modules/financialMaintenance.js';
 import { chartOfAccountsMaintenanceRouter } from './modules/chartOfAccountsMaintenance.js';
@@ -146,6 +147,7 @@ export function createApp() {
   app.use('/api/consumption-orders', consumptionOrdersRouter);
   app.use('/api/consumption-allocation-templates', consumptionAllocationTemplatesRouter);
   app.use('/api/return-orders', returnOrdersRouter);
+  app.use('/api/warehouse-receipts', warehouseReceiptsRouter);
   app.use(
     '/api/chart-of-accounts',
     chartOfAccountsMaintenanceRouter,

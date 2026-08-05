@@ -53,6 +53,7 @@ export const MODULE_MENUS: Record<string, ModuleMenuDef> = {
     views: [
       { viewId: 'materials', labelKey: 'inventory_menu_materials' },
       { viewId: 'balance', labelKey: 'inventory_menu_balance' },
+      { viewId: 'receipts', labelKey: 'inventory_menu_receipts' },
       { viewId: 'transfers', labelKey: 'inventory_menu_transfers' },
       { viewId: 'history', labelKey: 'inventory_menu_history' },
     ],

@@ -405,6 +405,16 @@ npm run electron:build:shell
 | **مرتجع** | اختيار عدة بنود صرف قابلة للإرجاع؛ قيد GL على الخادم `returnInventoryJournal` (مجموعات مصروف) |
 | **تحويل** | متعدد الأصناف مسبقاً — تلميح UI فقط |
 
+### 6.5.0e استلام معلّق + صرف معلّق السعر (2026-08-05)
+
+| بند | تفصيل |
+|-----|--------|
+| DB | `quantity_unpriced` · `warehouse_receipts` / lines · `consumption_orders.requires_cost_approval` + status `pending_cost` |
+| استلام | أمين المخزن يرسل → كمية فورية بلا GL؛ مشتريات تعتمد سعر + مورد `21101…` → قيد `WR-…` |
+| صرف | يمس كمية غير مسعّرة → حجز `pending_cost`؛ بعد التسعير `POST …/approve-cost` |
+| UI | مخزون → تبويب **استلام مخزني** · سجل الحركات شارة/زر اعتماد تكلفة |
+| إشعارات | `warehouse_receipt_pending` · `consumption_pending_cost` |
+
 ### 6.5.0d صورة Railway أخف (2026-08-05)
 
 | بند | تفصيل |

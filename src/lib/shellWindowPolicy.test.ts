@@ -5,6 +5,7 @@ import {
   normalizeShellModuleId,
   partitionExclusiveShellWindows,
   retainErpUtilityWindows,
+  calculatorPanelGeometry,
 } from './shellWindowPolicy';
 
 function win(moduleId: string, id = moduleId): AppWindow {
@@ -36,6 +37,13 @@ describe('shellWindowPolicy', () => {
     const { kept, removed } = partitionExclusiveShellWindows(prev, 'costs');
     expect(kept.map((w) => w.moduleId)).toEqual(['calculator']);
     expect(removed).toHaveLength(0);
+  });
+
+  it('calculatorPanelGeometry stays a compact floating panel', () => {
+    const panel = calculatorPanelGeometry(0, 1280);
+    expect(panel.windowState).toBe('normal');
+    expect(panel.size).toEqual({ width: 240, height: 400 });
+    expect(panel.position).toEqual({ x: 1280 - 240 - 24, y: 24 });
   });
 
   it('replaces general with ledger and drops display alias slot', () => {

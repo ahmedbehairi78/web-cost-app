@@ -33,7 +33,7 @@ web-cost-app/
 │   ├── components/
 │   │   ├── Projects.tsx          # مشاريع + شجرة الأصناف (أسفل الصفحة)
 │   │   ├── MaterialsTree.tsx   # مجموعات/أصناف + تصدير/استيراد Excel
-│   │   ├── Inventory.tsx       # مخازن: أصناف | رصيد (+ تقرير الربط) | تحويل مشاريع | صرف/إرجاع
+│   │   ├── Inventory.tsx       # مخازن: أصناف | رصيد | استلام | تحويل | صرف/إرجاع
 │   │   ├── inventory/QuickLinkMaterialModal.tsx  # ربط فوري صنف↔BOQ من الصرف
 │   │   ├── inventory/UnlinkedMaterialsReport.tsx # تقرير بنود/أصناف غير مربوطة
 │   │   ├── BOQ.tsx             # BOQ + شارات الروابط + منع حذف (DeleteBlockedModal)
@@ -232,12 +232,15 @@ web-cost-app/
 ```
 1. شجرة أصناف (يدوي أو Excel)     → /api/materials
 2. ربط BOQ بأصناف مسموحة         → BoqMaterialsModal / ربط فوري من الصرف /api/boq-materials
-3. فاتورة مشتريات `confirmed`     → ActualCosts → sqlite-core → **project_inventory** + GL مخزون
-4. أمر صرف confirm               → consumption-orders → **project_inventory** + `boq_actual_costs`
+3a. استلام مخزني (كمية بلا قيد)   → warehouse-receipts → quantityUnpriced؛ اعتماد مشتريات → GL WR-…
+3b. فاتورة مشتريات `confirmed`   → ActualCosts → sqlite-core → **project_inventory** + GL مخزون
+4. أمر صرف — مسعّر: confirm؛ غير مسعّر: pending_cost + reserve ثم approve-cost
 5. إذن إرجاع confirm             → return-orders → عكس BOQ + مخزن المشروع
 6. تحويل بين مخازن المشاريع     → `project-inventory-transfers` — `pending_b` → `pending_projects` → `approved`
 7. تحويل بين عقود (legacy)       → `inventory-transfers` — إكمال المعلّق فقط (لا طلبات جديدة من الواجهة)
 ```
+
+**استلام معلّق (2026-08-05):** تبويب مخزون «استلام مخزني» · `quantity_unpriced` · صرف يمس غير المسعّر → `pending_cost` · إشعارات `warehouse_receipt_pending` / `consumption_pending_cost`.
 
 **ربط BOQ↔أصناف (2026-07-24):** شارات عدد الروابط في `BOQ.tsx` · منع حذف بند مربوط (`DeleteBlockedModal` + `can-delete`) · **ربط فوري** من أمر الصرف (`QuickLinkMaterialModal` — قائمة بنود **المشروع** عبر `boqApi.list(?projectId=)`) · تحذير كمية منصرفة في نافذة الربط · تقرير غير المربوط من رصيد المخزون · وراثة روابط للبند الجديد / بنود VO (`POST …/inherit`).
 

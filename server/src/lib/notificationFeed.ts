@@ -235,6 +235,69 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
         createdAt: order.orderDate,
       });
     }
+
+    const pendingCostWhere: {
+      status: string;
+      projectId?: { in: string[] };
+    } = { status: 'pending_cost' };
+    if (accessibleProjects !== null) {
+      pendingCostWhere.projectId = {
+        in: accessibleProjects.length > 0 ? accessibleProjects : ['__none__'],
+      };
+    }
+    const consumptionPendingCost = await prisma.consumptionOrder.findMany({
+      where: pendingCostWhere,
+      orderBy: { orderDate: 'desc' },
+      take: 20,
+    });
+    for (const order of consumptionPendingCost) {
+      pushItem(items, dismissedKeys, readKeys, {
+        key: `consumption_pending_cost:${order.id}`,
+        type: 'consumption_pending_cost',
+        priority: 'normal',
+        titleAr: `أمر صرف ${order.orderNumber} — بانتظار اعتماد التكلفة`,
+        titleEn: `Consumption ${order.orderNumber} — awaiting cost approval`,
+        moduleId: 'inventory',
+        entityId: String(order.id),
+        projectId: order.projectId ?? undefined,
+        createdAt: order.orderDate,
+      });
+    }
+
+    const receiptWhere: {
+      status: string;
+      projectId?: { in: string[] };
+    } = { status: 'pending_approval' };
+    if (accessibleProjects !== null) {
+      receiptWhere.projectId = {
+        in: accessibleProjects.length > 0 ? accessibleProjects : ['__none__'],
+      };
+    }
+    const pendingReceipts = await prisma.warehouseReceipt.findMany({
+      where: receiptWhere,
+      orderBy: { receiptDate: 'desc' },
+      take: 20,
+    });
+    const showReceiptToApprover =
+      user.role === 'admin'
+      || user.role === 'projects_manager'
+      || moduleAccess(user.permissions, 'costs').edit === true
+      || canSeeInventory(user);
+    if (showReceiptToApprover) {
+      for (const receipt of pendingReceipts) {
+        pushItem(items, dismissedKeys, readKeys, {
+          key: `warehouse_receipt:${receipt.id}`,
+          type: 'warehouse_receipt_pending',
+          priority: 'normal',
+          titleAr: `استلام ${receipt.receiptNumber} — بانتظار اعتماد المشتريات`,
+          titleEn: `Receipt ${receipt.receiptNumber} — awaiting purchasing approval`,
+          moduleId: 'inventory',
+          entityId: receipt.id,
+          projectId: receipt.projectId,
+          createdAt: receipt.receiptDate,
+        });
+      }
+    }
   }
 
   if (canSeeBanks(user)) {
