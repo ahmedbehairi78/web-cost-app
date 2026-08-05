@@ -550,3 +550,56 @@ describe('reportDocument', () => {
     expect(doc!.totals?.totalCost).toBe(120);
   });
 });
+
+describe('buildConsumptionOrderSections', () => {
+  it('includes requester / receiver / storekeeper signature roles', async () => {
+    const { buildConsumptionOrderSections } = await import('./buildCertificateDocs');
+    const sections = buildConsumptionOrderSections(
+      {
+        orderNumber: 'CON-20260805-0001',
+        orderDate: '2026-08-05',
+        projectName: 'مشروع',
+        contractName: 'عقد',
+        statusLabel: 'مؤكد',
+        lines: [
+          {
+            materialCode: 'M1',
+            materialName: 'أسمنت',
+            unit: 'طن',
+            boqItemCode: '1.1',
+            quantity: 2,
+            unitCost: 100,
+            totalCost: 200,
+          },
+        ],
+        requesterName: 'أحمد',
+        receiverName: 'محمود',
+        storekeeperName: 'خالد',
+        formatQuantity: (n) => String(n),
+      },
+      'ar',
+      (n) => n.toFixed(2),
+    );
+    const sig = sections.find((s) => s.kind === 'signatures');
+    expect(sig?.kind).toBe('signatures');
+    if (sig?.kind !== 'signatures') return;
+    expect(sig.signatures.map((s) => s.role)).toEqual(['طالب الصرف', 'المستلم', 'أمين المخزن']);
+    expect(sig.signatures.map((s) => s.name)).toEqual(['أحمد', 'محمود', 'خالد']);
+    const html = renderReportDocumentHtml(
+      buildTableReportDocument({
+        reportId: 'consumption_order',
+        title: 'إذن صرف',
+        language: 'ar',
+        company,
+        columns: [],
+        rows: [],
+        sections,
+        filename: 'con',
+      }),
+      (n) => n.toFixed(2),
+    );
+    expect(html).toContain('طالب الصرف');
+    expect(html).toContain('أحمد');
+    expect(html).toContain('أسمنت');
+  });
+});

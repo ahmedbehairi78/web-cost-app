@@ -16,8 +16,13 @@ export {
   buildMosCertificateDocument,
   buildVoCertificateDocument,
   buildCustodySettlementSections,
+  buildConsumptionOrderSections,
 } from './buildCertificateDocs';
-export type { CertificateDocBase, CustodySettlementPrintData } from './buildCertificateDocs';
+export type {
+  CertificateDocBase,
+  CustodySettlementPrintData,
+  ConsumptionOrderPrintData,
+} from './buildCertificateDocs';
 export { buildReportsModuleDocument } from './buildReportsModuleDoc';
 export type { ReportsModuleDocContext } from './buildReportsModuleDoc';
 export {

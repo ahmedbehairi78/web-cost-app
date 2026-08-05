@@ -25,6 +25,7 @@ import {
   type ProjectInventoryMovement,
 } from '../services/local/modulesApi';
 import { useReportDocumentPreview } from '../hooks/useReportDocumentPreview';
+import { buildConsumptionOrderSections } from '../lib/reportDocument';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import type { InventoryPrintRow } from '../lib/inventoryPrintData';
 import { ConsumptionOrderModal, type ProjectInventoryItemForConsume } from './inventory/ConsumptionOrderModal';
@@ -119,6 +120,8 @@ interface ConsumptionOrder {
   orderDate: string;
   status: 'draft' | 'confirmed';
   notes?: string;
+  expenseAccountCode?: string;
+  expenseAccountName?: string;
   lines: ConsumptionOrderLine[];
 }
 
@@ -2655,6 +2658,19 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
 }) {
   const { language, theme, t, dir } = useLanguage();
   const ar = language === 'ar';
+  const moneyLocale = 'en-US';
+  const formatMoneyPrint = (value: number) => formatMoneyLib(value, moneyLocale);
+  const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
+    companyName: '',
+    companyNameEn: '',
+    headerLogo: '',
+  });
+  const { openDocPreview, ReportPreviewHost } = useReportDocumentPreview({
+    language,
+    t,
+    formatMoney: formatMoneyPrint,
+    companyInfo,
+  });
   const [orders, setOrders] = useState<ConsumptionOrder[]>([]);
   const [returnOrders, setReturnOrders] = useState<ReturnOrder[]>([]);
   const [loading, setLoading] = useState(false);
@@ -2664,9 +2680,23 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
     contractId: string;
     seedLineIds?: number[];
   } | null>(null);
+  const [printOrderId, setPrintOrderId] = useState<number | null>(null);
+  const [printNames, setPrintNames] = useState({
+    requester: '',
+    receiver: '',
+    storekeeper: '',
+  });
   const [contractId, setContractId] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'confirmed'>('all');
   const [selectedHistoryKey, setSelectedHistoryKey] = useState<string | null>(null);
+
+  useEffect(() => {
+    void settingsApi.getCompanyInfo()
+      .then((res) => {
+        if (res.value) setCompanyInfo((prev) => ({ ...prev, ...res.value }));
+      })
+      .catch(() => undefined);
+  }, []);
 
   const consumptionFilterContracts = useMemo(
     () => contractsForAccessibleProjects(
@@ -2697,6 +2727,66 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
   useEffect(() => {
     setSelectedHistoryKey(null);
   }, [contractId, statusFilter]);
+
+  const printOrder = useMemo(
+    () => (printOrderId == null ? null : orders.find((o) => o.id === printOrderId) ?? null),
+    [orders, printOrderId],
+  );
+
+  const openPrintNamesModal = (orderId: number) => {
+    setPrintNames({ requester: '', receiver: '', storekeeper: '' });
+    setPrintOrderId(orderId);
+  };
+
+  const confirmPrintConsumption = () => {
+    if (!printOrder) return;
+    const expenseLabel = printOrder.expenseAccountCode
+      ? [printOrder.expenseAccountName, printOrder.expenseAccountCode].filter(Boolean).join(' — ')
+      : undefined;
+    openDocPreview({
+      reportId: 'consumption_order',
+      title: ar
+        ? `إذن صرف مخزني — ${printOrder.orderNumber}`
+        : `Warehouse Issue Slip — ${printOrder.orderNumber}`,
+      scopeLabel: [printOrder.projectName, printOrder.contractName].filter(Boolean).join(' · ') || undefined,
+      dateLabel: printOrder.orderDate,
+      columns: [],
+      rows: [],
+      sections: buildConsumptionOrderSections(
+        {
+          orderNumber: printOrder.orderNumber,
+          orderDate: printOrder.orderDate,
+          projectName: printOrder.projectName,
+          contractName: printOrder.contractName,
+          contractNumber: printOrder.contractNumber,
+          statusLabel:
+            printOrder.status === 'confirmed'
+              ? ar ? 'مؤكد' : 'Confirmed'
+              : ar ? 'مسودة' : 'Draft',
+          expenseAccountLabel: expenseLabel,
+          notes: printOrder.notes,
+          lines: (printOrder.lines ?? []).map((line) => ({
+            materialCode: line.materialCode,
+            materialName: line.materialName || '—',
+            unit: line.materialUnit || '—',
+            boqItemCode: line.boqItemCode,
+            boqDescription: line.boqDescription,
+            quantity: Number(line.quantity) || 0,
+            unitCost: Number(line.unitCost) || 0,
+            totalCost: Number(line.totalCost) || 0,
+          })),
+          requesterName: printNames.requester,
+          receiverName: printNames.receiver,
+          storekeeperName: printNames.storekeeper,
+          formatQuantity: (n) => formatQuantity(n, language),
+        },
+        language,
+        formatMoneyPrint,
+      ),
+      filename: `consumption-${printOrder.orderNumber}`,
+    });
+    setPrintOrderId(null);
+  };
 
   const historySidebarEntries = useMemo(() => {
     const entries: Array<{
@@ -3028,22 +3118,35 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
                         {r.projectName} / {r.contractName}
                       </td>
                     )}
-                    <td className="p-3 text-center">
-                      {r.kind === 'consumption' && r.status === 'confirmed' && r.projectId && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setReturnModal({
-                              projectId: r.projectId,
-                              contractId: r.contractId,
-                              seedLineIds: [r.lineId],
-                            })
-                          }
-                          className="text-xs px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                        >
-                          {ar ? 'إرجاع' : 'Return'}
-                        </button>
-                      )}
+                    <td className="p-3 text-center align-top">
+                      <div className="flex flex-col items-center gap-1">
+                        {r.kind === 'consumption' && r.showGroupCells && (
+                          <button
+                            type="button"
+                            onClick={() => openPrintNamesModal(r.orderId)}
+                            className="text-xs px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition-colors inline-flex items-center gap-1"
+                            title={t('consume_order_print')}
+                          >
+                            <Printer className="w-3 h-3" />
+                            {t('consume_order_print')}
+                          </button>
+                        )}
+                        {r.kind === 'consumption' && r.status === 'confirmed' && r.projectId && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setReturnModal({
+                                projectId: r.projectId,
+                                contractId: r.contractId,
+                                seedLineIds: [r.lineId],
+                              })
+                            }
+                            className="text-xs px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                          >
+                            {ar ? 'إرجاع' : 'Return'}
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -3122,6 +3225,19 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
           )}
         </div>
         <div className={cn('pt-3 border-t space-y-2', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+          {selectedHistoryKey?.startsWith('c-') && (
+            <button
+              type="button"
+              onClick={() => {
+                const id = Number(selectedHistoryKey.slice(2));
+                if (Number.isFinite(id)) openPrintNamesModal(id);
+              }}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white transition-colors"
+            >
+              <Printer className="w-4 h-4" />
+              {t('consume_order_print')}
+            </button>
+          )}
           {contractId && (
             <button
               type="button"
@@ -3148,6 +3264,69 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
         </div>
       </aside>
 
+      {printOrder && (
+        <div className={modalOverlay()} onClick={() => setPrintOrderId(null)}>
+          <div
+            className={cn(modalCard(theme), 'max-w-md w-full')}
+            onClick={(e) => e.stopPropagation()}
+            dir={dir}
+          >
+            <h3 className="font-bold text-base mb-1">{t('consume_order_print')}</h3>
+            <p className={cn('text-xs mb-4', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
+              {t('consume_order_print_names_hint')}
+            </p>
+            <p className={cn('text-sm font-mono mb-3', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>
+              {printOrder.orderNumber}
+            </p>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className={splitLabelCls(theme)}>{t('consume_order_sign_requester')}</label>
+                <input
+                  type="text"
+                  value={printNames.requester}
+                  onChange={(e) => setPrintNames((p) => ({ ...p, requester: e.target.value }))}
+                  className={inputCls(theme)}
+                  placeholder={t('consume_order_sign_name_ph')}
+                />
+              </div>
+              <div>
+                <label className={splitLabelCls(theme)}>{t('consume_order_sign_receiver')}</label>
+                <input
+                  type="text"
+                  value={printNames.receiver}
+                  onChange={(e) => setPrintNames((p) => ({ ...p, receiver: e.target.value }))}
+                  className={inputCls(theme)}
+                  placeholder={t('consume_order_sign_name_ph')}
+                />
+              </div>
+              <div>
+                <label className={splitLabelCls(theme)}>{t('consume_order_sign_storekeeper')}</label>
+                <input
+                  type="text"
+                  value={printNames.storekeeper}
+                  onChange={(e) => setPrintNames((p) => ({ ...p, storekeeper: e.target.value }))}
+                  className={inputCls(theme)}
+                  placeholder={t('consume_order_sign_name_ph')}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setPrintOrderId(null)} className={btnGhost(theme)}>
+                {t('cancel')}
+              </button>
+              <button
+                type="button"
+                onClick={confirmPrintConsumption}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center gap-2"
+              >
+                <Printer className="w-4 h-4" />
+                {t('consume_order_print_preview')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {returnModal && (
         <ReturnOrderModal
           projectId={returnModal.projectId}
@@ -3161,6 +3340,7 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
           }}
         />
       )}
+      {ReportPreviewHost}
     </div>
   );
 }

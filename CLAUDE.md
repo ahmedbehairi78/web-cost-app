@@ -766,6 +766,7 @@ Used from **Issues & Returns** tab. **Multi-line** (2026-08-05): select several 
 - Unified table: **صرف** (red qty) / **إرجاع** (blue row, shows `RET-…` and **from CON-…**).
 - Multi-line consumption orders: **rowspan** on type / order # / date / status / contract; per-line BOQ + qty rows.
 - **Return** on a row seeds that line; sidebar **إذن إرجاع متعدد** when a contract filter is set.
+- **Print issue slip** (`consumption_order` print profile): button on order / sidebar → optional names (طالب الصرف · المستلم · أمين المخزن) → `buildConsumptionOrderSections` → `ReportPreviewDialog`.
 
 ## Cost Centers & Overhead Allocation (2026-06-15, updated 2026-06-17)
 

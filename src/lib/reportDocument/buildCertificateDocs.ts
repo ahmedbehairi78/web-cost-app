@@ -357,6 +357,121 @@ export function buildCustodySettlementSections(
   return sections;
 }
 
+export type ConsumptionOrderPrintData = {
+  orderNumber: string;
+  orderDate: string;
+  projectName?: string;
+  contractName?: string;
+  contractNumber?: string;
+  statusLabel: string;
+  expenseAccountLabel?: string;
+  notes?: string;
+  lines: Array<{
+    materialCode?: string;
+    materialName: string;
+    unit: string;
+    boqItemCode?: string;
+    boqDescription?: string;
+    quantity: number;
+    unitCost: number;
+    totalCost: number;
+  }>;
+  /** Optional typed names printed under the signature line. */
+  requesterName?: string;
+  receiverName?: string;
+  storekeeperName?: string;
+  formatQuantity: (n: number) => string;
+};
+
+/** Warehouse issue slip (إذن صرف) — signature footer: requester · receiver · storekeeper. */
+export function buildConsumptionOrderSections(
+  data: ConsumptionOrderPrintData,
+  language: 'ar' | 'en',
+  formatMoney: (n: number) => string,
+): ReportDocSection[] {
+  const isAr = language === 'ar';
+
+  const meta: ReportDocKeyValueItem[] = [
+    { label: isAr ? 'رقم الإذن' : 'Issue No.', value: data.orderNumber },
+    { label: isAr ? 'التاريخ' : 'Date', value: data.orderDate },
+    { label: isAr ? 'الحالة' : 'Status', value: data.statusLabel },
+  ];
+  if (data.projectName) meta.push({ label: isAr ? 'المشروع' : 'Project', value: data.projectName });
+  if (data.contractName || data.contractNumber) {
+    const contractLabel = [data.contractNumber, data.contractName].filter(Boolean).join(' — ');
+    meta.push({ label: isAr ? 'العقد' : 'Contract', value: contractLabel });
+  }
+  if (data.expenseAccountLabel) {
+    meta.push({ label: isAr ? 'حساب المصروف' : 'Expense Account', value: data.expenseAccountLabel });
+  }
+
+  const columns: ReportDocColumn[] = [
+    { key: 'code', header: isAr ? 'كود الصنف' : 'Code', width: 10, align: 'center' },
+    { key: 'material', header: isAr ? 'الصنف' : 'Material', width: 22 },
+    { key: 'unit', header: isAr ? 'الوحدة' : 'Unit', width: 6, align: 'center' },
+    { key: 'boq', header: isAr ? 'بند BOQ' : 'BOQ Item', width: 18 },
+    { key: 'qty', header: isAr ? 'الكمية' : 'Qty', width: 8, numeric: true },
+    { key: 'unitCost', header: isAr ? 'التكلفة' : 'Unit Cost', width: 10, money: true },
+    { key: 'total', header: isAr ? 'القيمة' : 'Value', width: 12, money: true },
+  ];
+
+  const rows: ReportDocRow[] = data.lines.map((line) => ({
+    code: line.materialCode || '—',
+    material: line.materialName,
+    unit: line.unit || '—',
+    boq: [line.boqItemCode, line.boqDescription].filter(Boolean).join(' — ') || '—',
+    qty: data.formatQuantity(line.quantity),
+    unitCost: line.unitCost,
+    total: line.totalCost,
+  }));
+
+  const totalValue = data.lines.reduce((s, l) => s + (Number(l.totalCost) || 0), 0);
+
+  const sections: ReportDocSection[] = [
+    { kind: 'keyValue', items: meta, columnsPerRow: 3 },
+    {
+      kind: 'table',
+      title: isAr ? 'بنود الصرف' : 'Issued Materials',
+      columns,
+      rows,
+      flow: true,
+      totals: { total: totalValue },
+      totalsLabel: isAr ? 'إجمالي قيمة الصرف' : 'Total Issue Value',
+    },
+    {
+      kind: 'summary',
+      items: [
+        {
+          label: isAr ? 'إجمالي قيمة الصرف' : 'Total Issue Value',
+          value: formatMoney(totalValue),
+          emphasize: true,
+        },
+      ],
+    },
+  ];
+  if (data.notes?.trim()) {
+    sections.push({ kind: 'note', text: `${isAr ? 'ملاحظات: ' : 'Notes: '}${data.notes.trim()}` });
+  }
+  sections.push({
+    kind: 'signatures',
+    signatures: [
+      {
+        role: isAr ? 'طالب الصرف' : 'Requested by',
+        name: data.requesterName?.trim() || undefined,
+      },
+      {
+        role: isAr ? 'المستلم' : 'Received by',
+        name: data.receiverName?.trim() || undefined,
+      },
+      {
+        role: isAr ? 'أمين المخزن' : 'Storekeeper',
+        name: data.storekeeperName?.trim() || undefined,
+      },
+    ],
+  });
+  return sections;
+}
+
 /** Variation order (VO) certificate. */
 export function buildVoCertificateDocument(
   input: CertificateDocBase & { data: VoPrintData },

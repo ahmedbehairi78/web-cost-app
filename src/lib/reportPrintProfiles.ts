@@ -18,6 +18,7 @@ export type ReportPrintId =
   | 'variation_order'
   | 'custody_settlement'
   | 'inventory_warehouse'
+  | 'consumption_order'
   | 'bank_statement'
   | 'gl_account_statement'
   | 'gl_journal_entry'
@@ -124,6 +125,7 @@ export const REPORT_PRINT_IDS: ReportPrintId[] = [
   'variation_order',
   'custody_settlement',
   'inventory_warehouse',
+  'consumption_order',
   'bank_statement',
   'gl_account_statement',
   'gl_journal_entry',
@@ -145,6 +147,7 @@ export const REPORT_PRINT_LABELS: Record<ReportPrintId, { ar: string; en: string
   variation_order: { ar: 'أمر تغيير', en: 'Variation Order' },
   custody_settlement: { ar: 'تسوية عهدة', en: 'Custody Settlement' },
   inventory_warehouse: { ar: 'تقرير مخزن المشروع', en: 'Project Warehouse Report' },
+  consumption_order: { ar: 'إذن صرف مخزني', en: 'Warehouse Issue Slip' },
   bank_statement: { ar: 'كشف حساب بنكي', en: 'Bank Account Statement' },
   gl_account_statement: { ar: 'كشف حساب (دفتر اليومية)', en: 'GL Account Statement' },
   gl_journal_entry: { ar: 'قيد يومية', en: 'Journal Entry' },
@@ -219,6 +222,7 @@ export const REPORT_PRINT_DEFAULTS: Record<ReportPrintId, ReportPrintProfile> = 
   variation_order: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#7c3aed', titleAlign: 'end' },
   custody_settlement: { ...BASE_PRINT_LAYOUT, orientation: 'portrait', pageSize: 'A4', density: 'normal', accent: '#0f766e' },
   inventory_warehouse: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#b45309', titleAlign: 'center' },
+  consumption_order: { ...BASE_PRINT_LAYOUT, orientation: 'portrait', pageSize: 'A4', density: 'normal', accent: '#b45309', titleAlign: 'center', footerSize: 'lg' },
   bank_statement: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#1d4ed8', titleAlign: 'end' },
   gl_account_statement: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#1e3a8a', titleAlign: 'end' },
   gl_journal_entry: { ...BASE_PRINT_LAYOUT, orientation: 'portrait', pageSize: 'A4', density: 'normal', accent: '#1e3a8a' },
