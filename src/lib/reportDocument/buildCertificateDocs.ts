@@ -364,14 +364,12 @@ export type ConsumptionOrderPrintData = {
   contractName?: string;
   contractNumber?: string;
   statusLabel: string;
-  expenseAccountLabel?: string;
   notes?: string;
   lines: Array<{
     materialCode?: string;
     materialName: string;
     unit: string;
-    boqItemCode?: string;
-    boqDescription?: string;
+    sectionName?: string;
     quantity: number;
   }>;
   /** Optional typed names printed under the signature line. */
@@ -381,7 +379,7 @@ export type ConsumptionOrderPrintData = {
   formatQuantity: (n: number) => string;
 };
 
-/** Warehouse issue slip (إذن صرف) — quantities only; signature footer: requester · receiver · storekeeper. */
+/** Warehouse issue slip (إذن صرف) — quantities + section only; no expense/BOQ/cost on print. */
 export function buildConsumptionOrderSections(
   data: ConsumptionOrderPrintData,
   language: 'ar' | 'en',
@@ -399,15 +397,12 @@ export function buildConsumptionOrderSections(
     const contractLabel = [data.contractNumber, data.contractName].filter(Boolean).join(' — ');
     meta.push({ label: isAr ? 'العقد' : 'Contract', value: contractLabel });
   }
-  if (data.expenseAccountLabel) {
-    meta.push({ label: isAr ? 'حساب المصروف' : 'Expense Account', value: data.expenseAccountLabel });
-  }
 
   const columns: ReportDocColumn[] = [
     { key: 'code', header: isAr ? 'كود الصنف' : 'Code', width: 12, align: 'center' },
     { key: 'material', header: isAr ? 'الصنف' : 'Material', width: 28 },
     { key: 'unit', header: isAr ? 'الوحدة' : 'Unit', width: 8, align: 'center' },
-    { key: 'boq', header: isAr ? 'بند BOQ' : 'BOQ Item', width: 32 },
+    { key: 'section', header: isAr ? 'القسم' : 'Section', width: 32 },
     { key: 'qty', header: isAr ? 'الكمية' : 'Qty', width: 12, numeric: true },
   ];
 
@@ -415,7 +410,7 @@ export function buildConsumptionOrderSections(
     code: line.materialCode || '—',
     material: line.materialName,
     unit: line.unit || '—',
-    boq: [line.boqItemCode, line.boqDescription].filter(Boolean).join(' — ') || '—',
+    section: line.sectionName?.trim() || '—',
     qty: data.formatQuantity(line.quantity),
   }));
 

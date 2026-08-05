@@ -566,7 +566,7 @@ describe('buildConsumptionOrderSections', () => {
             materialCode: 'M1',
             materialName: 'أسمنت',
             unit: 'طن',
-            boqItemCode: '1.1',
+            sectionName: 'أعمال خرسانية',
             quantity: 2,
           },
         ],
@@ -580,7 +580,7 @@ describe('buildConsumptionOrderSections', () => {
     const table = sections.find((s) => s.kind === 'table');
     expect(table?.kind).toBe('table');
     if (table?.kind === 'table') {
-      expect(table.columns.map((c) => c.key)).toEqual(['code', 'material', 'unit', 'boq', 'qty']);
+      expect(table.columns.map((c) => c.key)).toEqual(['code', 'material', 'unit', 'section', 'qty']);
       expect(table.columns.some((c) => c.money)).toBe(false);
       expect(table.totals).toBeUndefined();
     }
@@ -606,8 +606,11 @@ describe('buildConsumptionOrderSections', () => {
     expect(html).toContain('طالب الصرف');
     expect(html).toContain('أحمد');
     expect(html).toContain('أسمنت');
+    expect(html).toContain('أعمال خرسانية');
     expect(html).not.toContain('التكلفة');
     expect(html).not.toContain('القيمة');
     expect(html).not.toContain('إجمالي قيمة');
+    expect(html).not.toContain('حساب المصروف');
+    expect(html).not.toContain('1.1.1');
   });
 });

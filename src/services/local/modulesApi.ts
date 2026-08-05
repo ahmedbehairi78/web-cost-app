@@ -485,7 +485,13 @@ export const consumptionOrdersApi = {
     notes?: string;
     expenseAccountCode?: string;
     expenseAccountName?: string;
-    lines: Array<{ boqItemId: string; materialCategoryId: number; quantity: number }>;
+    lines: Array<{
+      boqItemId: string;
+      materialCategoryId: number;
+      quantity: number;
+      expenseAccountCode?: string;
+      expenseAccountName?: string;
+    }>;
   }) => apiClient.post('/consumption-orders', data),
   confirm: (id: number) =>
     apiClient.post<{

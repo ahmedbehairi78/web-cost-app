@@ -708,6 +708,9 @@ model ConsumptionOrderLine {
   quantity           Decimal  @db.Decimal(18, 3)
   unitCost           Decimal  @map("unit_cost") @db.Decimal(18, 3)
   totalCost          Decimal  @map("total_cost") @db.Decimal(18, 3)
+  /** Per-line expense (5…); falls back to order header when null (legacy rows). */
+  expenseAccountCode String?  @map("expense_account_code")
+  expenseAccountName String?  @map("expense_account_name")
   createdAt          DateTime @default(now()) @map("created_at")
 
   order            ConsumptionOrder  @relation(fields: [orderId], references: [id], onDelete: Cascade)

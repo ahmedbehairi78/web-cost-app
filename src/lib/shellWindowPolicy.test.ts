@@ -31,6 +31,13 @@ describe('shellWindowPolicy', () => {
     expect(removed.map((w) => w.moduleId)).toEqual(['ledger']);
   });
 
+  it('keeps calculator alongside the newly opened module', () => {
+    const prev = [win('calculator', 'calc-1')];
+    const { kept, removed } = partitionExclusiveShellWindows(prev, 'costs');
+    expect(kept.map((w) => w.moduleId)).toEqual(['calculator']);
+    expect(removed).toHaveLength(0);
+  });
+
   it('replaces general with ledger and drops display alias slot', () => {
     const prev = [win('display')];
     const { kept, removed } = partitionExclusiveShellWindows(prev, 'ledger');

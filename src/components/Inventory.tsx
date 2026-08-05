@@ -104,6 +104,7 @@ interface ConsumptionOrderLine {
   materialUnit?: string;
   boqItemCode?: string;
   boqDescription?: string;
+  sectionName?: string;
   quantity: number;
   unitCost: number;
   totalCost: number;
@@ -2740,9 +2741,6 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
 
   const confirmPrintConsumption = () => {
     if (!printOrder) return;
-    const expenseLabel = printOrder.expenseAccountCode
-      ? [printOrder.expenseAccountName, printOrder.expenseAccountCode].filter(Boolean).join(' — ')
-      : undefined;
     openDocPreview({
       reportId: 'consumption_order',
       title: ar
@@ -2763,14 +2761,12 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
             printOrder.status === 'confirmed'
               ? ar ? 'مؤكد' : 'Confirmed'
               : ar ? 'مسودة' : 'Draft',
-          expenseAccountLabel: expenseLabel,
           notes: printOrder.notes,
           lines: (printOrder.lines ?? []).map((line) => ({
             materialCode: line.materialCode,
             materialName: line.materialName || '—',
             unit: line.materialUnit || '—',
-            boqItemCode: line.boqItemCode,
-            boqDescription: line.boqDescription,
+            sectionName: line.sectionName,
             quantity: Number(line.quantity) || 0,
           })),
           requesterName: printNames.requester,

@@ -59,6 +59,7 @@ import {
   partitionExclusiveShellWindows,
   retainErpUtilityWindows,
   isSameShellModuleSlot,
+  shouldCoexistShellModule,
 } from './lib/shellWindowPolicy';
 import {
   performAppLogout,
@@ -445,6 +446,19 @@ export default function App() {
           detail: 'restore_taskbar',
         }),
       );
+      // Calculator coexists — restore without closing the active module
+      if (shouldCoexistShellModule(win.moduleId)) {
+        return prev.map(w => {
+          if (w.id !== id) return w;
+          return {
+            ...w,
+            windowState: 'normal' as const,
+            zIndex: nextZ(),
+            restoreToken: isErpTheme(theme) ? Date.now() : undefined,
+            enterAnim: false,
+          };
+        });
+      }
       const { kept, removed } = partitionExclusiveShellWindows(prev, win.moduleId, id);
       logClosedShellWindows(removed);
       return kept.map(w => {
@@ -1185,6 +1199,12 @@ function ErpShellContent({
         ?? defaultShellViewForModule(userPermissions, targetModule, { isAdmin })
         ?? getModuleMenu(targetModule)?.defaultViewId
         ?? 'main';
+
+      // Calculator floats over the workspace — never close the active module
+      if (shouldCoexistShellModule(moduleId)) {
+        openWindow(moduleId, viewId);
+        return;
+      }
 
       if (ERP_UTILITY_MODULE_IDS.has(moduleId)) {
         erp.closeWorkspace();

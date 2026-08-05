@@ -106,11 +106,13 @@ async function resolveExpenseFromConsumptionLine(
     include: { order: { select: { expenseAccountCode: true, expenseAccountName: true, orderNumber: true } } },
   });
   if (!line?.order) return null;
-  const code = String(line.order.expenseAccountCode ?? '').trim();
-  const name = String(line.order.expenseAccountName ?? '').trim();
+  const lineCode = String(line.expenseAccountCode ?? '').trim();
+  const lineName = String(line.expenseAccountName ?? '').trim();
+  const headerCode = String(line.order.expenseAccountCode ?? '').trim();
+  const headerName = String(line.order.expenseAccountName ?? '').trim();
   return {
-    expenseAccountCode: code || null,
-    expenseAccountName: name || null,
+    expenseAccountCode: lineCode || headerCode || null,
+    expenseAccountName: lineName || headerName || null,
     consumptionOrderNumber: line.order.orderNumber,
   };
 }
@@ -151,8 +153,8 @@ async function loadConsumptionLineContext(client: DbClient, consumptionOrderLine
     orderStatus: line.order.status,
     contractId: line.order.contractId,
     projectId: line.order.projectId,
-    expenseAccountCode: line.order.expenseAccountCode,
-    expenseAccountName: line.order.expenseAccountName,
+    expenseAccountCode: expense?.expenseAccountCode ?? line.order.expenseAccountCode,
+    expenseAccountName: expense?.expenseAccountName ?? line.order.expenseAccountName,
     contractName: contract?.contractName,
     contractNumber: contract?.contractNumber,
     projectName: line.order.project?.projectName,

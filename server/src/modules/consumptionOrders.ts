@@ -67,7 +67,7 @@ async function loadOrderWithLines(client: DbClient, orderId: number) {
     boqIds.length > 0
       ? await client.boqItem.findMany({
           where: { id: { in: boqIds } },
-          select: { id: true, itemCode: true, description: true },
+          select: { id: true, itemCode: true, description: true, sectionName: true, sectionCode: true },
         })
       : [];
   const boqMap = new Map(boqItems.map((b) => [b.id, b]));
@@ -85,6 +85,7 @@ async function loadOrderWithLines(client: DbClient, orderId: number) {
         materialUnit: line.materialCategory?.unit,
         boqItemCode: boq?.itemCode,
         boqDescription: boq?.description,
+        sectionName: boq?.sectionName || boq?.sectionCode || undefined,
       };
     }),
   };
@@ -133,7 +134,7 @@ consumptionOrdersRouter.get(
       boqIds.length > 0
         ? await prisma.boqItem.findMany({
             where: { id: { in: boqIds } },
-            select: { id: true, itemCode: true, description: true },
+            select: { id: true, itemCode: true, description: true, sectionName: true, sectionCode: true },
           })
         : [];
     const boqMap = new Map(boqItems.map((b) => [b.id, b]));
@@ -157,6 +158,7 @@ consumptionOrdersRouter.get(
               materialUnit: line.materialCategory?.unit,
               boqItemCode: boq?.itemCode,
               boqDescription: boq?.description,
+              sectionName: boq?.sectionName || boq?.sectionCode || undefined,
             };
           }),
         };
@@ -181,6 +183,8 @@ consumptionOrdersRouter.post(
         boqItemId: string;
         materialCategoryId: number;
         quantity: number;
+        expenseAccountCode?: string;
+        expenseAccountName?: string;
       }>;
     };
 
@@ -204,6 +208,13 @@ consumptionOrdersRouter.post(
     }
     validateConsumptionLines({ lines: body.lines, maxAvailableByMaterial });
 
+    const headerExpenseCode = body.expenseAccountCode?.trim()
+      || body.lines.map((l) => l.expenseAccountCode?.trim()).find(Boolean)
+      || null;
+    const headerExpenseName = body.expenseAccountName?.trim()
+      || body.lines.map((l) => l.expenseAccountName?.trim()).find(Boolean)
+      || null;
+
     const result = await prisma.$transaction(async (tx) => {
       const orderNumber = await generateOrderNumber(tx);
       const order = await tx.consumptionOrder.create({
@@ -215,8 +226,8 @@ consumptionOrdersRouter.post(
           recordedBy: user.id,
           status: 'draft',
           notes: body.notes ?? null,
-          expenseAccountCode: body.expenseAccountCode?.trim() || null,
-          expenseAccountName: body.expenseAccountName?.trim() || null,
+          expenseAccountCode: headerExpenseCode,
+          expenseAccountName: headerExpenseName,
         },
       });
 
@@ -226,6 +237,12 @@ consumptionOrdersRouter.post(
         const inv = await getProjectInventoryByMaterial(tx, projectId, line.materialCategoryId);
         if (!inv) {
           throw new Error(`Line ${idx + 1}: no project warehouse stock for this material`);
+        }
+
+        const lineExpenseCode = line.expenseAccountCode?.trim() || headerExpenseCode || null;
+        const lineExpenseName = line.expenseAccountName?.trim() || headerExpenseName || null;
+        if (!lineExpenseCode) {
+          throw new Error(`Line ${idx + 1}: expenseAccountCode is required`);
         }
 
         const unitCost = inv.avgUnitCost;
@@ -238,6 +255,8 @@ consumptionOrdersRouter.post(
             quantity: line.quantity,
             unitCost,
             totalCost,
+            expenseAccountCode: lineExpenseCode,
+            expenseAccountName: lineExpenseName,
           },
         });
       }
@@ -354,6 +373,8 @@ consumptionOrdersRouter.post(
               totalCost: num(line.totalCost),
               boqItemCode: boq?.itemCode,
               boqDescription: boq?.description,
+              expenseAccountCode: line.expenseAccountCode,
+              expenseAccountName: line.expenseAccountName,
             };
           }),
         });

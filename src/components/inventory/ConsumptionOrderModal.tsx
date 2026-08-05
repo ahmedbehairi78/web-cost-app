@@ -1,18 +1,23 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ManualHelpButton } from '../help/ManualHelpButton';
-import { Loader2, Plus, Trash2 } from 'lucide-react';
+import { Loader2, Plus, Printer, Trash2 } from 'lucide-react';
 import { cn, listKey } from '../../lib/utils';
 import { useLanguage } from '../../context/LanguageContext';
 import { useChartOfAccountsRef } from '../../hooks/useChartOfAccountsRef';
+import { useReportDocumentPreview } from '../../hooks/useReportDocumentPreview';
 import {
   boqMaterialsApi,
   consumptionOrdersApi,
   inventoryApi,
   boqApi,
+  settingsApi,
 } from '../../services/local/modulesApi';
 import { AccountCodes } from '../../services/accountingService';
 import { ApiError } from '../../lib/apiClient';
 import { formatQuantity } from '../../lib/formatQuantity';
+import { formatMoney as formatMoneyLib } from '../../lib/money';
+import { buildConsumptionOrderSections } from '../../lib/reportDocument';
+import type { CompanyPrintInfo } from '../../lib/ipcPrintData';
 import {
   validateAllocationLines,
   type AllocationLineInput,
@@ -55,6 +60,25 @@ type CartMaterialLine = {
   quantityAvailable: number;
   totalQuantity: number;
   allocationLines: AllocationLineInput[];
+  expenseAccountCode: string;
+};
+
+type ConfirmedOrderForPrint = {
+  id: number;
+  orderNumber: string;
+  orderDate: string;
+  status: string;
+  notes?: string | null;
+  projectName?: string;
+  contractName?: string;
+  contractNumber?: string;
+  lines: Array<{
+    materialCode?: string;
+    materialName?: string;
+    materialUnit?: string;
+    sectionName?: string;
+    quantity: number;
+  }>;
 };
 
 type Theme = AppTheme;
@@ -79,7 +103,7 @@ function guessExpenseAccountCode(material?: WarehouseMaterialOption | CartMateri
   return AccountCodes.EXPENSE_MATERIALS;
 }
 
-function normalizeGroupKey(material?: WarehouseMaterialOption | CartMaterialLine): string {
+function normalizeGroupKey(material?: WarehouseMaterialOption | CartMaterialLine | null): string {
   return String(material?.code || material?.name || '').trim().toLowerCase();
 }
 
@@ -159,6 +183,21 @@ function asWarehouseMaterials(data: unknown): WarehouseMaterialOption[] {
     .filter((row): row is WarehouseMaterialOption => row != null);
 }
 
+function resolveExpenseForMaterial(
+  material: WarehouseMaterialOption | CartMaterialLine,
+  expenseAccounts: Array<{ accountCode?: string }>,
+  prefs: ExpenseAccountPreferenceMap,
+): string {
+  const codes = new Set(expenseAccounts.map((a) => normalizeAccountCode(a.accountCode)).filter(Boolean));
+  const groupKey = normalizeGroupKey(material);
+  const preferred = groupKey ? prefs[groupKey] : '';
+  if (preferred && codes.has(preferred)) return preferred;
+  const guessed = guessExpenseAccountCode(material);
+  if (codes.has(guessed)) return guessed;
+  if (codes.has(AccountCodes.EXPENSE_MATERIALS)) return AccountCodes.EXPENSE_MATERIALS;
+  return [...codes][0] || AccountCodes.EXPENSE_MATERIALS;
+}
+
 export function ConsumptionOrderModal({
   projectId,
   contractId,
@@ -184,6 +223,20 @@ export function ConsumptionOrderModal({
     role === 'projects_manager' ||
     role === 'project_accountant';
 
+  const moneyLocale = 'en-US';
+  const formatMoneyPrint = (value: number) => formatMoneyLib(value, moneyLocale);
+  const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
+    companyName: '',
+    companyNameEn: '',
+    headerLogo: '',
+  });
+  const { openDocPreview, ReportPreviewHost } = useReportDocumentPreview({
+    language,
+    t,
+    formatMoney: formatMoneyPrint,
+    companyInfo,
+  });
+
   const [warehouseMaterials, setWarehouseMaterials] = useState<WarehouseMaterialOption[]>([]);
   const [loadingMaterials, setLoadingMaterials] = useState(true);
   const [cart, setCart] = useState<CartMaterialLine[]>([]);
@@ -201,16 +254,15 @@ export function ConsumptionOrderModal({
   const [orderDate, setOrderDate] = useState(today());
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [expenseAccountCode, setExpenseAccountCode] = useState<string>(AccountCodes.EXPENSE_MATERIALS);
-  const [expenseAccountTouched, setExpenseAccountTouched] = useState(false);
   const [expenseAccountPrefs, setExpenseAccountPrefs] = useState<ExpenseAccountPreferenceMap>(() =>
     loadExpenseAccountPrefs(),
   );
+  const [confirmedOrder, setConfirmedOrder] = useState<ConfirmedOrderForPrint | null>(null);
+  const [printNames, setPrintNames] = useState({ requester: '', receiver: '', storekeeper: '' });
 
   const { accounts } = useChartOfAccountsRef({ leafOnly: true });
 
   const draftMaterial = warehouseMaterials.find((m) => m.materialCategoryId === draftMaterialId);
-  const draftMaterialGroupKey = useMemo(() => normalizeGroupKey(draftMaterial), [draftMaterial]);
   const draftMaxAvailable =
     draftMaterial?.quantityAvailable ??
     (preselectedItem?.materialCategoryId === draftMaterialId ? preselectedItem.quantityAvailable : null);
@@ -233,13 +285,26 @@ export function ConsumptionOrderModal({
     [accounts],
   );
 
-  const selectedExpenseAccount = useMemo(
+  const expenseSelectOptions = useMemo(
     () =>
-      expenseAccounts.find(
-        (acc) => normalizeAccountCode(acc.accountCode) === normalizeAccountCode(expenseAccountCode),
-      ),
-    [expenseAccounts, expenseAccountCode],
+      expenseAccounts.map((acc, idx) => ({
+        value: normalizeAccountCode(acc.accountCode) || `acc-${idx}`,
+        secondary: normalizeAccountCode(acc.accountCode),
+        label:
+          language === 'ar'
+            ? acc.accountName
+            : acc.accountNameEn || acc.accountName,
+      })),
+    [expenseAccounts, language],
   );
+
+  useEffect(() => {
+    void settingsApi.getCompanyInfo()
+      .then((res) => {
+        if (res.value) setCompanyInfo((prev) => ({ ...prev, ...res.value }));
+      })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     setLoadingMaterials(true);
@@ -292,28 +357,6 @@ export function ConsumptionOrderModal({
       .catch(() => setAllBoqItemsForLink([]));
   }, [canQuickLink, projectId]);
 
-  useEffect(() => {
-    if (expenseAccountTouched) return;
-    const hintMaterial = cart[0] ?? draftMaterial;
-    const groupKey = normalizeGroupKey(hintMaterial);
-    const preferred = groupKey ? expenseAccountPrefs[groupKey] : '';
-    if (preferred && expenseAccounts.some((acc) => normalizeAccountCode(acc.accountCode) === preferred)) {
-      setExpenseAccountCode(preferred);
-      return;
-    }
-    const guessed = guessExpenseAccountCode(hintMaterial);
-    if (expenseAccounts.some((acc) => normalizeAccountCode(acc.accountCode) === guessed)) {
-      setExpenseAccountCode(guessed);
-      return;
-    }
-    if (expenseAccounts.some((acc) => normalizeAccountCode(acc.accountCode) === AccountCodes.EXPENSE_MATERIALS)) {
-      setExpenseAccountCode(AccountCodes.EXPENSE_MATERIALS);
-      return;
-    }
-    const first = expenseAccounts[0]?.accountCode;
-    if (first) setExpenseAccountCode(normalizeAccountCode(first));
-  }, [expenseAccountTouched, expenseAccounts, draftMaterial, cart, expenseAccountPrefs]);
-
   const openAllocation = () => {
     if (!draftMaterialId || !draftMaterial) {
       toast.error(t('consume_order_select_material'));
@@ -341,6 +384,7 @@ export function ConsumptionOrderModal({
       toast.error(t('consume_alloc_mismatch'));
       return;
     }
+    const expenseCode = resolveExpenseForMaterial(draftMaterial, expenseAccounts, expenseAccountPrefs);
     setCart((prev) => {
       const without = prev.filter((c) => c.materialCategoryId !== draftMaterial.materialCategoryId);
       return [
@@ -353,6 +397,7 @@ export function ConsumptionOrderModal({
           quantityAvailable: draftMaterial.quantityAvailable,
           totalQuantity: draftQty,
           allocationLines: lines,
+          expenseAccountCode: expenseCode,
         },
       ];
     });
@@ -364,6 +409,74 @@ export function ConsumptionOrderModal({
 
   const removeFromCart = (materialCategoryId: number) => {
     setCart((prev) => prev.filter((c) => c.materialCategoryId !== materialCategoryId));
+  };
+
+  const updateCartExpense = (materialCategoryId: number, code: string) => {
+    const normalized = normalizeAccountCode(code);
+    const item = cart.find((c) => c.materialCategoryId === materialCategoryId);
+    setCart((prev) =>
+      prev.map((row) =>
+        row.materialCategoryId === materialCategoryId
+          ? { ...row, expenseAccountCode: normalized }
+          : row,
+      ),
+    );
+    const key = normalizeGroupKey(item);
+    if (key) {
+      setExpenseAccountPrefs((prev) => {
+        const next = { ...prev, [key]: normalized };
+        persistExpenseAccountPrefs(next);
+        return next;
+      });
+    }
+  };
+
+  const accountNameForCode = (code: string) => {
+    const acc = expenseAccounts.find((a) => normalizeAccountCode(a.accountCode) === normalizeAccountCode(code));
+    if (!acc) return code;
+    return language === 'ar' ? acc.accountName : acc.accountNameEn || acc.accountName;
+  };
+
+  const openPrintPreview = (order: ConfirmedOrderForPrint, names = printNames) => {
+    openDocPreview({
+      reportId: 'consumption_order',
+      title: ar
+        ? `إذن صرف مخزني — ${order.orderNumber}`
+        : `Warehouse Issue Slip — ${order.orderNumber}`,
+      scopeLabel: [order.projectName || projectLabel, order.contractName || contractLabel]
+        .filter(Boolean)
+        .join(' · ') || undefined,
+      dateLabel: order.orderDate,
+      columns: [],
+      rows: [],
+      sections: buildConsumptionOrderSections(
+        {
+          orderNumber: order.orderNumber,
+          orderDate: order.orderDate,
+          projectName: order.projectName || projectLabel,
+          contractName: order.contractName || contractLabel,
+          contractNumber: order.contractNumber,
+          statusLabel:
+            order.status === 'confirmed'
+              ? ar ? 'مؤكد' : 'Confirmed'
+              : ar ? 'مسودة' : 'Draft',
+          notes: order.notes || undefined,
+          lines: (order.lines ?? []).map((line) => ({
+            materialCode: line.materialCode,
+            materialName: line.materialName || '—',
+            unit: line.materialUnit || '—',
+            sectionName: line.sectionName,
+            quantity: Number(line.quantity) || 0,
+          })),
+          requesterName: names.requester,
+          receiverName: names.receiver,
+          storekeeperName: names.storekeeper,
+          formatQuantity: (n) => formatQuantity(n, language),
+        },
+        language,
+      ),
+      filename: `consumption-${order.orderNumber}`,
+    });
   };
 
   const handleSave = async () => {
@@ -385,25 +498,25 @@ export function ConsumptionOrderModal({
         );
         return;
       }
-    }
-    if (!selectedExpenseAccount) {
-      toast.error(t('toast_pick_expense_account'));
-      return;
+      if (!normalizeAccountCode(item.expenseAccountCode)) {
+        toast.error(`${item.code || item.name}: ${t('toast_pick_expense_account')}`);
+        return;
+      }
     }
 
-    const expenseCode = normalizeAccountCode(selectedExpenseAccount.accountCode);
-    const expenseName =
-      language === 'ar'
-        ? selectedExpenseAccount.accountName
-        : selectedExpenseAccount.accountNameEn || selectedExpenseAccount.accountName;
-
-    const flatLines = cart.flatMap((item) =>
-      item.allocationLines.map((line) => ({
+    const flatLines = cart.flatMap((item) => {
+      const expenseCode = normalizeAccountCode(item.expenseAccountCode);
+      const expenseName = accountNameForCode(expenseCode);
+      return item.allocationLines.map((line) => ({
         boqItemId: line.boqItemId,
         materialCategoryId: item.materialCategoryId,
         quantity: line.quantity,
-      })),
-    );
+        expenseAccountCode: expenseCode,
+        expenseAccountName: expenseName,
+      }));
+    });
+
+    const firstExpense = flatLines[0];
 
     setSaving(true);
     try {
@@ -412,18 +525,30 @@ export function ConsumptionOrderModal({
         projectId,
         orderDate,
         notes: notes.trim() || undefined,
-        expenseAccountCode: expenseCode,
-        expenseAccountName: expenseName,
+        expenseAccountCode: firstExpense?.expenseAccountCode,
+        expenseAccountName: firstExpense?.expenseAccountName,
         lines: flatLines,
       })) as { ok?: boolean; order?: { id: number } };
 
       const orderId = created?.order?.id;
       if (!orderId) throw new Error(t('consume_order_allocation_required'));
 
-      await consumptionOrdersApi.confirm(orderId);
+      const confirmed = (await consumptionOrdersApi.confirm(orderId)) as {
+        ok?: boolean;
+        order?: ConfirmedOrderForPrint;
+      };
       toast.success(t('toast_consume_confirmed'));
       onSaved();
-      onClose();
+      if (confirmed?.order?.orderNumber) {
+        setConfirmedOrder({
+          ...confirmed.order,
+          projectName: confirmed.order.projectName || projectLabel,
+          contractName: confirmed.order.contractName || contractLabel,
+        });
+        setPrintNames({ requester: '', receiver: '', storekeeper: '' });
+      } else {
+        onClose();
+      }
     } catch (e: unknown) {
       const rawMessage = e instanceof Error ? e.message : '';
       if (/insufficient project warehouse balance/i.test(rawMessage)) {
@@ -444,6 +569,83 @@ export function ConsumptionOrderModal({
     'rounded-xl shadow-2xl w-full max-w-2xl p-6 max-h-[90vh] overflow-y-auto',
     theme === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900',
   );
+
+  if (confirmedOrder) {
+    return (
+      <>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className={modalCard} dir={dir}>
+            <div className="flex items-center gap-2 mb-1">
+              <h3 className="text-lg font-bold">{t('consume_order_print')}</h3>
+              <ManualHelpButton topicId="inventory.consumption.issue" size={16} />
+            </div>
+            <p className={cn('text-sm mb-1 font-mono', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>
+              {confirmedOrder.orderNumber}
+            </p>
+            <p className={cn('text-xs mb-4', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
+              {t('consume_order_print_after_confirm')}
+            </p>
+            <p className={cn('text-xs mb-3', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
+              {t('consume_order_print_names_hint')}
+            </p>
+            <div className="space-y-3 mb-5">
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('consume_order_sign_requester')}</label>
+                <input
+                  type="text"
+                  value={printNames.requester}
+                  onChange={(e) => setPrintNames((p) => ({ ...p, requester: e.target.value }))}
+                  className={inputCls(theme)}
+                  placeholder={t('consume_order_sign_name_ph')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('consume_order_sign_receiver')}</label>
+                <input
+                  type="text"
+                  value={printNames.receiver}
+                  onChange={(e) => setPrintNames((p) => ({ ...p, receiver: e.target.value }))}
+                  className={inputCls(theme)}
+                  placeholder={t('consume_order_sign_name_ph')}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">{t('consume_order_sign_storekeeper')}</label>
+                <input
+                  type="text"
+                  value={printNames.storekeeper}
+                  onChange={(e) => setPrintNames((p) => ({ ...p, storekeeper: e.target.value }))}
+                  className={inputCls(theme)}
+                  placeholder={t('consume_order_sign_name_ph')}
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className={cn(
+                  'px-4 py-2 rounded-lg border text-sm transition-colors',
+                  theme === 'dark' ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50',
+                )}
+              >
+                {t('consume_order_print_done')}
+              </button>
+              <button
+                type="button"
+                onClick={() => openPrintPreview(confirmedOrder)}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center gap-2"
+              >
+                <Printer className="w-4 h-4" />
+                {t('consume_order_print_preview')}
+              </button>
+            </div>
+          </div>
+        </div>
+        {ReportPreviewHost}
+      </>
+    );
+  }
 
   return (
     <>
@@ -551,73 +753,53 @@ export function ConsumptionOrderModal({
                   {cart.map((item, idx) => (
                     <li
                       key={listKey(String(item.materialCategoryId), idx, 'cart')}
-                      className="px-3 py-2 flex items-start justify-between gap-2 text-sm"
+                      className="px-3 py-3 space-y-2 text-sm"
                     >
-                      <div className="min-w-0">
-                        <p className="font-medium truncate">
-                          {item.code ? `${item.code} — ` : ''}
-                          {item.name}
-                        </p>
-                        <p className={cn('text-xs', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                          {formatQuantity(item.totalQuantity, language)} {item.unit}
-                          {' · '}
-                          {t('consume_order_allocation_summary').replace(
-                            '{count}',
-                            String(item.allocationLines.length),
-                          )}
-                        </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">
+                            {item.code ? `${item.code} — ` : ''}
+                            {item.name}
+                          </p>
+                          <p className={cn('text-xs', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                            {formatQuantity(item.totalQuantity, language)} {item.unit}
+                            {' · '}
+                            {t('consume_order_allocation_summary').replace(
+                              '{count}',
+                              String(item.allocationLines.length),
+                            )}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.materialCategoryId)}
+                          className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                          title={t('delete')}
+                          aria-label={t('delete')}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => removeFromCart(item.materialCategoryId)}
-                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
-                        title={t('delete')}
-                        aria-label={t('delete')}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div>
+                        <label className="block text-xs font-medium mb-1">{t('consume_order_line_expense')}</label>
+                        {expenseAccounts.length === 0 ? (
+                          <p className="text-xs text-amber-600">{t('toast_pick_expense_account')}</p>
+                        ) : (
+                          <SearchableSelect
+                            value={item.expenseAccountCode}
+                            onChange={(code) => updateCartExpense(item.materialCategoryId, code)}
+                            theme={theme}
+                            dir={dir}
+                            placeholder={t('toast_pick_expense_account')}
+                            options={expenseSelectOptions}
+                          />
+                        )}
+                      </div>
                     </li>
                   ))}
                 </ul>
               </div>
             )}
-
-            <div>
-              <label className="block text-sm font-medium mb-1">{t('toast_pick_expense_account')}</label>
-              {expenseAccounts.length === 0 ? (
-                <p className="text-xs text-amber-600">{t('toast_pick_expense_account')}</p>
-              ) : (
-                <SearchableSelect
-                  value={expenseAccountCode}
-                  onChange={(code) => {
-                    const normalized = normalizeAccountCode(code);
-                    setExpenseAccountTouched(true);
-                    setExpenseAccountCode(normalized);
-                    if (draftMaterialGroupKey || cart[0]) {
-                      const key = draftMaterialGroupKey || normalizeGroupKey(cart[0]);
-                      if (key) {
-                        setExpenseAccountPrefs((prev) => {
-                          const next = { ...prev, [key]: normalized };
-                          persistExpenseAccountPrefs(next);
-                          return next;
-                        });
-                      }
-                    }
-                  }}
-                  theme={theme}
-                  dir={dir}
-                  placeholder={t('toast_pick_expense_account')}
-                  options={expenseAccounts.map((acc, idx) => ({
-                    value: normalizeAccountCode(acc.accountCode) || `acc-${idx}`,
-                    secondary: normalizeAccountCode(acc.accountCode),
-                    label:
-                      language === 'ar'
-                        ? acc.accountName
-                        : acc.accountNameEn || acc.accountName,
-                  }))}
-                />
-              )}
-            </div>
 
             <div>
               <label className="block text-sm font-medium mb-1">{t('consume_order_date')}</label>
@@ -697,6 +879,7 @@ export function ConsumptionOrderModal({
           onClose={() => setQuickLinkOpen(false)}
         />
       )}
+      {ReportPreviewHost}
     </>
   );
 }

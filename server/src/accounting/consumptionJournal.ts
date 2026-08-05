@@ -3,6 +3,7 @@ import type { JournalEntryInput } from './journalShared.js';
 import { toMoney } from '../modules/inventoryHelpers.js';
 
 export function buildConsumptionIssueEntries(params: {
+  /** Fallback when a line omits expenseAccountCode (legacy header). */
   expenseAccountCode?: string | null;
   expenseAccountName?: string | null;
   inventoryAccountCode: string;
@@ -11,14 +12,22 @@ export function buildConsumptionIssueEntries(params: {
     totalCost: number;
     boqItemCode?: string | null;
     boqDescription?: string | null;
+    expenseAccountCode?: string | null;
+    expenseAccountName?: string | null;
   }>;
 }): JournalEntryInput[] {
-  const expenseCode = String(params.expenseAccountCode || '').trim() || AccountCodes.EXPENSE_MATERIALS;
-  const expenseBaseName = String(params.expenseAccountName || '').trim() || 'مواد البناء';
+  const headerExpenseCode =
+    String(params.expenseAccountCode || '').trim() || AccountCodes.EXPENSE_MATERIALS;
+  const headerExpenseName = String(params.expenseAccountName || '').trim() || 'مواد البناء';
 
   const debitLines = params.lines
     .filter((line) => toMoney(Number(line.totalCost)) > 0)
     .map((line) => {
+      const expenseCode =
+        String(line.expenseAccountCode || '').trim() || headerExpenseCode;
+      const expenseBaseName =
+        String(line.expenseAccountName || '').trim() ||
+        (expenseCode === headerExpenseCode ? headerExpenseName : expenseCode);
       const label = String(line.boqItemCode || line.boqDescription || '').trim();
       const suffix = label ? ` — ${label}` : '';
       return {

@@ -37,6 +37,23 @@ describe('buildConsumptionIssueEntries', () => {
     expect(entries[1]?.credit).toBe(100);
   });
 
+  it('uses per-line expense accounts when provided', () => {
+    const entries = buildConsumptionIssueEntries({
+      expenseAccountCode: AccountCodes.EXPENSE_MATERIALS,
+      expenseAccountName: 'مواد البناء',
+      inventoryAccountCode: '12701001',
+      inventoryAccountName: 'مخزون المشروع',
+      lines: [
+        { totalCost: 2000, boqItemCode: 'A', expenseAccountCode: AccountCodes.EXPENSE_MATERIALS },
+        { totalCost: 1500, boqItemCode: 'B', expenseAccountCode: AccountCodes.EXPENSE_LABOUR, expenseAccountName: 'عمالة' },
+      ],
+    });
+    const debits = entries.filter((e) => e.debit > 0);
+    expect(debits[0]?.accountCode).toBe(AccountCodes.EXPENSE_MATERIALS);
+    expect(debits[1]?.accountCode).toBe(AccountCodes.EXPENSE_LABOUR);
+    expect(entries.find((e) => e.credit > 0)?.credit).toBe(3500);
+  });
+
   it('throws when all line costs are zero', () => {
     expect(() =>
       buildConsumptionIssueEntries({
