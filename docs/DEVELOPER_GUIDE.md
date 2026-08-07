@@ -682,106 +682,20 @@ async function postMyJournal(amount: number, contractId: string, projectId: stri
 }
 ```
 
-### 9.5 مثال واقعي — إشعار الموقع الجغرافي عند بدء التطبيق
+### 9.5 جلسة النشاط + الخمول (بدون إشعار موقع)
 
-عند تسجيل الدخول يظهر **toast** أعلى الشاشة يشرح أن الموقع التقريبي قد يُستخدم في سجل النشاط. هذا مثال كامل لمسار «نص → سلوك → تصميم» في المشروع.
+`useActivitySession` يسجّل بداية الجلسة وheartbeat والأخطاء العامة فقط — **لا** يعرض toast للموقع الجغرافي و**لا** يستدعي `requestApproxGeolocation` عند الدخول (2026-08-07).
 
-#### أين يُعرض؟
-
-```
-App.tsx
-  └── useActivitySession(user, { language, theme })   ← يُستدعى بعد المصادقة
-        └── toast(t('activity_geo_notice'))             ← الإشعار
-        └── requestApproxGeolocation()                 ← قراءة الموقع (بدون نافذة موافقة)
-```
-
-| ما تريد تغييره | الملف | ماذا تفعل |
-|----------------|-------|-----------|
-| **نص الإشعار (عربي/إنجليزي)** | `src/context/LanguageContext.tsx` | عدّل `activity_geo_notice` في خريطتي ar و en |
-| **متى يظهر / المدة / المكان** | `src/hooks/useActivitySession.ts` | `toast(...)` + `GEO_NOTICE_STORAGE_KEY` |
-| **شكل كل الـ toasts (ألوان، زوايا)** | `src/components/ThemedToaster.tsx` | `toastOptions.style` حسب `theme` |
-| **منطق الموقع الفعلي** | `src/services/activityLogService.ts` | `requestApproxGeolocation()` — لا يطلب إذنًا إلا إذا كان ممنوحًا مسبقًا |
-
-#### 1) تغيير النص فقط (الأكثر شيوعًا)
-
-في `LanguageContext.tsx`:
-
-```ts
-// ar
-activity_geo_notice:
-  'نستخدم موقعك التقريبي فقط لسجل النشاط عندما يكون الإذن مفعّلاً في المتصفح.',
-
-// en
-activity_geo_notice:
-  'Approximate location is used in the activity log only when your browser has already granted permission.',
-```
-
-> لا تكتب النص داخل `useActivitySession.ts` — دائمًا عبر `t('activity_geo_notice')`.
-
-#### 2) تغيير السلوك (المدة، التكرار، إلغاء الإشعار)
-
-الملف: `src/hooks/useActivitySession.ts`
-
-```ts
-// يظهر مرة واحدة لكل تبويب (sessionStorage)
-const GEO_NOTICE_STORAGE_KEY = 'activity_geo_notice_toast_v1';
-
-// لتجربة التعديل من جديد: غيّر اسم المفتاح، مثلاً:
-// const GEO_NOTICE_STORAGE_KEY = 'activity_geo_notice_toast_v2';
-
-toast(t('activity_geo_notice'), {
-  duration: 8000,           // مدة أطول (افتراضي هنا 5000ms)
-  position: 'bottom-center', // يتجاوز position="top-center" في ThemedToaster
-  icon: '📍',               // أيقونة اختيارية
-});
-
-// لإخفاء الإشعار نهائيًا — احذف أو علّق كتلة toast(...) فقط
-// (اترك requestApproxGeolocation() إن أردت الاستمرار في تسجيل الموقع عند الإذن المسبق)
-```
-
-#### 3) تغيير التصميم (theme-aware)
-
-**كل الـ toasts** تُنسَّق في `ThemedToaster.tsx` — مثلاً لثيم erp:
-
-```tsx
-// src/components/ThemedToaster.tsx — داخل style لـ isErpTheme(theme)
-background: '#ffffff',
-color: '#003B71',              // Concord Navy
-border: '1px solid #F58220', // Concord Orange
-```
-
-**إشعار واحد فقط** بستايل مخصص (بدون تغيير باقي التوasts):
-
-```ts
-import toast from 'react-hot-toast';
-import { CONCORD_NAVY } from '../lib/concordPlusBrand';
-
-toast(t('activity_geo_notice'), {
-  duration: 6000,
-  style: {
-    background: '#ffffff',
-    color: CONCORD_NAVY,
-    border: '1px solid #F58220',
-    borderRadius: '10px',
-    maxWidth: '420px',
-  },
-});
-```
-
-#### 4) الموقع الجغرافي ≠ نافذة الموافقة
-
-`requestApproxGeolocation()` في `activityLogService.ts` **لا يفتح** نافذة «السماح بالموقع» على أول زيارة — يقرأ الموقع فقط إذا كان `permissions.state === 'granted'`. الإشعار يوضّح ذلك للمستخدم؛ نافذة المتصفح تظهر فقط إذا منح المستخدم الإذن سابقًا أو غيّرت سلوك الخدمة (غير موصى به بدون مراجعة خصوصية).
-
-#### 5) التحقق بعد التعديل
+| السلوك | الملف | القيمة |
+|--------|-------|--------|
+| **تسجيل الخروج بسبب الخمول** | `src/lib/sessionLogout.ts` → `IDLE_LOGOUT_MS` | **3 دقائق** (`3 * 60 * 1000`) عبر `useIdleLogout` في `App.tsx` |
+| **رسالة الخمول** | `LanguageContext` · `session_idle_logout` | تظهر عند تسجيل الخروج التلقائي |
+| **مفاتيح i18n قديمة** | `activity_geo_notice` | متبقية في الترجمة فقط — غير مستخدمة في الواجهة |
 
 ```bash
 npm run dev:local
-# 1. سجّل الدخول
-# 2. لإعادة ظهور الإشعار: DevTools → Application → Session Storage → احذف activity_geo_notice_toast_v1
-# 3. حدّث الصفحة
+# سجّل الدخول → لا إشعار موقع · انتظر 3 دقائق بلا حركة → خروج + toast session_idle_logout
 ```
-
-**Golden path:** الإشعار يظهر مرة واحدة للتبويب → النص بالعربية/الإنجليزية حسب اللغة → الشكل يتبع الثيم النشط → لا نافذة geolocation على أول زيارة.
 
 ---
 

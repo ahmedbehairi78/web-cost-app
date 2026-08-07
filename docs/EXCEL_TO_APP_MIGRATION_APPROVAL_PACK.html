@@ -120,8 +120,8 @@
       padding: 0;
       display: flex;
       flex-direction: column;
-      background: linear-gradient(165deg, var(--navy-deep) 0%, var(--navy) 55%, var(--navy-mid) 100%);
-      color: #fff;
+      background: linear-gradient(165deg, #fbfdff 0%, #eef6fd 55%, #e4f0fa 100%);
+      color: var(--navy-deep);
       position: relative;
       overflow: hidden;
     }
@@ -130,8 +130,8 @@
       position: absolute;
       inset: 0;
       background:
-        radial-gradient(ellipse 80% 50% at 100% 0%, rgba(245, 130, 32, 0.25), transparent 55%),
-        radial-gradient(ellipse 60% 40% at 0% 100%, rgba(255, 255, 255, 0.06), transparent 50%);
+        radial-gradient(ellipse 80% 50% at 100% 0%, rgba(245, 130, 32, 0.14), transparent 55%),
+        radial-gradient(ellipse 60% 40% at 0% 100%, rgba(0, 59, 113, 0.07), transparent 50%);
       pointer-events: none;
     }
     .cover-top {
@@ -144,6 +144,7 @@
     }
     .cover-logo {
       background: #fff;
+      border: 1px solid rgba(0, 59, 113, 0.12);
       border-radius: 6px;
       padding: 10px 14px;
       width: 200px;
@@ -182,7 +183,7 @@
       margin-bottom: 16px;
     }
     .cover h1 {
-      color: #fff;
+      color: var(--navy-deep);
       font-size: 26pt;
       max-width: 92%;
       margin-bottom: 12px;
@@ -190,7 +191,7 @@
     .cover .subtitle {
       font-size: 13pt;
       font-weight: 400;
-      opacity: 0.9;
+      color: var(--slate);
       max-width: 88%;
       margin-bottom: 28px;
       line-height: 1.5;
@@ -208,24 +209,24 @@
       max-width: 100%;
     }
     .cover-fact {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.14);
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid rgba(0, 59, 113, 0.14);
       border-radius: 4px;
       padding: 12px 14px;
     }
-    .cover-fact .k { font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; opacity: 0.7; margin-bottom: 4px; }
-    .cover-fact .v { font-size: 11pt; font-weight: 600; }
+    .cover-fact .k { font-size: 7.5pt; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+    .cover-fact .v { font-size: 11pt; font-weight: 600; color: var(--navy); }
 
     .cover-bottom {
       padding: 14mm 20mm 16mm;
       position: relative;
       z-index: 1;
-      border-top: 1px solid rgba(255, 255, 255, 0.15);
+      border-top: 1px solid rgba(0, 59, 113, 0.18);
       display: flex;
       justify-content: space-between;
       align-items: flex-end;
       font-size: 9pt;
-      opacity: 0.9;
+      color: var(--slate);
     }
     .cover-bottom .tagline { color: var(--orange); font-weight: 600; letter-spacing: 0.06em; }
 
@@ -650,12 +651,7 @@
       </div>
     </div>
 
-    <div class="cover-bottom">
-      <div>
-        <div>مُعَدّ لاعتماد لجنة التوجيه / الإدارة العليا</div>
-      </div>
-      <div class="tagline">MEP · Finishing · Infra</div>
-    </div>
+   
   </section>
 
   <!-- ===================== TOC ===================== -->
@@ -676,12 +672,7 @@
       <li><span class="num">11</span><a href="#gates"><span class="toc-ar">مراحل الاعتماد ونقاط القرار</span><span class="toc-en">Stage Gates</span></a></li>
       <li><span class="num">12</span><a href="#apps"><span class="toc-ar">الملاحق</span><span class="toc-en">Appendices A–D</span></a></li>
     </ol>
-    <div class="callout" style="margin-top:28px">
-      <h4>الغرض من هذه الوثيقة</h4>
-      <p style="margin:0;font-size:9.5pt">
-        تمكين الإدارة العليا من اعتماد نطاق المشروع، الجدول، المسئوليات، والموارد اللازمة للانتقال المنضبط من ملفات اكسل إلى نظام Web Cost App، مع الإبقاء على استمرارية العمل خلال مرحلة تجميع البيانات والتشغيل التجريبي.
-      </p>
-    </div>
+    
     <div class="page-footer">
       <span>Concord Plus</span>
       <span class="confidential">خطة عمل التحول الي نظام ادارة التكاليف </span>
@@ -925,7 +916,7 @@
         <div class="phase-tag p0">المرحلة 0<br/>أسبوع 1</div>
         <div class="roadmap-body">
           <h4>التأسيس والاعتماد</h4>
-          <p>تشكيل المسئوليات · تسمية الأدوار · اعتماد هذه الوثيقة · جرد ملفات اكسل (الملحق أ) · تجهيز البيئة (Railway / مستخدمين / صلاحيات) · ورشة اجتماع الانطلاق.</p>
+          <p>تشكيل المسئوليات · تسمية الأدوار · اعتماد هذه خطة العمل · جرد ملفات اكسل (الملحق أ) · تجهيز البيئة (Railway / مستخدمين / صلاحيات) · ورشة اجتماع الانطلاق.</p>
         </div>
       </div>
       <div class="roadmap-item">
@@ -1118,13 +1109,13 @@
 
     <div class="org">
       <div class="org-box sponsor">
-        <span class="role">راعي المشروع / الإدارة العليا</span>
+        <span class="role">مدير المشروع / الإدارة </span>
         <span class="who">يعتمد الميزانية والتحويل النهائي — يُسمّى عند الاعتماد</span>
       </div>
       <div class="org-line"></div>
       <div class="org-box">
         <span class="role">لجنة التوجيه</span>
-        <span class="who">راعي المشروع · المالية · إدارة المشاريع · تقنية/نظام</span>
+        <span class="who">مدير المشروع · المالية · إدارة المشاريع · تقنية/نظام</span>
       </div>
       <div class="org-line"></div>
       <div class="org-box pm">
@@ -1208,7 +1199,7 @@
       </thead>
       <tbody>
         <tr>
-          <td>اعتماد الوثيقة والميزانية</td>
+          <td>اعتماد خطة العمل والميزانية</td>
           <td><span class="badge badge-a">A</span></td>
           <td><span class="badge badge-r">R</span></td>
           <td><span class="badge badge-i">I</span></td>
@@ -1595,7 +1586,7 @@
         <tr>
           <td><span class="badge badge-gate">مرحلة 0</span> اعتماد البرنامج</td>
           <td>الآن</td>
-          <td>اعتماد هذه الوثيقة · تسمية الإدارة / مدير المشروع / المسؤولون · تفويض جمع البيانات</td>
+          <td>اعتماد هذه خطة العمل · تسمية الإدارة / مدير المشروع / المسؤولون · تفويض جمع البيانات</td>
           <td>اعتماد / اعتماد بشروط / تأجيل</td>
         </tr>
         <tr>
@@ -1831,20 +1822,20 @@
     <h2><span class="h2-ar">ملحق د — قائمة تنفيذ المشروع</span><span class="en">Execution Checklist</span></h2>
 
     <div class="appendix-note">
-      قائمة متابعة عملية للتنفيذ. ضع علامة عند الإنجاز. مرتبطة بمراحل الاعتماد (0–3).
+      قائمة متابعة عملية للتنفيذ. ضع علامة عند الإنجاز. مرتبطة بمراحل الاعتماد (0–1).
     </div>
 
     <div class="cl-group">
       <h4>أ · قبل البدء (المرحلة 0)</h4>
-      <div class="cl-item"><span class="box"></span><span>اعتماد هذه الوثيقة من الإدارة العليا / لجنة التوجيه</span></div>
-      <div class="cl-item"><span class="box"></span><span>تسمية راعي المشروع ومدير المشروع والمسؤولين الأربعة</span></div>
+      <div class="cl-item"><span class="box"></span><span>اعتماد هذه خطة العمل من الإدارة  / لجنة التوجيه</span></div>
+      <div class="cl-item"><span class="box"></span><span>تحديد مدير المشروع والمسؤولين الأربعة</span></div>
       <div class="cl-item"><span class="box"></span><span>تحديد مشروع تجريبي واحد</span></div>
       <div class="cl-item"><span class="box"></span><span>التأكد من جاهزية النظام والمستخدمين والصلاحيات</span></div>
-      <div class="cl-item"><span class="box"></span><span>عقد اجتماع الانطلاق مع الإدارات المعنية</span></div>
+      <div class="cl-item"><span class="box"></span><span>عقد اجتماع البدء مع الإدارات المعنية</span></div>
     </div>
 
     <div class="cl-group">
-      <h4>ب · تجميع وهيكلة البيانات (الأسابيع 2–4 → المرحلة 1)</h4>
+      <h4>ب · تجميع وهيكلة البيانات (الأسابيع 1–2 → المرحلة 1)</h4>
       <div class="cl-item"><span class="box"></span><span>تعبئة ملحق أ: حصر ملفات إكسل</span></div>
       <div class="cl-item"><span class="box"></span><span>تعبئة ملحق ب: متطلبات الإدارات</span></div>
       <div class="cl-item"><span class="box"></span><span>تجهيز قائمة المشاريع والعقود</span></div>
@@ -1856,7 +1847,7 @@
     </div>
 
     <div class="cl-group">
-      <h4>ج · المشروع التجريبي (الأسابيع 5–7 → المرحلة 2)</h4>
+      <h4>ج · المشروع التجريبي (الأسابيع 2–3 → المرحلة 2)</h4>
 
       <div class="cl-item"><span class="box"></span><span>إدخال المشروع والعقود في النظام</span></div>
       <div class="cl-item"><span class="box"></span><span>إدخال / استيراد جدول الكميات وربط الأصناف بالبنود</span></div>
@@ -1882,7 +1873,7 @@
     <h2><span class="h2-ar">قائمة التنفيذ — التعميم والتحويل</span><span class="en">Rollout Checklist</span></h2>
 
     <div class="cl-group">
-      <h4>د · تعميم المشاريع النشطة (الأسابيع 8–10)</h4>
+      <h4>د · تعميم المشاريع النشطة (الأسابيع 2–3)</h4>
       <div class="cl-item"><span class="box"></span><span>ترتيب أولوية المشاريع النشطة للترحيل</span></div>
       <div class="cl-item"><span class="box"></span><span>ترحيل بيانات كل مشروع وفق طبقات البيانات المعتمدة</span></div>
       <div class="cl-item"><span class="box"></span><span>التحقق من ربط الأصناف ببنود جداول الكميات للبنود النشطة</span></div>
@@ -1892,7 +1883,7 @@
     </div>
 
     <div class="cl-group">
-      <h4>هـ · التشغيل المتوازي والتحويل النهائي (الأسابيع 11–12 → المرحلة 3)</h4>
+      <h4>هـ · التشغيل المتوازي والتحويل النهائي (الأسابيع 3–4 → المرحلة 3)</h4>
       <div class="cl-item"><span class="box"></span><span>تشغيل متوازٍ محدود (مراجعة لا إدخال مزدوج دائم)</span></div>
       <div class="cl-item"><span class="box"></span><span>إعلان تاريخ التحويل النهائي رسمياً</span></div>
       <div class="cl-item"><span class="box"></span><span>إيقاف إكسل كمصدر إدخال للمشاريع المغطاة (قراءة فقط)</span></div>

@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-01 (كشف الحساب: حركة الحساب فقط + الحساب المقابل من الطرف المعاكس + رقم القيد)
+**آخر تحديث:** 2026-08-07 (لا إشعار موقع جغرافي عند الدخول · تسجيل خروج خمول = 3 دقائق)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -22,6 +22,8 @@
 **الوضع المحلي (`VITE_DATA_BACKEND=local`):** `npm run dev:local` — Postgres = مصدر الحقيقة.
 
 **Shell:** موديول واحد (`shellWindowPolicy.ts`)؛ الآلة الحاسبة استثناء. ERP = `TopNavBar` + `ErpWorkspace`.
+
+**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول → خروج بعد **3 دقائق** (`IDLE_LOGOUT_MS` في `sessionLogout.ts` عبر `useIdleLogout`).
 
 ---
 

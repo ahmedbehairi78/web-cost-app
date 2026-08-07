@@ -11,7 +11,8 @@ export const SESSION_USER_LOCK_KEY = 'web_cost_session_user_email';
 export const REQUIRE_FRESH_LOGIN_KEY = 'web_cost_require_fresh_login';
 /** Last successful password login email — kept across logout / app restart (password never stored). */
 export const LAST_LOGIN_EMAIL_KEY = 'web_cost_last_login_email';
-export const IDLE_LOGOUT_MS = 3 * 60 * 1000;
+/** Auto logout / Electron quit after this much pointer/keyboard idle time. */
+export const IDLE_LOGOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 /** Desktop app always uses password; browser after logout/idle too. */
 export function mustPasswordLogin(): boolean {

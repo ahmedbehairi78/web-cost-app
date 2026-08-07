@@ -1270,7 +1270,7 @@ Golden path: قفل Q2-2026 → قيد/فاتورة بتاريخ داخل الر
 | **اختصار** | **`input.code === 'KeyN'`** (+ `preventDefault`) — لوحة عربية | `electron/main.ts` `before-input-event` |
 | **جلسة** | النافذة الثانوية مخفية حتى `sessionProbe` + جاهزية الواجهة، ثم `window-reveal` — **لا** Login ولا شعار | `App.tsx` · `electronShell.ts` · `main.ts` |
 | **UI** | زر Electron-only في Sidebar + TopNav بجانب Palette (ليس داخل General Settings) | `Sidebar.tsx` · `TopNavBar.tsx` |
-| **نشاط** | لا toast موقع تقريبي في نوافذ `reuseSession` | `useActivitySession.ts` |
+| **نشاط** | لا toast موقع جغرافي عند الدخول (أي نافذة) · `IDLE_LOGOUT_MS` = **3 دقائق** | `useActivitySession.ts` · `sessionLogout.ts` |
 
 ### لا تراجع
 

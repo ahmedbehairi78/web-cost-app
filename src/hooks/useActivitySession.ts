@@ -1,23 +1,18 @@
 import { useEffect, useRef } from 'react';
 import type { User } from 'firebase/auth';
-import toast from 'react-hot-toast';
-import { useLanguage } from '../context/LanguageContext';
 import {
   logActivity,
   logClientError,
   maybeLogHeartbeat,
-  requestApproxGeolocation,
 } from '../services/activityLogService';
 import { isDesktopSessionReuseWindow } from '../lib/electronShell';
 
-const GEO_NOTICE_STORAGE_KEY = 'activity_geo_notice_toast_v1';
-
 /**
- * Run once per signed-in session: start log, optional geo, heartbeat, global error taps.
+ * Run once per signed-in session: start log, heartbeat, global error taps.
+ * No geolocation notice toast — workplace geo is not prompted at login.
  */
 export function useActivitySession(user: User | null, opts: { language: string; theme: string }) {
   const startedRef = useRef(false);
-  const { t } = useLanguage();
 
   useEffect(() => {
     if (!user) {
@@ -27,19 +22,7 @@ export function useActivitySession(user: User | null, opts: { language: string; 
 
     if (!startedRef.current) {
       startedRef.current = true;
-      // New GUI secondary window: no geo toast (primary already showed it this app launch).
       const reuseGui = isDesktopSessionReuseWindow();
-      if (!reuseGui) {
-        try {
-          if (typeof sessionStorage !== 'undefined' && !sessionStorage.getItem(GEO_NOTICE_STORAGE_KEY)) {
-            sessionStorage.setItem(GEO_NOTICE_STORAGE_KEY, '1');
-            toast(t('activity_geo_notice'), { duration: 2000 });
-          }
-        } catch {
-          toast(t('activity_geo_notice'), { duration: 2000 });
-        }
-        requestApproxGeolocation();
-      }
       void logActivity({
         kind: 'session_start',
         meta: {
@@ -75,5 +58,5 @@ export function useActivitySession(user: User | null, opts: { language: string; 
       window.removeEventListener('unhandledrejection', onRej);
       window.clearInterval(hb);
     };
-  }, [user, opts.language, opts.theme, t]);
+  }, [user, opts.language, opts.theme]);
 }
