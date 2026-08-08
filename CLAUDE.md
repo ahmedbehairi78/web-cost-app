@@ -152,7 +152,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `server/src/modules/projectInventoryTransfers.ts` | Project warehouse transfer workflow + GL on `approve-projects` |
 | `server/src/modules/ensureLocalProject.ts` | Insert missing `projects` row before FK writes (Firestore ahead of SQLite) |
 | `src/main.tsx` | App boot · `installExcelLikeInputBehavior()` · `ThemedToaster` |
-| `src/lib/excelLikeInputs.ts` | **Excel-like inputs (app-wide):** focus → select-all (typing replaces); arrow/Tab/Enter navigate cells inside editable `<table>`s. Opt-out: `data-excel-nav="off"` / `data-excel-select="off"`. Tests: `excelLikeInputs.test.ts` |
+| `src/lib/excelLikeInputs.ts` | **Excel-like inputs (app-wide):** focus → select-all; arrows navigate (table grid or spatial nearest in forms/dialogs); **never** spin `type=number` on ↑/↓. Opt-out: `data-excel-nav="off"` / `data-excel-select="off"`. Tests: `excelLikeInputs.test.ts` |
 | `src/lib/spreadsheetGridNav.ts` · `SpreadsheetCellInput` | Explicit grid refs (e.g. Actual Costs IPC) — `data-excel-nav="managed"` so global navigator skips them |
 | `firestore.rules` | Security rules |
 | `firestore.indexes.json` | Composite indexes — 7 indexes covering all `where + orderBy` query patterns |
@@ -982,8 +982,10 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 | **طبقة عامة** | `installExcelLikeInputBehavior()` عند الإقلاع | `excelLikeInputs.ts` · `main.tsx` |
 | **تحديد عند التركيز** | text/number/textarea | نفس الملف |
 | **تنقل جدول** | Arrow / Enter / Tab؛ صفوف بأعداد أعمدة مختلفة | اكتشاف DOM داخل `<table>` |
+| **تنقل مكاني** | أقرب حقل في اتجاه السهم داخل form/dialog | `resolveSpatialNeighbor` |
+| **إلغاء spin للأرقام** | ↑/↓ على `type=number` لا تغيّر القيمة | `preventDefault` دائماً |
 | **توافق** | `SpreadsheetCellInput` → `data-excel-nav="managed"` | `SpreadsheetCellInput.tsx` |
-| **اختبارات** | 8 + 4 حالات | `excelLikeInputs.test.ts` · `spreadsheetGridNav.test.ts` |
+| **اختبارات** | 16 حالة | `excelLikeInputs.test.ts` · `spreadsheetGridNav.test.ts` |
 
 ### لا تراجع
 

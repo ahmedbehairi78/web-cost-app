@@ -1,9 +1,10 @@
 /**
  * App-wide Excel-like input behaviour:
  * - focus → select all (typing replaces existing value)
- * - inside editable tables → arrow / Enter / Tab navigate between cells
+ * - arrow keys never spin `<input type="number">` values
+ * - arrow / Enter / Tab navigate between fields (table grid, else spatial nearest)
  *
- * Opt out: `data-excel-nav="off"` on an input, or `data-excel-select="off"` to skip select-only.
+ * Opt out: `data-excel-nav="off"` · `data-excel-select="off"` · scope: `data-excel-nav-scope`
  */
 
 const SELECTABLE_INPUT_TYPES = new Set([
@@ -17,7 +18,8 @@ const SELECTABLE_INPUT_TYPES = new Set([
   '', // missing type defaults to text
 ]);
 
-const NAV_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'Enter']);
+const ARROW_KEYS = new Set(['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']);
+const NAV_KEYS = new Set([...ARROW_KEYS, 'Tab', 'Enter']);
 
 /** Query for fields that participate in Excel-like grid navigation. */
 export const EXCEL_NAV_FIELD_SELECTOR = [
@@ -28,7 +30,17 @@ export const EXCEL_NAV_FIELD_SELECTOR = [
   ':not([disabled]):not([readonly]):not([data-excel-nav=off])',
   ', textarea:not([disabled]):not([readonly]):not([data-excel-nav=off])',
 ].join('');
+
 export type ExcelNavField = HTMLInputElement | HTMLTextAreaElement;
+
+export type RectLike = {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+  width: number;
+  height: number;
+};
 
 export function isExcelNavField(el: EventTarget | null): el is ExcelNavField {
   if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return false;
@@ -45,6 +57,17 @@ export function isExcelSelectableField(el: EventTarget | null): el is ExcelNavFi
   return true;
 }
 
+export function isNumberInput(el: ExcelNavField): boolean {
+  const typed = el as HTMLInputElement;
+  if (typeof typed.type === 'string' && typed.type.length > 0) {
+    return typed.type.toLowerCase() === 'number';
+  }
+  if (typeof el.getAttribute === 'function') {
+    return (el.getAttribute('type') || '').toLowerCase() === 'number';
+  }
+  return false;
+}
+
 export function fieldHasFullSelection(el: ExcelNavField): boolean {
   const len = el.value?.length ?? 0;
   if (typeof el.selectionStart !== 'number' || typeof el.selectionEnd !== 'number') {
@@ -56,10 +79,11 @@ export function fieldHasFullSelection(el: ExcelNavField): boolean {
 
 /**
  * When the value is fully selected (Excel "ready" mode), horizontal arrows leave the cell.
- * Mid-edit caret stays in the field.
+ * Mid-edit caret stays in the field (text only — number inputs always navigate).
  */
 export function shouldNavigateHorizontally(el: ExcelNavField, key: string): boolean {
   if (key !== 'ArrowLeft' && key !== 'ArrowRight') return true;
+  if (isNumberInput(el)) return true;
   const len = el.value?.length ?? 0;
   if (len === 0) return true;
   if (fieldHasFullSelection(el)) return true;
@@ -108,7 +132,7 @@ export function resolveTableGridMove(
   if (rows <= 0) return null;
   const colsIn = (r: number) => rowFields[r]?.length ?? 0;
 
-  let { row, col } = current;
+  const { row, col } = current;
   if (row < 0 || row >= rows || col < 0 || col >= colsIn(row)) return null;
 
   if (key === 'Tab') {
@@ -157,6 +181,83 @@ export function resolveTableGridMove(
   }
 }
 
+function rectCenter(r: RectLike): { x: number; y: number } {
+  return { x: (r.left + r.right) / 2, y: (r.top + r.bottom) / 2 };
+}
+
+/**
+ * Pick the nearest field in the arrow direction by screen position.
+ * Prefers alignment on the orthogonal axis (same column when moving vertically, etc.).
+ */
+export function resolveSpatialNeighbor<T>(
+  key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight',
+  currentRect: RectLike,
+  candidates: Array<{ id: T; rect: RectLike }>,
+): T | null {
+  const cur = rectCenter(currentRect);
+  const AXIS_WEIGHT = 3;
+  const THRESH = 2;
+
+  let best: { id: T; score: number } | null = null;
+
+  for (const c of candidates) {
+    const o = rectCenter(c.rect);
+    const dx = o.x - cur.x;
+    const dy = o.y - cur.y;
+    let score = Number.POSITIVE_INFINITY;
+
+    switch (key) {
+      case 'ArrowDown':
+        if (dy <= THRESH) continue;
+        score = dy + Math.abs(dx) * AXIS_WEIGHT;
+        break;
+      case 'ArrowUp':
+        if (dy >= -THRESH) continue;
+        score = -dy + Math.abs(dx) * AXIS_WEIGHT;
+        break;
+      case 'ArrowRight':
+        if (dx <= THRESH) continue;
+        score = dx + Math.abs(dy) * AXIS_WEIGHT;
+        break;
+      case 'ArrowLeft':
+        if (dx >= -THRESH) continue;
+        score = -dx + Math.abs(dy) * AXIS_WEIGHT;
+        break;
+      default:
+        continue;
+    }
+
+    if (!best || score < best.score) best = { id: c.id, score };
+  }
+
+  return best?.id ?? null;
+}
+
+export function resolveNavScope(el: Element): Element {
+  return (
+    el.closest('[data-excel-nav-scope]') ||
+    el.closest('[role="dialog"]') ||
+    el.closest('[aria-modal="true"]') ||
+    el.closest('form') ||
+    el.closest('[data-radix-portal]') ||
+    document.getElementById('root') ||
+    document.body
+  );
+}
+
+function isFieldVisible(el: ExcelNavField): boolean {
+  if (el.getClientRects().length === 0) return false;
+  const style = window.getComputedStyle(el);
+  if (style.visibility === 'hidden' || style.display === 'none') return false;
+  return true;
+}
+
+function listScopeNavFields(scope: Element, except: ExcelNavField): ExcelNavField[] {
+  return [...scope.querySelectorAll(EXCEL_NAV_FIELD_SELECTOR)]
+    .filter(isExcelNavField)
+    .filter((f) => f !== except && isFieldVisible(f));
+}
+
 function focusAndSelect(el: ExcelNavField): void {
   requestAnimationFrame(() => {
     el.focus();
@@ -172,42 +273,89 @@ function buildRowFieldsMatrix(fromEl: ExcelNavField): ExcelNavField[][] {
   return listTableNavRows(fromEl).map((tr) => listRowNavFields(tr));
 }
 
-function handleTableNavKeyDown(e: KeyboardEvent): void {
-  if (!NAV_KEYS.has(e.key)) return;
-  if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (!isExcelNavField(e.target)) return;
-
-  const el = e.target;
-  if (!el.closest('table')) return;
-  // Explicitly managed grids (legacy SpreadsheetCellInput) handle their own keys
-  if (el.dataset.excelNav === 'managed') return;
-
-  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !shouldNavigateHorizontally(el, e.key)) {
-    return;
-  }
-
+function tryTableNavigation(e: KeyboardEvent, el: ExcelNavField): boolean {
+  if (!el.closest('table')) return false;
   const located = locateTableGridCell(el);
-  if (!located) return;
+  if (!located) return false;
 
   const matrix = buildRowFieldsMatrix(el);
   const next = resolveTableGridMove(e.key, located, matrix, e.shiftKey);
   // Tab past the last/first cell — let the browser leave the grid
-  if (!next) return;
+  if (!next) return false;
 
   const moved = next.row !== located.row || next.col !== located.col;
-  // Always prevent default for handled nav keys (stops number-input spin on ArrowUp/Down)
   e.preventDefault();
   e.stopPropagation();
   if (moved) {
     const target = matrix[next.row]?.[next.col];
     if (target) focusAndSelect(target);
   }
+  return true;
+}
+
+function trySpatialNavigation(e: KeyboardEvent, el: ExcelNavField): boolean {
+  if (!ARROW_KEYS.has(e.key)) return false;
+  const key = e.key as 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
+  const scope = resolveNavScope(el);
+  const others = listScopeNavFields(scope, el);
+  if (others.length === 0) return false;
+
+  const currentRect = el.getBoundingClientRect();
+  const target = resolveSpatialNeighbor(
+    key,
+    currentRect,
+    others.map((f) => ({ id: f, rect: f.getBoundingClientRect() })),
+  );
+  if (!target) return false;
+
+  e.preventDefault();
+  e.stopPropagation();
+  focusAndSelect(target);
+  return true;
+}
+
+function handleNavKeyDown(e: KeyboardEvent): void {
+  if (!NAV_KEYS.has(e.key)) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (!isExcelNavField(e.target)) return;
+
+  const el = e.target;
+
+  // Always block native number spin (↑/↓ change value) — even when no neighbor exists
+  if (isNumberInput(el) && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+    e.preventDefault();
+  }
+
+  // Explicitly managed grids (SpreadsheetCellInput) own their arrow keys
+  if (el.dataset.excelNav === 'managed') return;
+
+  if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !shouldNavigateHorizontally(el, e.key)) {
+    return;
+  }
+
+  // Vertical arrows on any field: never leave browser to mutate number values
+  if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+    if (tryTableNavigation(e, el)) return;
+    if (trySpatialNavigation(e, el)) return;
+    // number already preventDefault'd above; text vertical with no neighbor — no-op
+    return;
+  }
+
+  if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+    if (tryTableNavigation(e, el)) return;
+    if (trySpatialNavigation(e, el)) return;
+    return;
+  }
+
+  // Tab / Enter: table grids only (Enter in loose forms should still submit when appropriate)
+  if (el.closest('table')) {
+    tryTableNavigation(e, el);
+  }
 }
 
 function handleFocusIn(e: FocusEvent): void {
   if (!isExcelSelectableField(e.target)) return;
   const el = e.target;
-  // Avoid fighting IME / programmatic focus loops
   requestAnimationFrame(() => {
     if (document.activeElement !== el) return;
     try {
@@ -222,15 +370,14 @@ function handleFocusIn(e: FocusEvent): void {
  * Install document-level listeners. Call once at app boot; returns cleanup.
  */
 export function installExcelLikeInputBehavior(root: Document | HTMLElement = document): () => void {
-  const doc = root instanceof Document ? root : root.ownerDocument ?? document;
   const focusTarget: Document | HTMLElement = root;
   const keyTarget: Document | HTMLElement = root;
 
   focusTarget.addEventListener('focusin', handleFocusIn);
-  keyTarget.addEventListener('keydown', handleTableNavKeyDown, true);
+  keyTarget.addEventListener('keydown', handleNavKeyDown, true);
 
   return () => {
     focusTarget.removeEventListener('focusin', handleFocusIn);
-    keyTarget.removeEventListener('keydown', handleTableNavKeyDown, true);
+    keyTarget.removeEventListener('keydown', handleNavKeyDown, true);
   };
 }
