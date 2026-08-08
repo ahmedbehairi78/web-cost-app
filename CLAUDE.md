@@ -971,6 +971,35 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — تفكيك ActualCosts / Inventory (عرضي · مرحلي) ✅ (2026-08-08)
+
+> **جلسة 2026-08-08:** فصل مكونات عرضية من المونوليث لتقليل إعادة الرسم أثناء الكتابة — **بدون** نقل مسارات `handleSubmit` / اعتماد IPC / ربط 127 / اعتماد تحويلات.
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **ActualCosts** | Sidebar · بانر مخزون · محرر بنود فاتورة · شبكة IPC · مودالات إضافة حساب/مورد/حذف | `src/components/actualCosts/*` |
+| **Inventory** | نقل `ProjectTransferModal` · `ProjectWarehouseMovements` · `InventorySetupGuide` | `src/components/inventory/` |
+| **عزل state ساخن** | أسماء طباعة الصرف · استيراد رصيد افتتاحي · `useCallback` لـ `onRefreshNeeded` | `ConsumptionPrintNamesModal` · `OpeningInventoryImportPanel` |
+| **مشترك** | helpers UI للمخزون | `inventoryUiShared.ts` |
+
+### لا تراجع
+
+- لا تنقل `postInvoice` / اعتماد IPC / اعتماد تحويل بين المشاريع إلى المكونات المستخرجة — callbacks فقط.
+- لا تُعِد توصيل `IndirectExpensePanel` / `ContractExpensePanel` (مسار indirect داخل فاتورة المشتريات).
+- لا تلمس مسار ربط/فك حساب 127 في هذه المرحلة.
+
+### تحقق
+
+```powershell
+npm run lint   # أخطاء جديدة على ملفات الاستخراج = صفر (الأخطاء القديمة خارج النطاق)
+# ActualCosts: فاتورة آجلة · بنود متعددة · مستخلص باطن معاينة
+# Inventory: رصيد → استيراد افتتاحي · صرف · سجل → أسماء طباعة · فتح مودال تحويل مشروع
+```
+
+---
+
 ## 🔴 HANDOFF — اعتماد مستخلص عميل 400 (قيد غير متوازن) ✅ (2026-08-08)
 
 > **سبب:** تقريب مستقل لكل بند من بنود قيد IPC إلى منزلتين → فرق **0.01** جنيه (مدين 74332.68 / دائن 74332.67) يفشل `assertBalanced` → HTTP 400 على `POST /billing/:id/approve`.

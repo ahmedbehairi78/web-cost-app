@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-08 (اعتماد IPC — موازنة قيد بعد التقريب · تخفيف lag Electron · إدخال شبيه بإكسل)
+**آخر تحديث:** 2026-08-08 (تفكيك ActualCosts/Inventory عرضي · اعتماد IPC موازنة قيد · تخفيف lag Electron · إدخال شبيه بإكسل)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -29,6 +29,8 @@
 
 **إدخال شبيه بإكسل (2026-08-08):** عند التركيز على حقل نص/رقم يُحدَّد المحتوى بالكامل (الكتابة تستبدل القيمة). الأسهم ←→↑↓ تنتقل بين الحقول (جداول + أقرب حقل مكانياً داخل dialog/`fixed inset-0` فقط — بدون مسح `#root`)؛ **لا** تغيّر قيمة `type=number`. التثبيت من `main.tsx` عبر `installExcelLikeInputBehavior()` (`src/lib/excelLikeInputs.ts`). استثناء: `data-excel-nav="off"`.
 
+**تفكيك ActualCosts / Inventory (2026-08-08):** مكونات عرضية تحت `actualCosts/` و`inventory/` (قوائم · محررات بنود · مودالات صغيرة · طباعة صرف · استيراد افتتاحي) مع `memo`/`useCallback` — مسارات الكتابة المحاسبية والمخزنية تبقى في الـ parent.
+
 ---
 
 ## 2. بنية المجلدات (مختصرة)
@@ -39,13 +41,10 @@ web-cost-app/
 │   ├── components/
 │   │   ├── Projects.tsx          # مشاريع + شجرة الأصناف (أسفل الصفحة)
 │   │   ├── MaterialsTree.tsx   # مجموعات/أصناف + تصدير/استيراد Excel
-│   │   ├── Inventory.tsx       # مخازن: أصناف | رصيد | استلام | تحويل | صرف/إرجاع
-│   │   ├── inventory/QuickLinkMaterialModal.tsx  # ربط فوري صنف↔BOQ من الصرف
-│   │   ├── inventory/UnlinkedMaterialsReport.tsx # تقرير بنود/أصناف غير مربوطة
-│   │   ├── BOQ.tsx             # BOQ + شارات الروابط + منع حذف (DeleteBlockedModal)
-│   │   ├── boq/DeleteBlockedModal.tsx  # نافذة منع حذف بند مربوط
-│   │   ├── ActualCosts.tsx     # فاتورة (BOQ متعدد لكل صنف) / مستخلص / عهدة |
-│   │   ├── gl/GLCustodySettlement.tsx  # تبويب تسوية عهدة — قائمة + modal (SET-{project}-NNNN)
+│   │   ├── Inventory.tsx       # مخازن — parent؛ تبويبات + اعتماد تحويلات / ربط 127
+│   │   ├── inventory/          # أوراق: تحويل مشروع · حركات · دليل · طباعة صرف · استيراد افتتاحي · …
+│   │   ├── ActualCosts.tsx     # تكاليف — parent (حفظ/اعتماد/GL)؛ UI في actualCosts/
+│   │   ├── actualCosts/        # قائمة · بنود فاتورة · شبكة IPC · مودالات صغيرة · بانر مخزون
 │   │   ├── FixedAssets.tsx     # سجل أصول · إهلاك · قوائم 119/52/مركز تكلفة
 │   │   ├── GeneralSettings.tsx # سمة، لغة، شاشة البداية، طباعة (admin)
 │   │   ├── Settings.tsx        # إعدادات النظام — admin sections عبر usePermissions().isAdmin

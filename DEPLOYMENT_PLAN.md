@@ -217,6 +217,7 @@
 - [x] `app.asar` + عدم تضمين أسرار (مفاتيح Firebase العامة فقط).
 - [x] **Offline sync (2026-08-08):** مسودات IndexedDB + طابور `safe_save` / `confirm_required` + `Idempotency-Key` + شريط حالة + لوحة تأكيد — يشمل BOQ/VO — `src/lib/offline/*`
 - [x] **Excel-like inputs (2026-08-08):** select-on-focus + تنقل أسهم داخل جداول التحرير — `src/lib/excelLikeInputs.ts` (مثبّت من `main.tsx`)
+- [x] **Split ActualCosts/Inventory UI (2026-08-08):** استخراج عرضي تحت `actualCosts/` · `inventory/` — بدون نقل مسارات الكتابة
 - [ ] تعتيم حزمة الواجهة (obfuscator اختياري فوق minify).
 - **Done:** فحص الحزمة لا يكشف أسراراً؛ المنطق المالي يبقى على الخادم؛ المسودات/الطابور تمنع ضياع التعبئة عند انقطاع الشبكة.
 
@@ -405,7 +406,7 @@
 | 11 — التحديث | ✅ | المحتوى Railway · **electron-updater** GitHub Releases |
 | 12 — اختبار وإطلاق | ✅ | golden paths ✅ · Electron login ✅ · PTRF ✅ · ERP mode ✅ |
 
-**آخر تحديث:** 2026-08-08 — تخفيف lag Electron (idle throttle · بدون MutationObserver أصوات · cache يومي) · 2026-07-29 — قائمة الدخل (هيكل إقفال + استبعاد `fiscal_pl_close` + وضع تحليلي) · 2026-07-27 — إقفال قائمة الدخل + قيد افتتاحي · 2026-07-26 — قفل الفترات المحاسبية · 2026-07-25 — Electron multi-window · 2026-06-26 Shell · Settings admin · General Settings · Release **v1.0.3**.
+**آخر تحديث:** 2026-08-08 — تفكيك ActualCosts/Inventory (عرضي) · تخفيف lag Electron (idle throttle · بدون MutationObserver أصوات · cache يومي) · 2026-07-29 — قائمة الدخل (هيكل إقفال + استبعاد `fiscal_pl_close` + وضع تحليلي) · 2026-07-27 — إقفال قائمة الدخل + قيد افتتاحي · 2026-07-26 — قفل الفترات المحاسبية · 2026-07-25 — Electron multi-window · 2026-06-26 Shell · Settings admin · General Settings · Release **v1.0.3**.
 
 **أوامر سريعة:**
 ```powershell

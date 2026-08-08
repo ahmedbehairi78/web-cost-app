@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useErpModuleDraft, useErpModuleView } from '../hooks/useErpModuleView';
 import {
-  Plus, Search, ShoppingCart, X, FileText, Receipt, Loader2,
-  Download, Upload, Trash2, AlertTriangle, CheckCircle2, Clock, Filter, Printer
+  Plus, ShoppingCart, X, FileText, Receipt, Loader2,
+  AlertTriangle, Printer
 } from 'lucide-react';
 import { collection, query, addDoc, serverTimestamp, where, orderBy, limit, writeBatch, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { listenQuery } from '../lib/firestoreListen';
@@ -23,16 +23,25 @@ import { JournalPreviewModal, type JournalPreviewEntry } from './gl/JournalPrevi
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, roundMoney2 } from '../lib/utils';
 import { roundMoney } from '../lib/money';
-import { formatQuantity } from '../lib/formatQuantity';
 import { useLanguage } from '../context/LanguageContext';
 import { displayLocale, formatNumber } from '../lib/numberLocale';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { SearchableSelect } from './ui/SearchableSelect';
-import { SpreadsheetCellInput } from './ui/SpreadsheetCellInput';
 import { chartLeafAccountOptions } from '../lib/chartOfAccountsPicker';
 import { GLCustodySettlement } from './gl/GLCustodySettlement';
 import { PurchaseTransactionDetail } from './actualCosts/PurchaseTransactionDetail';
+import { InventorySnapshotBanner } from './actualCosts/InventorySnapshotBanner';
+import {
+  CostsPurchaseSidebar,
+  type CostsPurchaseStatusFilter,
+  type CostsSidebarPurchaseRow,
+} from './actualCosts/CostsPurchaseSidebar';
+import { InvoiceLinesEditor } from './actualCosts/InvoiceLinesEditor';
+import { IpcItemsGrid } from './actualCosts/IpcItemsGrid';
+import { AddExpenseAccountModal, type NewExpenseAccountFields } from './actualCosts/AddExpenseAccountModal';
+import { AddSupplierModal, type NewSupplierFields } from './actualCosts/AddSupplierModal';
+import { ConfirmDeleteModal } from './actualCosts/ConfirmDeleteModal';
 import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { usePermissions } from '../context/PermissionsContext';
 import { isLocalBackend } from '../lib/dataBackend';
@@ -217,7 +226,7 @@ function isActiveTab(value: string): value is ActiveTab {
   return value === 'invoice' || value === 'ipc' || value === 'custody';
 }
 
-type PurchaseStatusFilter = 'all' | 'draft' | 'submitted' | 'approved' | 'pending' | 'posted' | 'paid';
+type PurchaseStatusFilter = CostsPurchaseStatusFilter;
 
 function matchesPurchaseStatusFilter(
   tx: PurchaseTransaction,
@@ -681,18 +690,10 @@ export function ActualCosts() {
     items: [] as BillingItem[],
   });
 
-  const [newAccountData, setNewAccountData] = useState({
-    accountName: '', accountNameEn: '', accountCode: '', parentCode: '511',
-  });
-
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean; title: string; message: string; onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-  const [newSupplierData, setNewSupplierData] = useState({
-    name: '', nameEn: '', taxNumber: '', phone: '', address: '',
-    type: 'subcontractor' as 'supplier' | 'subcontractor',
-  });
   const [indirectCenters, setIndirectCenters] = useState<
     Array<{ id: string; code: string; name: string; nameEn?: string | null; isActive?: boolean }>
   >([]);
@@ -724,9 +725,7 @@ export function ActualCosts() {
   const isSimpleAmountInvoice = isIndirectInvoice || isFixedAsset;
 
   const supplierTypeForActiveTab = activeTab === 'invoice' ? 'supplier' : 'subcontractor';
-  const newSupplierType = showSupplierModal && activeTab !== 'custody'
-    ? supplierTypeForActiveTab
-    : newSupplierData.type;
+  const newSupplierType = supplierTypeForActiveTab;
 
   const computedSupplierCode = useMemo(() => {
     const parentCode = newSupplierType === 'supplier' ? '21101' : '21102';
@@ -1163,12 +1162,11 @@ export function ActualCosts() {
   }, [filterProjectId]);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
-  const handleSaveAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveAccount = useCallback(async (data: NewExpenseAccountFields) => {
     setIsSubmitting(true);
     try {
       const payload = {
-        ...newAccountData,
+        ...data,
         type: 'expense',
         isGroup: false,
         status: 'active' as const,
@@ -1187,15 +1185,13 @@ export function ActualCosts() {
         setFormData(prev => ({ ...prev, expenseAccountId: docRef.id }));
       }
       setShowAccountModal(false);
-      setNewAccountData({ accountName: '', accountNameEn: '', accountCode: '', parentCode: '511' });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'chart_of_accounts');
     } finally { setIsSubmitting(false); }
-  };
+  }, []);
 
-  const handleSaveSupplier = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newSupplierData.nameEn.trim()) {
+  const handleSaveSupplier = useCallback(async (data: NewSupplierFields) => {
+    if (!data.nameEn.trim()) {
       toast.error(t('toast_english_name_required'));
       return;
     }
@@ -1204,17 +1200,17 @@ export function ActualCosts() {
       const parentCode = newSupplierType === 'supplier' ? '21101' : '21102';
       if (isLocalBackend) {
         const supplier = await suppliersApi.create({
-          name: newSupplierData.name || newSupplierData.nameEn,
-          nameEn: newSupplierData.nameEn,
+          name: data.name || data.nameEn,
+          nameEn: data.nameEn,
           type: newSupplierType,
-          taxNumber: newSupplierData.taxNumber,
-          phone: newSupplierData.phone,
-          address: newSupplierData.address,
+          taxNumber: data.taxNumber,
+          phone: data.phone,
+          address: data.address,
           isDeleted: false,
         } as unknown as Supplier) as { id: string };
         const account = await chartOfAccountsApi.create({
-          accountName: newSupplierData.name || newSupplierData.nameEn,
-          accountNameEn: newSupplierData.nameEn,
+          accountName: data.name || data.nameEn,
+          accountNameEn: data.nameEn,
           accountCode: computedSupplierCode,
           parentCode,
           type: 'liability',
@@ -1228,12 +1224,12 @@ export function ActualCosts() {
       } else {
         const batch = writeBatch(db);
         const supplierRef = doc(collection(db, 'suppliers'));
-        batch.set(supplierRef, { ...newSupplierData, type: newSupplierType, isDeleted: false, createdAt: serverTimestamp() });
+        batch.set(supplierRef, { ...data, type: newSupplierType, isDeleted: false, createdAt: serverTimestamp() });
 
         const accountRef = doc(collection(db, 'chart_of_accounts'));
         batch.set(accountRef, {
-          accountName: newSupplierData.name || newSupplierData.nameEn,
-          accountNameEn: newSupplierData.nameEn,
+          accountName: data.name || data.nameEn,
+          accountNameEn: data.nameEn,
           accountCode: computedSupplierCode,
           parentCode,
           type: 'liability',
@@ -1246,11 +1242,10 @@ export function ActualCosts() {
         setFormData(prev => ({ ...prev, supplierId: accountRef.id }));
       }
       setShowSupplierModal(false);
-      setNewSupplierData({ name: '', nameEn: '', taxNumber: '', phone: '', address: '', type: supplierTypeForActiveTab });
     } catch (err) {
       handleFirestoreError(err, OperationType.CREATE, 'suppliers');
     } finally { setIsSubmitting(false); }
-  };
+  }, [newSupplierType, computedSupplierCode, t, refreshReferenceData]);
 
   const handleExportTemplate = () => {
     const isAr = language === 'ar';
@@ -1286,19 +1281,32 @@ export function ActualCosts() {
     reader.readAsBinaryString(file);
   };
 
-  const handleItemQtyChange = (idx: number, qty: number) => {
-    const items = [...formData.items];
-    items[idx] = { ...items[idx], currentQty: qty, totalQty: items[idx].previousQty + qty, amount: (items[idx].previousQty + qty) * items[idx].rate };
-    setFormData(prev => ({ ...prev, items }));
-  };
+  const handleItemQtyChange = useCallback((idx: number, qty: number) => {
+    setFormData((prev) => {
+      const items = [...prev.items];
+      const row = items[idx];
+      if (!row) return prev;
+      items[idx] = {
+        ...row,
+        currentQty: qty,
+        totalQty: row.previousQty + qty,
+        amount: (row.previousQty + qty) * row.rate,
+      };
+      return { ...prev, items };
+    });
+  }, []);
 
-  const handleItemRateChange = (idx: number, rate: number) => {
-    const items = [...formData.items];
-    items[idx] = { ...items[idx], rate, amount: items[idx].totalQty * rate };
-    setFormData(prev => ({ ...prev, items }));
-  };
+  const handleItemRateChange = useCallback((idx: number, rate: number) => {
+    setFormData((prev) => {
+      const items = [...prev.items];
+      const row = items[idx];
+      if (!row) return prev;
+      items[idx] = { ...row, rate, amount: row.totalQty * rate };
+      return { ...prev, items };
+    });
+  }, []);
 
-  const setInvoiceLineField = (
+  const setInvoiceLineField = useCallback((
     lineId: string,
     field: keyof Omit<InvoiceLineDraft, 'id'>,
     value: string | number,
@@ -1309,27 +1317,29 @@ export function ActualCosts() {
         line.id === lineId ? { ...line, [field]: value } : line
       ),
     }));
-  };
+  }, []);
 
-  const handleInvoiceLineMaterialSelect = (lineId: string, materialCategoryId: string) => {
-    const cat = materialCategories.find((c) => c.id === Number(materialCategoryId));
-    setFormData((prev) => ({
-      ...prev,
-      invoiceLines: prev.invoiceLines.map((line) =>
-        line.id === lineId
-          ? {
-              ...line,
-              materialCategoryId: cat ? cat.id : undefined,
-              itemDescription: cat ? cat.name : line.itemDescription,
-              unit: cat ? cat.unit : line.unit,
-            }
-          : line
-      ),
-    }));
-  };
+  const handleInvoiceLineMaterialSelect = useCallback((lineId: string, materialCategoryId: string) => {
+    setFormData((prev) => {
+      const cat = materialCategories.find((c) => c.id === Number(materialCategoryId));
+      return {
+        ...prev,
+        invoiceLines: prev.invoiceLines.map((line) =>
+          line.id === lineId
+            ? {
+                ...line,
+                materialCategoryId: cat ? cat.id : undefined,
+                itemDescription: cat ? cat.name : line.itemDescription,
+                unit: cat ? cat.unit : line.unit,
+              }
+            : line
+        ),
+      };
+    });
+  }, [materialCategories]);
 
   /** اختيار بند BOQ يملأ الوصف والوحدة تلقائياً */
-  const handleInvoiceLineBOQSelect = (lineId: string, boqItemId: string) => {
+  const handleInvoiceLineBOQSelect = useCallback((lineId: string, boqItemId: string) => {
     setFormData((prev) => {
       const line = prev.invoiceLines.find(l => l.id === lineId);
       if (!line) return prev;
@@ -1367,18 +1377,18 @@ export function ActualCosts() {
         ),
       };
     });
-  };
+  }, [scopedBoqItems]);
 
-  const addInvoiceLine = () => {
+  const addInvoiceLine = useCallback(() => {
     setFormData((prev) => ({ ...prev, invoiceLines: [...prev.invoiceLines, createInvoiceLineDraft()] }));
-  };
+  }, []);
 
-  const removeInvoiceLine = (lineId: string) => {
+  const removeInvoiceLine = useCallback((lineId: string) => {
     setFormData((prev) => {
       const next = prev.invoiceLines.filter((line) => line.id !== lineId);
       return { ...prev, invoiceLines: next.length > 0 ? next : [createInvoiceLineDraft()] };
     });
-  };
+  }, []);
 
   const calculateIPCDeductions = () => {
     const worksValue = formData.items.reduce((s, i) => s + i.amount, 0);
@@ -2569,6 +2579,34 @@ export function ActualCosts() {
   ];
   const TABS = ALL_TABS.filter((t) => canViewTab(t.id));
 
+  const dismissInventorySnapshot = useCallback(() => setInventorySnapshot(null), []);
+
+  const handleSidebarNew = useCallback(() => {
+    resetForm();
+    setShowModal(true);
+  }, []);
+
+  const handleSidebarSelect = useCallback(
+    (tx: CostsSidebarPurchaseRow) => {
+      void selectPurchaseForDetail(tx as PurchaseTransaction);
+    },
+    [selectPurchaseForDetail],
+  );
+
+  const sidebarStatusLabel = useCallback(
+    (tx: CostsSidebarPurchaseRow) =>
+      purchaseStatusLabel(tx as PurchaseTransaction, activeTab as 'invoice' | 'ipc', language),
+    [activeTab, language],
+  );
+
+  const sidebarPaymentTypeOf = useCallback(
+    (tx: CostsSidebarPurchaseRow): 'cash' | 'credit' | null => {
+      if (activeTab !== 'invoice') return null;
+      return normalizeInvoicePaymentType(tx.paymentType);
+    },
+    [activeTab],
+  );
+
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div className={cn('p-8 min-h-screen transition-colors', theme === 'dark' ? 'bg-[#0a0a0a] text-gray-100' : 'bg-gray-50 text-gray-900')} dir={dir}>
@@ -2609,51 +2647,13 @@ export function ActualCosts() {
 
       {/* H2: بطاقة رصيد المخزون بعد حفظ فاتورة موزعة */}
       {inventorySnapshot && inventorySnapshot.length > 0 && activeTab === 'invoice' && (
-        <div className={cn('mb-6 rounded-xl border p-4', theme === 'dark' ? 'border-green-800 bg-green-950/30' : 'border-green-200 bg-green-50')}>
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 size={18} className="text-green-600" />
-              <span className="font-bold text-green-700 dark:text-green-400 text-sm">
-                {language === 'ar' ? 'رصيد المخزون المحدَّث بعد الفاتورة' : 'Updated Inventory Balance After Invoice'}
-              </span>
-            </div>
-            <button
-              type="button"
-              aria-label={language === 'ar' ? 'إغلاق' : 'Close'}
-              title={language === 'ar' ? 'إغلاق' : 'Close'}
-              onClick={() => setInventorySnapshot(null)}
-              className="text-gray-400 hover:text-gray-600"
-            >
-              <X size={16} />
-            </button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-gray-500 border-b">
-                  <th className="pb-1 text-start">{language === 'ar' ? 'الصنف' : 'Item'}</th>
-                  <th className="pb-1 text-center">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
-                  <th className="pb-1 text-center">{language === 'ar' ? 'الرصيد' : 'Balance'}</th>
-                  <th className="pb-1 text-center">{language === 'ar' ? 'المتاح' : 'Available'}</th>
-                  <th className="pb-1 text-center">{language === 'ar' ? 'سعر الوحدة' : 'Unit Cost'}</th>
-                  <th className="pb-1 text-end">{language === 'ar' ? 'العقد' : 'Contract'}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {inventorySnapshot.map((item, idx) => (
-                  <tr key={item.id || `${item.projectId || 'project'}-${item.materialCategoryId || item.itemDescription}-${idx}`} className="border-t border-dashed">
-                    <td className="py-1 font-medium">{item.itemDescription}</td>
-                    <td className="py-1 text-center">{item.unit}</td>
-                    <td className="py-1 text-center font-mono font-bold">{formatQuantity(item.quantityBalance, language)}</td>
-                    <td className="py-1 text-center font-mono text-green-700 font-bold">{formatQuantity(item.quantityAvailable, language)}</td>
-                    <td className="py-1 text-center font-mono">{formatMoney(item.unitCost)}</td>
-                    <td className="py-1 text-end text-gray-500">{item.contractNumber || item.contractId}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <InventorySnapshotBanner
+          items={inventorySnapshot}
+          theme={theme}
+          language={language}
+          formatMoney={formatMoney}
+          onDismiss={dismissInventorySnapshot}
+        />
       )}
 
       {/* ── CUSTODY TAB ──────────────────────────────────────────────────── */}
@@ -2735,140 +2735,36 @@ export function ActualCosts() {
             )}
           </div>
 
-          <aside className={cn(cardCls, 'w-full md:flex-[2] md:min-w-[17rem] md:max-w-[24rem] shrink-0 space-y-4 md:sticky md:top-4 order-1 md:order-none')}>
-            <div>
-              <h3 className="font-bold text-sm">{t('costs_filter_title')}</h3>
-            </div>
-
-            {canCreateInTab(activeTab) && (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => { resetForm(); setShowModal(true); }}
-                  className={cn(
-                    'flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-bold text-white transition-colors',
-                    'bg-blue-600 hover:bg-blue-500',
-                  )}
-                >
-                  <Plus size={16} />
-                  {activeTab === 'invoice' ? t('costs_new_invoice') : t('costs_new_ipc')}
-                </button>
-                {activeTab === 'invoice' && (
-                  <ManualHelpButton topicId="costs.invoice.purchase" size={16} />
-                )}
-                {activeTab === 'ipc' && (
-                  <ManualHelpButton topicId="costs.ipc.subcontractor" size={16} />
-                )}
-              </div>
-            )}
-
-            <div className="space-y-3">
-              <div>
-                <label className={labelCls}>{t('project')}</label>
-                <select className={selectCls} value={filterProjectId} onChange={(e) => setFilterProjectId(e.target.value)}>
-                  <option value="">{language === 'ar' ? '— كل المشاريع —' : '— All projects —'}</option>
-                  {scopedProjects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.projectName}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={labelCls}>{t('contract')}</label>
-                <select className={selectCls} value={filterContractId} onChange={(e) => setFilterContractId(e.target.value)}>
-                  <option value="">{language === 'ar' ? '— كل العقود —' : '— All contracts —'}</option>
-                  {filteredContractsForPicker.map((c) => (
-                    <option key={c.id} value={c.id}>{c.contractName} ({c.contractNumber})</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className={cn('pt-3 border-t space-y-2', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-              <label className={labelCls}>{language === 'ar' ? 'تصفية حسب الحالة' : 'Filter by status'}</label>
-              <select
-                className={selectCls}
-                value={purchaseStatusFilter}
-                onChange={(e) => setPurchaseStatusFilter(e.target.value as PurchaseStatusFilter)}
-              >
-                <option value="all">{language === 'ar' ? `الكل (${purchaseStatusCounts.all})` : `All (${purchaseStatusCounts.all})`}</option>
-                {activeTab === 'ipc' ? (
-                  <>
-                    <option value="draft">{language === 'ar' ? 'مسودة' : 'Draft'} ({purchaseStatusCounts.draft})</option>
-                    <option value="submitted">{language === 'ar' ? 'بانتظار الاعتماد' : 'Awaiting approval'} ({purchaseStatusCounts.submitted})</option>
-                    <option value="approved">{language === 'ar' ? 'معتمد' : 'Approved'} ({purchaseStatusCounts.approved})</option>
-                  </>
-                ) : (
-                  <>
-                    <option value="pending">{language === 'ar' ? 'معلق' : 'Pending'} ({purchaseStatusCounts.pending})</option>
-                    <option value="posted">{language === 'ar' ? 'مرحّلة' : 'Posted'} ({purchaseStatusCounts.posted})</option>
-                    <option value="paid">{language === 'ar' ? 'تم السداد' : 'Paid'} ({purchaseStatusCounts.paid})</option>
-                  </>
-                )}
-              </select>
-            </div>
-
-            <div className={cn('pt-3 border-t space-y-2', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-              <label className={labelCls}>{language === 'ar' ? 'بحث' : 'Search'}</label>
-              <div className="relative">
-                <Search className={cn('absolute top-1/2 -translate-y-1/2 text-gray-500', dir === 'rtl' ? 'right-3' : 'left-3')} size={16} />
-                <input
-                  type="text"
-                  placeholder={language === 'ar' ? 'بحث...' : 'Search...'}
-                  className={cn('w-full border rounded-lg py-2 text-sm outline-none focus:border-blue-500', dir === 'rtl' ? 'pr-9 pl-4' : 'pl-9 pr-4', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')}
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className={cn('pt-3 border-t space-y-2', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-              <p className={sectionTitleCls}>{t('costs_filter_list')}</p>
-              {loading ? (
-                <Loader2 className="animate-spin mx-auto" size={18} />
-              ) : purchaseSidebarList.length === 0 ? (
-                <p className="text-xs text-gray-500">{t('costs_filter_empty')}</p>
-              ) : (
-                <ul className="space-y-1 max-h-52 overflow-auto">
-                  {purchaseSidebarList.map((tx, txIdx) => {
-                    const active = selectedPurchaseId === tx.id;
-                    const tab = activeTab as 'invoice' | 'ipc';
-                    const paymentType =
-                      tab === 'invoice' ? normalizeInvoicePaymentType((tx as PurchaseTransaction).paymentType) : null;
-                    return (
-                      <li key={tx.id || `tx-${tx.referenceNumber}-${txIdx}`}>
-                        <button
-                          type="button"
-                          onClick={() => void selectPurchaseForDetail(tx as PurchaseTransaction)}
-                          className={cn(
-                            'w-full text-start px-2.5 py-1 rounded-lg text-sm border transition-colors',
-                            active
-                              ? 'bg-blue-600 text-white border-blue-600'
-                              : theme === 'dark'
-                                ? 'text-gray-300 border-gray-800 hover:bg-gray-800'
-                                : 'text-gray-700 border-gray-200 hover:bg-gray-50',
-                          )}
-                        >
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0 min-h-[1.25rem] leading-tight">
-                            <span className="font-bold shrink-0">{tx.referenceNumber || tx.id.slice(0, 8)}</span>
-                            <span className="text-xs opacity-80 shrink-0">{tx.date}</span>
-                            <span className="text-[10px] opacity-75 shrink-0">
-                              {purchaseStatusLabel(tx as PurchaseTransaction, tab, language)}
-                            </span>
-                            {paymentType && (
-                              <span className="text-[10px] opacity-75 shrink-0">
-                                {paymentType === 'cash' ? t('invoice_payment_cash') : t('invoice_payment_credit')}
-                              </span>
-                            )}
-                            <span className="text-[10px] opacity-75 shrink-0 truncate max-w-[8rem]">{tx.supplierName}</span>
-                          </div>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </aside>
+          <CostsPurchaseSidebar
+            theme={theme}
+            language={language}
+            dir={dir}
+            activeTab={activeTab}
+            cardCls={cardCls}
+            labelCls={labelCls}
+            selectCls={selectCls}
+            sectionTitleCls={sectionTitleCls}
+            canCreate={canCreateInTab(activeTab)}
+            loading={loading}
+            filterProjectId={filterProjectId}
+            filterContractId={filterContractId}
+            purchaseStatusFilter={purchaseStatusFilter}
+            searchTerm={searchTerm}
+            projects={scopedProjects}
+            contracts={filteredContractsForPicker}
+            purchaseStatusCounts={purchaseStatusCounts}
+            list={purchaseSidebarList as CostsSidebarPurchaseRow[]}
+            selectedPurchaseId={selectedPurchaseId}
+            statusLabel={sidebarStatusLabel}
+            paymentTypeOf={sidebarPaymentTypeOf}
+            t={t}
+            onFilterProject={setFilterProjectId}
+            onFilterContract={setFilterContractId}
+            onStatusFilter={setPurchaseStatusFilter}
+            onSearch={setSearchTerm}
+            onSelect={handleSidebarSelect}
+            onNew={handleSidebarNew}
+          />
         </div>
       )}
 
@@ -2996,7 +2892,7 @@ export function ActualCosts() {
                           : t('supplier_name')}
                       </label>
                       {(activeTab !== 'invoice' || formData.paymentType === 'credit') && (
-                        <button type="button" onClick={() => { setNewSupplierData(p => ({ ...p, type: supplierTypeForActiveTab })); setShowSupplierModal(true); }} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1">
+                        <button type="button" onClick={() => setShowSupplierModal(true)} className="text-[10px] text-blue-500 hover:underline flex items-center gap-1">
                           <Plus size={12} />{language === 'ar' ? 'إضافة مورد/مقاول' : 'Add Supplier'}
                         </button>
                       )}
@@ -3247,241 +3143,35 @@ export function ActualCosts() {
                         </div>
                       </div>
                     ) : isFixedAsset ? null : (
-                    <div className={cn('rounded-xl border p-4', theme === 'dark' ? 'border-gray-800 bg-gray-900/30' : 'border-gray-200 bg-gray-50')}>
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="text-sm font-bold text-gray-400 uppercase">
-                          {t('invoice_lines')}
-                        </h4>
-                        <button
-                          type="button"
-                          onClick={addInvoiceLine}
-                          className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded flex items-center gap-1"
-                        >
-                          <Plus size={12} />
-                          {language === 'ar' ? 'إضافة بند' : 'Add Line'}
-                        </button>
-                      </div>
-                      <div className="space-y-4 max-h-80 overflow-y-auto pe-1">
-                        {normalizedInvoiceLines.map((line, lineIdx) => (
-                          <div key={line.id} className={cn('rounded-lg border p-3 space-y-3', theme === 'dark' ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-white')}>
-                            <div className="flex items-center justify-between">
-                              <span className="text-xs font-bold text-gray-400">
-                                {language === 'ar' ? `البند ${lineIdx + 1}` : `Line ${lineIdx + 1}`}
-                              </span>
-                              <button
-                                type="button"
-                                aria-label={language === 'ar' ? 'حذف بند الفاتورة' : 'Remove invoice line'}
-                                title={language === 'ar' ? 'حذف بند الفاتورة' : 'Remove invoice line'}
-                                onClick={() => removeInvoiceLine(line.id)}
-                                className="text-red-400 hover:text-red-300"
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                            {/* H1: ربط ببند BOQ اختياري - اختيار متعدد */}
-                            {invoiceBoqItems.length > 0 && (
-                              <div className="mb-2">
-                                <label className="text-xs font-bold text-gray-400 mb-2 block">
-                                  {language === 'ar' ? 'ربط ببنود BOQ (اختياري)' : 'Link to BOQ items (optional)'}
-                                </label>
-                                <div className={cn(
-                                  'max-h-40 overflow-y-auto rounded-lg border p-2 space-y-1',
-                                  theme === 'dark' ? 'border-gray-700 bg-gray-900/50' : 'border-gray-300 bg-gray-50'
-                                )}>
-                                  {invoiceBoqItems.map((b, idx) => {
-                                    const selectedIds = (line as InvoiceLineDraft).boqItemIds || [];
-                                    const isChecked = selectedIds.includes(b.id);
-                                    return (
-                                      <label
-                                        key={b.id || `${b.itemCode || 'boq'}-${idx}`}
-                                        className={cn(
-                                          'flex items-start gap-2 p-2 rounded cursor-pointer text-xs hover:bg-opacity-50',
-                                          theme === 'dark' ? 'hover:bg-gray-800' : 'hover:bg-gray-200',
-                                          isChecked && (theme === 'dark' ? 'bg-blue-900/30' : 'bg-blue-50')
-                                        )}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={isChecked}
-                                          onChange={() => handleInvoiceLineBOQSelect(line.id, b.id)}
-                                          className="mt-0.5 flex-shrink-0"
-                                        />
-                                        <span className={cn('flex-1', isChecked && 'font-medium')}>
-                                          <span className="font-mono text-blue-400">{b.itemCode}</span>
-                                          {' — '}
-                                          <span>{b.description}</span>
-                                          {' '}
-                                          <span className="text-gray-500">({b.unit})</span>
-                                        </span>
-                                      </label>
-                                    );
-                                  })}
-                                </div>
-                                {((line as InvoiceLineDraft).boqItemIds || []).length > 0 && (
-                                  <div className="mt-1 text-xs text-blue-400">
-                                    {language === 'ar' 
-                                      ? `${((line as InvoiceLineDraft).boqItemIds || []).length} بند مربوط`
-                                      : `${((line as InvoiceLineDraft).boqItemIds || []).length} item(s) linked`}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                            {isLocalBackend && materialCategories.length > 0 && (
-                              <select
-                                className={cn(inputCls, 'py-2 px-3 w-full text-xs mb-2')}
-                                value={line.materialCategoryId || ''}
-                                onChange={(e) => handleInvoiceLineMaterialSelect(line.id, e.target.value)}
-                                title={language === 'ar' ? 'اختيار صنف المادة' : 'Select material category'}
-                                aria-label={language === 'ar' ? 'اختيار صنف المادة' : 'Select material category'}
-                              >
-                                <option value="">{language === 'ar' ? '— اختر الصنف —' : '— Select material —'}</option>
-                                {materialCategories.map((c, idx) => (
-                                  <option key={c.id || `${c.code || 'material'}-${idx}`} value={c.id}>
-                                    {c.code} — {c.name} ({c.unit})
-                                  </option>
-                                ))}
-                              </select>
-                            )}
-                            <div className="grid grid-cols-4 gap-2">
-                              <input
-                                type="text"
-                                aria-label={language === 'ar' ? 'وصف البند' : 'Line description'}
-                                placeholder={language === 'ar' ? 'الوصف' : 'Description'}
-                                className={cn(inputCls, 'py-2 px-3')}
-                                value={line.itemDescription}
-                                onChange={(e) => setInvoiceLineField(line.id, 'itemDescription', e.target.value)}
-                                readOnly={isLocalBackend && !!line.materialCategoryId}
-                              />
-                              <input
-                                type="text"
-                                aria-label={language === 'ar' ? 'الوحدة' : 'Unit'}
-                                placeholder={language === 'ar' ? 'الوحدة' : 'Unit'}
-                                className={cn(inputCls, 'py-2 px-3')}
-                                value={line.unit}
-                                onChange={(e) => setInvoiceLineField(line.id, 'unit', e.target.value)}
-                              />
-                              <input
-                                type="number"
-                                step="0.01"
-                                aria-label={language === 'ar' ? 'الكمية' : 'Quantity'}
-                                placeholder={language === 'ar' ? 'الكمية' : 'Qty'}
-                                className={cn(inputCls, 'py-2 px-3')}
-                                value={line.quantity || ''}
-                                onChange={(e) => setInvoiceLineField(line.id, 'quantity', Number(e.target.value))}
-                              />
-                              <input
-                                type="number"
-                                step="0.01"
-                                aria-label={language === 'ar' ? 'سعر الوحدة' : 'Unit cost'}
-                                placeholder={language === 'ar' ? 'سعر الوحدة' : 'Unit Cost'}
-                                className={cn(inputCls, 'py-2 px-3')}
-                                value={line.unitCost || ''}
-                                onChange={(e) => setInvoiceLineField(line.id, 'unitCost', Number(e.target.value))}
-                              />
-                            </div>
-                            <div className="text-xs text-gray-400 space-y-0.5">
-                              <div>
-                                {language === 'ar' ? 'إجمالي البند (بدون ضريبة)' : 'Line total (ex-VAT)'}:{' '}
-                                <span className="font-mono">{formatMoney(line.totalCost)}</span>
-                              </div>
-                              <div>
-                                {language === 'ar' ? 'تكلفة الوحدة للمخزون (شامل ض.ق.م)' : 'Inventory unit cost (incl. VAT)'}:{' '}
-                                <span className="font-mono text-blue-400">{formatMoney(line.inventoryUnitCost)}</span>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <InvoiceLinesEditor
+                      theme={theme}
+                      language={language}
+                      inputCls={inputCls}
+                      title={t('invoice_lines')}
+                      lines={normalizedInvoiceLines}
+                      boqItems={invoiceBoqItems}
+                      materialCategories={materialCategories}
+                      showMaterials={isLocalBackend}
+                      formatMoney={formatMoney}
+                      onAddLine={addInvoiceLine}
+                      onRemoveLine={removeInvoiceLine}
+                      onFieldChange={setInvoiceLineField}
+                      onBoqToggle={handleInvoiceLineBOQSelect}
+                      onMaterialSelect={handleInvoiceLineMaterialSelect}
+                    />
                     )}
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                      <h4 className="text-sm font-bold text-gray-400 uppercase">{language === 'ar' ? 'بنود المستخلص' : 'IPC Items'}</h4>
-                      <div className="flex gap-2">
-                        <button type="button" onClick={handleExportTemplate} className="text-xs bg-gray-800 hover:bg-gray-700 px-3 py-1 rounded flex items-center gap-1"><Download size={14} />{language === 'ar' ? 'نموذج' : 'Template'}</button>
-                        <label className="text-xs bg-blue-900/20 text-blue-400 hover:bg-blue-900/40 px-3 py-1 rounded flex items-center gap-1 cursor-pointer"><Upload size={14} />{language === 'ar' ? 'استيراد' : 'Import'}<input type="file" aria-label={language === 'ar' ? 'استيراد ملف إكسل' : 'Import Excel file'} title={language === 'ar' ? 'استيراد ملف إكسل' : 'Import Excel file'} className="hidden" accept=".xlsx,.xls" onChange={handleImportExcel} /></label>
-                      </div>
-                    </div>
-                    <div
-                      className={cn(
-                        'border rounded-xl overflow-auto max-h-[min(55vh,32rem)]',
-                        theme === 'dark' ? 'border-gray-800' : 'border-gray-200',
-                      )}
-                    >
-                      <table className="w-full min-w-[52rem] text-xs text-right">
-                        <thead
-                          className={cn(
-                            'sticky top-0 z-10',
-                            theme === 'dark' ? 'bg-gray-900/95 text-gray-400' : 'bg-gray-50 text-gray-600',
-                          )}
-                        >
-                          <tr>
-                            <th className="p-2 whitespace-nowrap">{language === 'ar' ? 'كود' : 'Code'}</th>
-                            <th className="p-2 min-w-[14rem]">{language === 'ar' ? 'البيان' : 'Desc'}</th>
-                            <th className="p-2">{language === 'ar' ? 'الوحدة' : 'Unit'}</th>
-                            <th className="p-2">{language === 'ar' ? 'الكمية' : 'Qty'}</th>
-                            <th className="p-2 min-w-[5.5rem]">{language === 'ar' ? 'الفئة' : 'Rate'}</th>
-                            <th className="p-2">{language === 'ar' ? 'سابق' : 'Prev'}</th>
-                            <th className="p-2 min-w-[5.5rem]">{language === 'ar' ? 'حالي' : 'Curr'}</th>
-                            <th className="p-2">{language === 'ar' ? 'إجمالي' : 'Total'}</th>
-                          </tr>
-                        </thead>
-                        <tbody className={cn('divide-y', theme === 'dark' ? 'divide-gray-800' : 'divide-gray-200')}>
-                          {formData.items.map((item, idx) => (
-                            <tr
-                              key={item.boqItemId || `${item.itemCode || 'ipc-item'}-${idx}`}
-                              className={theme === 'dark' ? 'hover:bg-gray-900/40' : 'hover:bg-gray-50'}
-                            >
-                              <td className="p-2 font-mono whitespace-nowrap">{item.itemCode}</td>
-                              <td className="p-2 min-w-[14rem] max-w-[22rem] whitespace-normal leading-snug" title={item.description}>
-                                {item.description}
-                              </td>
-                              <td className="p-2 whitespace-nowrap">{item.unit}</td>
-                              <td className="p-2 font-mono text-gray-400 whitespace-nowrap">{formatNumber(((item as any).tenderQty ?? 0))}</td>
-                              <td className="p-2">
-                                <SpreadsheetCellInput
-                                  type="number"
-                                  step="0.01"
-                                  inputMode="decimal"
-                                  row={idx}
-                                  col={0}
-                                  rowCount={formData.items.length}
-                                  colCount={2}
-                                  gridRefs={ipcGridRefs}
-                                  variant="rate"
-                                  theme={theme}
-                                  aria-label={language === 'ar' ? `سعر البند ${item.itemCode}` : `Rate for ${item.itemCode}`}
-                                  value={Number.isFinite(item.rate) ? roundMoney2(item.rate) : ''}
-                                  onChange={(e) => handleItemRateChange(idx, Number(e.target.value))}
-                                />
-                              </td>
-                              <td className="p-2 font-mono text-gray-500 whitespace-nowrap">{item.previousQty}</td>
-                              <td className="p-2">
-                                <SpreadsheetCellInput
-                                  type="number"
-                                  step="0.01"
-                                  inputMode="decimal"
-                                  row={idx}
-                                  col={1}
-                                  rowCount={formData.items.length}
-                                  colCount={2}
-                                  gridRefs={ipcGridRefs}
-                                  variant="qty"
-                                  theme={theme}
-                                  aria-label={language === 'ar' ? `الكمية الحالية للبند ${item.itemCode}` : `Current quantity for ${item.itemCode}`}
-                                  value={item.currentQty}
-                                  onChange={(e) => handleItemQtyChange(idx, Number(e.target.value))}
-                                />
-                              </td>
-                              <td className="p-2 font-mono font-bold whitespace-nowrap">{formatNumber(item.totalQty * item.rate)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
+                  <IpcItemsGrid
+                    theme={theme}
+                    language={language}
+                    items={formData.items}
+                    gridRefs={ipcGridRefs}
+                    onExportTemplate={handleExportTemplate}
+                    onImportExcel={handleImportExcel}
+                    onRateChange={handleItemRateChange}
+                    onQtyChange={handleItemQtyChange}
+                  />
                 )}
 
                 <div className="grid grid-cols-2 gap-6">
@@ -3603,150 +3293,48 @@ export function ActualCosts() {
         )}
       </AnimatePresence>
 
-      {/* ── ADD EXPENSE ACCOUNT MODAL ─────────────────────────────────────── */}
       <AnimatePresence>
         {showAccountModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[60] p-4">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className={cn('w-full max-w-md border rounded-2xl shadow-2xl overflow-hidden', theme === 'dark' ? 'bg-[#1a1b1e] border-gray-800' : 'bg-white border-gray-200')}
-            >
-              <div className="p-6 border-b flex justify-between items-center">
-                <h3 className="text-lg font-bold">{language === 'ar' ? 'إضافة حساب مصروفات جديد' : 'Add Expense Account'}</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowAccountModal(false)}
-                  aria-label={language === 'ar' ? 'إغلاق النافذة' : 'Close dialog'}
-                  title={language === 'ar' ? 'إغلاق النافذة' : 'Close dialog'}
-                  className="text-gray-500 hover:text-white"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleSaveAccount} className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم العربي' : 'Arabic Name'}<span className="text-red-500 ms-1">*</span></label>
-                    <input required type="text" dir="rtl" placeholder="مثال: مواد خرسانة" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newAccountData.accountName} onChange={e => setNewAccountData(p => ({ ...p, accountName: e.target.value }))} />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم الإنجليزي' : 'English Name'}<span className="text-red-500 ms-1">*</span></label>
-                    <input required type="text" dir="ltr" placeholder="e.g. Concrete Materials" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newAccountData.accountNameEn} onChange={e => setNewAccountData(p => ({ ...p, accountNameEn: e.target.value }))} />
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'كود الحساب' : 'Account Code'}</label>
-                  <input required type="text" placeholder="e.g. 51101002" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newAccountData.accountCode} onChange={e => setNewAccountData(p => ({ ...p, accountCode: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الحساب الأب' : 'Parent Account'}</label>
-                  <select required aria-label={language === 'ar' ? 'الحساب الأب' : 'Parent account'} className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newAccountData.parentCode} onChange={e => setNewAccountData(p => ({ ...p, parentCode: e.target.value }))}>
-                    <option value="511">{language === 'ar' ? '511 - تكاليف مباشرة' : '511 - Direct Costs'}</option>
-                    <option value="512">{language === 'ar' ? '512 - تكاليف غير مباشرة' : '512 - Indirect Costs'}</option>
-                    <option value="521">{language === 'ar' ? '521 - إدارية وعمومية' : '521 - G&A'}</option>
-                    <option value="531">{language === 'ar' ? '531 - تكاليف التمويل' : '531 - Financing'}</option>
-                  </select>
-                </div>
-                <div className="pt-4 flex gap-3">
-                  <button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-2 rounded-lg font-bold transition-colors text-white">{isSubmitting ? '...' : (language === 'ar' ? 'حفظ' : 'Save')}</button>
-                  <button type="button" onClick={() => setShowAccountModal(false)} className={cn('flex-1 py-2 rounded-lg font-bold', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-200 hover:bg-gray-300')}>{t('cancel')}</button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+          <AddExpenseAccountModal
+            open
+            theme={theme}
+            language={language}
+            cancelLabel={t('cancel')}
+            isSubmitting={isSubmitting}
+            onClose={() => setShowAccountModal(false)}
+            onSubmit={handleSaveAccount}
+          />
         )}
       </AnimatePresence>
 
-      {/* ── ADD SUPPLIER / SUBCONTRACTOR MODAL ───────────────────────────── */}
       <AnimatePresence>
         {showSupplierModal && (
-          <div className="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center z-[60] p-4">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className={cn('w-full max-w-md border rounded-2xl shadow-2xl overflow-hidden', theme === 'dark' ? 'bg-[#1a1b1e] border-gray-800' : 'bg-white border-gray-200')}
-            >
-              <div className="p-6 border-b flex justify-between items-center">
-                <h3 className="text-lg font-bold">{language === 'ar' ? 'إضافة مورد / مقاول' : 'Add Supplier / Subcontractor'}</h3>
-                <button
-                  type="button"
-                  onClick={() => setShowSupplierModal(false)}
-                  aria-label={language === 'ar' ? 'إغلاق النافذة' : 'Close dialog'}
-                  title={language === 'ar' ? 'إغلاق النافذة' : 'Close dialog'}
-                  className="text-gray-500 hover:text-white"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <form onSubmit={handleSaveSupplier} className="p-6 space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'النوع' : 'Type'}</label>
-                  <div className="flex gap-3">
-                    <button type="button" disabled
-                      className="flex-1 py-2 rounded-lg text-sm font-bold border transition-all bg-blue-600 border-blue-600 text-white cursor-not-allowed"
-                    >
-                      {newSupplierType === 'supplier'
-                        ? (language === 'ar' ? 'مورد (21101)' : 'Supplier (21101)')
-                        : (language === 'ar' ? 'مقاول (21102)' : 'Subcontractor (21102)')}
-                    </button>
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'كود الحساب (تلقائي)' : 'Account Code (Auto)'}</label>
-                  <input readOnly aria-label={language === 'ar' ? 'كود الحساب التلقائي' : 'Auto generated account code'} value={computedSupplierCode} className={cn('w-full border rounded-lg py-2 px-3 text-sm font-mono cursor-not-allowed opacity-60', theme === 'dark' ? 'bg-gray-900 border-gray-800 text-blue-400' : 'bg-gray-50 border-gray-200 text-blue-700')} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم (عربي)' : 'Name (Arabic)'}</label>
-                  <input type="text" placeholder="الاسم بالعربية" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.name} onChange={e => setNewSupplierData(p => ({ ...p, name: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'الاسم (إنجليزي) *' : 'Name (English) *'}</label>
-                  <input required type="text" dir="ltr" placeholder="Name in English" className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.nameEn} onChange={e => setNewSupplierData(p => ({ ...p, nameEn: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'رقم التسجيل الضريبي' : 'Tax Registration'}</label>
-                  <input type="text" aria-label={language === 'ar' ? 'رقم التسجيل الضريبي' : 'Tax registration'} className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.taxNumber} onChange={e => setNewSupplierData(p => ({ ...p, taxNumber: e.target.value }))} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-gray-400 uppercase">{language === 'ar' ? 'رقم الهاتف' : 'Phone'}</label>
-                  <input type="text" aria-label={language === 'ar' ? 'رقم الهاتف' : 'Phone number'} className={cn('w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200')} value={newSupplierData.phone} onChange={e => setNewSupplierData(p => ({ ...p, phone: e.target.value }))} />
-                </div>
-                <div className="pt-4 flex gap-3">
-                  <button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 py-2 rounded-lg font-bold transition-colors text-white">{isSubmitting ? '...' : (language === 'ar' ? 'حفظ' : 'Save')}</button>
-                  <button type="button" onClick={() => setShowSupplierModal(false)} className={cn('flex-1 py-2 rounded-lg font-bold', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700' : 'bg-gray-200 hover:bg-gray-300')}>{t('cancel')}</button>
-                </div>
-              </form>
-            </motion.div>
-          </div>
+          <AddSupplierModal
+            open
+            theme={theme}
+            language={language}
+            cancelLabel={t('cancel')}
+            isSubmitting={isSubmitting}
+            supplierType={newSupplierType}
+            computedAccountCode={computedSupplierCode}
+            onClose={() => setShowSupplierModal(false)}
+            onSubmit={handleSaveSupplier}
+          />
         )}
       </AnimatePresence>
 
-      {/* ── CONFIRM DELETE MODAL ──────────────────────────────────────────── */}
       <AnimatePresence>
         {confirmConfig.isOpen && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              className={cn('border rounded-2xl w-full max-w-md overflow-hidden shadow-2xl', theme === 'dark' ? 'bg-[#151619] border-gray-800' : 'bg-white border-gray-200')}
-            >
-              <div className={cn('p-6 border-b flex justify-between items-center', theme === 'dark' ? 'bg-gray-900/50 border-gray-800' : 'bg-gray-50 border-gray-200')}>
-                <h3 className="text-lg font-bold text-red-500">{confirmConfig.title}</h3>
-                <button
-                  type="button"
-                  onClick={() => setConfirmConfig(p => ({ ...p, isOpen: false }))}
-                  aria-label={language === 'ar' ? 'إغلاق النافذة' : 'Close dialog'}
-                  title={language === 'ar' ? 'إغلاق النافذة' : 'Close dialog'}
-                  className="text-gray-500 hover:text-white transition-colors"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-              <div className="p-6"><p className={cn('text-sm', theme === 'dark' ? 'text-gray-300' : 'text-gray-600')}>{confirmConfig.message}</p></div>
-              <div className={cn('p-6 border-t flex justify-end gap-3', theme === 'dark' ? 'bg-gray-900/30 border-gray-800' : 'bg-gray-50 border-gray-200')}>
-                <button onClick={() => setConfirmConfig(p => ({ ...p, isOpen: false }))} className="px-4 py-2 rounded-lg text-sm font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors">{language === 'ar' ? 'إلغاء' : 'Cancel'}</button>
-                <button onClick={confirmConfig.onConfirm} disabled={isDeleting} className="px-6 py-2 rounded-lg text-sm font-bold bg-red-600 hover:bg-red-500 text-white transition-colors flex items-center gap-2">
-                  {isDeleting && <Loader2 className="animate-spin" size={16} />}
-                  {language === 'ar' ? 'تأكيد' : 'Confirm'}
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          <ConfirmDeleteModal
+            open
+            theme={theme}
+            language={language}
+            title={confirmConfig.title}
+            message={confirmConfig.message}
+            isDeleting={isDeleting}
+            onClose={() => setConfirmConfig(p => ({ ...p, isOpen: false }))}
+            onConfirm={confirmConfig.onConfirm}
+          />
         )}
       </AnimatePresence>
 

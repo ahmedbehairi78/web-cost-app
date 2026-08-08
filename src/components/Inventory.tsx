@@ -4,7 +4,7 @@ import { ManualHelpButton } from './help/ManualHelpButton';
 import {
   Package, ArrowLeftRight, History, Plus, CheckCircle2, XCircle,
   Loader2, ChevronDown, ChevronUp, RefreshCw, Printer, AlertTriangle,
-  Upload, FileSpreadsheet,
+  Upload,
 } from 'lucide-react';
 import { cn, listKey, compositeListKey } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
@@ -22,7 +22,6 @@ import {
   projectsApi,
   chartOfAccountsApi,
   settingsApi,
-  type ProjectInventoryMovement,
 } from '../services/local/modulesApi';
 import { useReportDocumentPreview } from '../hooks/useReportDocumentPreview';
 import { buildConsumptionOrderSections } from '../lib/reportDocument';
@@ -32,6 +31,25 @@ import { ConsumptionOrderModal, type ProjectInventoryItemForConsume } from './in
 import { WarehouseReceiptsPanel } from './inventory/WarehouseReceiptsPanel';
 import { ReturnOrderModal, type ReturnOrderLineContext } from './inventory/ReturnOrderModal';
 import { UnlinkedMaterialsReport } from './inventory/UnlinkedMaterialsReport';
+import { ProjectTransferModal } from './inventory/ProjectTransferModal';
+import { ProjectWarehouseMovements } from './inventory/ProjectWarehouseMovements';
+import { InventorySetupGuide } from './inventory/InventorySetupGuide';
+import { ConsumptionPrintNamesModal, type ConsumptionPrintNames } from './inventory/ConsumptionPrintNamesModal';
+import { OpeningInventoryImportPanel } from './inventory/OpeningInventoryImportPanel';
+import {
+  type Theme,
+  type ProjectInventoryItem,
+  type Contract,
+  type ProjectRow,
+  accessibleProjectIdsFromContracts,
+  projectMatchesScope,
+  asProjectInventoryItems,
+  fmtMoney,
+  tableTh,
+  inputCls,
+  btnGhost,
+  splitLabelCls,
+} from './inventory/inventoryUiShared';
 import { MaterialsTree } from './MaterialsTree';
 import { isLocalBackend } from '../lib/dataBackend';
 import { formatQuantity } from '../lib/formatQuantity';
@@ -40,38 +58,12 @@ import {
   findDisabledProjectWarehouseAccount,
   findWarehouseAccountRowForProject,
 } from '../lib/projectWarehouse';
-import {
-  exportOpeningInventoryTemplate,
-  parseOpeningInventoryFile,
-} from '../lib/inventoryOpeningExcel';
 import toast from 'react-hot-toast';
 import { consumePendingShellView, peekPendingShellView } from '../lib/shellNavigation';
 import { ApiError } from '../lib/apiClient';
 import { accountingService } from '../services/accountingService';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-
-interface ProjectInventoryItem {
-  id: number;
-  projectId: string;
-  projectName?: string;
-  projectCode?: string;
-  materialCategoryId?: number;
-  materialCode?: string;
-  materialName?: string;
-  itemDescription: string;
-  unit: string;
-  quantityIn: number;
-  quantityIssued: number;
-  quantityReturned: number;
-  quantityBalance: number;
-  quantityReserved: number;
-  quantityUnpriced?: number;
-  quantityAvailable: number;
-  unitCost: number;
-  avgUnitCost?: number;
-  updatedAt?: string;
-}
 
 /** @deprecated legacy contract_inventory — hidden from balance tab */
 interface InventoryItem {
@@ -208,13 +200,6 @@ function projectInventoryLabel(item: ProjectInventoryItem): string {
 
 function projectInventoryUnitCost(item: ProjectInventoryItem): number {
   return Number(item.avgUnitCost ?? item.unitCost ?? 0);
-}
-
-function asProjectInventoryItems(data: unknown): ProjectInventoryItem[] {
-  if (Array.isArray(data)) return data as ProjectInventoryItem[];
-  if (data && typeof data === 'object' && 'items' in data && Array.isArray((data as { items: unknown }).items))
-    return (data as { items: ProjectInventoryItem[] }).items;
-  return [];
 }
 
 function inventoryItemLabel(item: InventoryItem): string {
@@ -377,39 +362,6 @@ function normalizeContractRow(raw: Contract & { isDeleted?: boolean }): Contract
   };
 }
 
-async function ensureLocalProjectExists(
-  projectId: string,
-  hint?: ProjectRow,
-): Promise<void> {
-  if (!projectId) return;
-  try {
-    await projectsApi.get(projectId);
-    return;
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 404) throw error;
-  }
-
-  const projectName = hint?.projectName || projectId;
-  const projectCode = hint?.projectCode || `PRJ-${projectId.slice(0, 8)}`;
-  const clientName = projectName;
-
-  try {
-    await projectsApi.create({
-      id: projectId,
-      projectCode,
-      projectName,
-      clientName,
-      status: 'active',
-      budget: 0,
-      isDeleted: false,
-    } as Parameters<typeof projectsApi.create>[0] & { budget: number });
-  } catch (error) {
-    const msg = error instanceof ApiError ? error.message : '';
-    if (error instanceof ApiError && (error.status === 409 || msg.includes('UNIQUE'))) return;
-    throw error;
-  }
-}
-
 /** Postgres/API only — contracts for inventory pickers. */
 async function loadContractRowsForInventory(): Promise<Contract[]> {
   const localRows = await contractsApi.list();
@@ -484,20 +436,6 @@ interface ProjectInventoryTransfer {
   lines: ProjectTransferLine[];
 }
 
-interface Contract {
-  id: string;
-  contractName: string;
-  contractNumber: string;
-  projectId: string;
-}
-
-interface ProjectRow {
-  id: string;
-  projectName: string;
-  projectCode?: string;
-  inventoryAccountCode?: string;
-}
-
 interface WarehouseAccountRow {
   id: string;
   accountCode: string;
@@ -508,43 +446,6 @@ interface WarehouseAccountRow {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const today = () => new Date().toISOString().slice(0, 10);
-
-/** Projects reachable via at least one assigned contract; null = unrestricted (admin / PM). */
-function accessibleProjectIdsFromContracts(
-  contracts: Contract[],
-  myContractIds: string[] | null,
-  projects: ProjectRow[] = [],
-): Set<string> | null {
-  if (myContractIds === null) return null;
-  const codeToId = new Map(
-    projects
-      .map((p) => [String(p.projectCode || '').trim(), p.id] as const)
-      .filter(([code]) => code.length > 0),
-  );
-  const idToCode = new Map(
-    projects.map((p) => [p.id, String(p.projectCode || '').trim()] as const),
-  );
-  const ids = new Set<string>();
-  for (const c of contracts) {
-    if (!myContractIds.includes(c.id)) continue;
-    const pid = String(c.projectId || '').trim();
-    if (!pid) continue;
-    ids.add(pid);
-    const resolvedId = codeToId.get(pid);
-    if (resolvedId) ids.add(resolvedId);
-    const codeForId = idToCode.get(pid);
-    if (codeForId) ids.add(codeForId);
-  }
-  return ids;
-}
-
-function projectMatchesScope(project: ProjectRow, scopedIds: Set<string>): boolean {
-  if (scopedIds.has(project.id)) return true;
-  const code = String(project.projectCode || '').trim();
-  return code.length > 0 && scopedIds.has(code);
-}
 
 function contractsForAccessibleProjects(
   contracts: Contract[],
@@ -559,10 +460,6 @@ function contractsForAccessibleProjects(
     if (!project) return false;
     return projectMatchesScope(project, accessibleProjectIds);
   });
-}
-
-function fmtMoney(n: number) {
-  return formatMoneyLib(n);
 }
 
 /** Coerce any API response to InventoryItem[]. */
@@ -596,16 +493,7 @@ function asProjectInventoryTransfers(data: unknown): ProjectInventoryTransfer[] 
   return [];
 }
 
-function projectInventoryItemLabel(item: ProjectInventoryItem, ar: boolean): string {
-  const code = item.materialCode ? `${item.materialCode} — ` : '';
-  const name = item.materialName || item.itemDescription || (ar ? 'صنف' : 'Item');
-  return `${code}${name}`;
-}
-
 // ─── Theme helpers ────────────────────────────────────────────────────────────
-
-import type { AppTheme } from '../lib/shellTheme';
-type Theme = AppTheme;
 
 function pageBg(theme: Theme) {
   return theme === 'dark' ? 'bg-gray-950 text-gray-100'
@@ -622,29 +510,8 @@ function headerBg(theme: Theme) {
     : theme === 'soft' ? 'bg-white/70 border-gray-200'
     : 'bg-white border-gray-200';
 }
-function tableTh(theme: Theme) {
-  return theme === 'dark' ? 'bg-gray-800 text-gray-300'
-    : theme === 'soft' ? 'bg-gray-100 text-gray-600'
-    : 'bg-gray-50 text-gray-600';
-}
 function tableRowHover(theme: Theme) {
   return theme === 'dark' ? 'hover:bg-gray-800/60' : 'hover:bg-gray-50';
-}
-function inputCls(theme: Theme) {
-  return cn(
-    'w-full border rounded-lg px-3 py-2 text-sm outline-none transition-colors focus:ring-2 focus:ring-blue-500',
-    theme === 'dark'
-      ? 'bg-gray-800 border-gray-600 text-gray-100 placeholder-gray-500'
-      : 'bg-white border-gray-300 text-gray-900 placeholder-gray-400',
-  );
-}
-function btnGhost(theme: Theme) {
-  return cn(
-    'p-2 rounded-lg border transition-colors',
-    theme === 'dark'
-      ? 'border-gray-600 hover:bg-gray-700 text-gray-300'
-      : 'border-gray-300 hover:bg-gray-100 text-gray-600',
-  );
 }
 function splitSidebarCls(theme: Theme) {
   return cn(
@@ -664,9 +531,6 @@ function splitSelectCls(theme: Theme) {
     theme === 'dark' ? 'bg-gray-900 border-gray-800 text-white' : 'bg-white border-gray-200 text-gray-900',
   );
 }
-function splitLabelCls(theme: Theme) {
-  return cn('block text-xs font-bold mb-1.5', theme === 'dark' ? 'text-gray-400' : 'text-gray-500');
-}
 function splitSectionTitleCls() {
   return 'text-xs font-bold uppercase tracking-wide text-gray-500';
 }
@@ -682,13 +546,6 @@ function splitActiveListBtn(active: boolean, theme: Theme) {
 }
 function splitEmptyPaneCls(theme: Theme) {
   return cn('border rounded-xl p-12 text-center', theme === 'dark' ? 'border-gray-800 bg-[#151619]' : 'border-gray-200 bg-white');
-}
-function modalOverlay() { return 'fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4'; }
-function modalCard(theme: Theme) {
-  return cn(
-    'rounded-xl shadow-2xl w-full p-6',
-    theme === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900',
-  );
 }
 
 // ─── Status labels ────────────────────────────────────────────────────────────
@@ -735,301 +592,6 @@ function ConsumeModal({ item, contractId, contractLabel, projectLabel, onClose, 
   );
 }
 
-// ─── Project transfer modal ───────────────────────────────────────────────────
-
-function ProjectTransferModal({
-  projects,
-  contracts,
-  myContractIds,
-  onClose,
-  onSaved,
-}: {
-  projects: ProjectRow[];
-  contracts: Contract[];
-  myContractIds: string[] | null;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const { language, theme, t } = useLanguage();
-  const ar = language === 'ar';
-  const [fromProjectId, setFromProjectId] = useState('');
-  const [toProjectId, setToProjectId] = useState('');
-  const [date, setDate] = useState(today());
-  const [notes, setNotes] = useState('');
-  const [sourceInventory, setSourceInventory] = useState<ProjectInventoryItem[]>([]);
-  const [selectedLines, setSelectedLines] = useState<{ itemId: number; qty: string }[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [loadingInv, setLoadingInv] = useState(false);
-
-  const accessibleIds = useMemo(
-    () => accessibleProjectIdsFromContracts(contracts, myContractIds, projects),
-    [contracts, myContractIds, projects],
-  );
-
-  const sourceProjects = useMemo(() => {
-    if (accessibleIds === null) return projects;
-    return projects.filter((p) => projectMatchesScope(p, accessibleIds));
-  }, [projects, accessibleIds]);
-
-  const destProjects = useMemo(
-    () => projects.filter((p) => p.id !== fromProjectId),
-    [projects, fromProjectId],
-  );
-
-  useEffect(() => {
-    if (!fromProjectId) {
-      setSourceInventory([]);
-      return;
-    }
-    setLoadingInv(true);
-    inventoryApi
-      .projectSummary(fromProjectId)
-      .then((d) => {
-        const items = asProjectInventoryItems(d);
-        setSourceInventory(items.filter((i) => Number(i.quantityAvailable ?? i.quantityBalance) > 0));
-      })
-      .catch(() => toast.error(ar ? 'فشل تحميل مخزن المشروع' : 'Failed to load project warehouse'))
-      .finally(() => setLoadingInv(false));
-  }, [fromProjectId, ar]);
-
-  const toggleLine = (itemId: number) =>
-    setSelectedLines((prev) =>
-      prev.find((l) => l.itemId === itemId)
-        ? prev.filter((l) => l.itemId !== itemId)
-        : [...prev, { itemId, qty: '' }],
-    );
-
-  const updateQty = (itemId: number, qty: string) =>
-    setSelectedLines((prev) => prev.map((l) => (l.itemId === itemId ? { ...l, qty } : l)));
-
-  const handleSave = async () => {
-    if (!fromProjectId || !toProjectId) {
-      toast.error(ar ? 'اختر مشروع المصدر والوجهة' : 'Select source and destination projects');
-      return;
-    }
-    const validLines = selectedLines.filter((l) => Number(l.qty) > 0);
-    if (!validLines.length) {
-      toast.error(ar ? 'أضف صنفاً واحداً على الأقل بكمية' : 'Add at least one item with quantity');
-      return;
-    }
-    for (const line of validLines) {
-      const inv = sourceInventory.find((i) => i.id === line.itemId);
-      const avail = Number(inv?.quantityAvailable ?? inv?.quantityBalance ?? 0);
-      if (inv && Number(line.qty) > avail) {
-        toast.error(
-          ar
-            ? `${projectInventoryItemLabel(inv, true)}: الكمية تتجاوز المتاح (${formatQuantity(avail, language)})`
-            : `${projectInventoryItemLabel(inv, false)}: qty exceeds available (${formatQuantity(avail, language)})`,
-        );
-        return;
-      }
-    }
-    setLoading(true);
-    try {
-      const fromRow = sourceProjects.find((p) => p.id === fromProjectId);
-      const toRow = projects.find((p) => p.id === toProjectId);
-      await ensureLocalProjectExists(fromProjectId, fromRow);
-      await ensureLocalProjectExists(toProjectId, toRow);
-
-      await projectInventoryTransfersApi.create({
-        fromProjectId,
-        toProjectId,
-        transferDate: date,
-        notes: notes || undefined,
-        fromProjectCode: fromRow?.projectCode,
-        fromProjectName: fromRow?.projectName,
-        toProjectCode: toRow?.projectCode,
-        toProjectName: toRow?.projectName,
-        lines: validLines.map((l) => ({
-          projectInventoryId: l.itemId,
-          quantity: Number(l.qty),
-        })),
-      });
-      toast.success(ar ? 'تم إنشاء طلب التحويل بنجاح' : 'Transfer request created');
-      window.dispatchEvent(new CustomEvent('notifications:refresh'));
-      onSaved();
-      onClose();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : ar ? 'حدث خطأ' : 'An error occurred');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className={modalOverlay()}>
-      <div className={cn(modalCard(theme), 'max-w-2xl max-h-[90vh] overflow-y-auto')}>
-        <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-          {ar ? 'تحويل خامات بين مخازن المشاريع' : 'Transfer Between Project Warehouses'}
-          <ManualHelpButton topicId="inventory.transfer.project" size={16} />
-        </h3>
-
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <div>
-            <label className="block text-sm font-medium mb-1">{ar ? 'من مشروع' : 'From Project'}</label>
-            <select
-              value={fromProjectId}
-              onChange={(e) => {
-                setFromProjectId(e.target.value);
-                setSelectedLines([]);
-              }}
-              title={ar ? 'من مشروع' : 'From Project'}
-              aria-label={ar ? 'من مشروع' : 'From Project'}
-              className={inputCls(theme)}
-            >
-              <option value="">{ar ? '— اختر —' : '— Select —'}</option>
-              {sourceProjects.map((p, pi) => (
-                <option key={listKey(p.id, pi, `xfer-src-${p.projectCode}`)} value={p.id}>
-                  {p.projectCode ? `${p.projectCode} — ` : ''}{p.projectName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{ar ? 'إلى مشروع' : 'To Project'}</label>
-            <select
-              value={toProjectId}
-              onChange={(e) => setToProjectId(e.target.value)}
-              title={ar ? 'إلى مشروع' : 'To Project'}
-              aria-label={ar ? 'إلى مشروع' : 'To Project'}
-              className={inputCls(theme)}
-            >
-              <option value="">{ar ? '— اختر —' : '— Select —'}</option>
-              {destProjects.map((p, pi) => (
-                <option key={listKey(p.id, pi, `xfer-dst-${p.projectCode}`)} value={p.id}>
-                  {p.projectCode ? `${p.projectCode} — ` : ''}{p.projectName}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{ar ? 'تاريخ التحويل' : 'Transfer Date'}</label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              title={ar ? 'تاريخ التحويل' : 'Transfer Date'}
-              aria-label={ar ? 'تاريخ التحويل' : 'Transfer Date'}
-              className={inputCls(theme)}
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">{ar ? 'ملاحظات' : 'Notes'}</label>
-            <input
-              type="text"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              title={ar ? 'ملاحظات' : 'Notes'}
-              aria-label={ar ? 'ملاحظات' : 'Notes'}
-              placeholder={ar ? 'اختياري' : 'Optional'}
-              className={inputCls(theme)}
-            />
-          </div>
-        </div>
-
-        {fromProjectId && (
-          <div className="mt-2">
-            <p className="text-sm font-medium mb-2">{ar ? 'أصناف مخزن المشروع المتاحة:' : 'Available warehouse items:'}</p>
-            <p className={cn('text-xs mb-2', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-              {t('inventory_transfer_multi_hint')}
-            </p>
-            {loadingInv ? (
-              <div className={cn('flex items-center gap-2 text-sm py-4', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                {ar ? 'جاري التحميل...' : 'Loading...'}
-              </div>
-            ) : sourceInventory.length === 0 ? (
-              <p className={cn('text-sm py-4', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                {ar ? 'لا يوجد رصيد متاح في مخزن هذا المشروع' : 'No available stock in this project warehouse'}
-              </p>
-            ) : (
-              <div className={cn('border rounded-lg overflow-hidden', theme === 'dark' ? 'border-gray-700' : 'border-gray-200')}>
-                <table className="w-full text-sm">
-                  <thead className={tableTh(theme)}>
-                    <tr>
-                      <th className="p-2 w-8" />
-                      <th className={cn('p-2', ar ? 'text-right' : 'text-left')}>{ar ? 'الصنف' : 'Item'}</th>
-                      <th className="p-2 text-center">{ar ? 'الوحدة' : 'Unit'}</th>
-                      <th className="p-2 text-center">{ar ? 'المتاح' : 'Available'}</th>
-                      <th className="p-2 text-center">{ar ? 'الكمية' : 'Qty'}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {sourceInventory.map((inv) => {
-                      const sel = selectedLines.find((l) => l.itemId === inv.id);
-                      const avail = Number(inv.quantityAvailable ?? inv.quantityBalance ?? 0);
-                      return (
-                        <tr
-                          key={inv.id}
-                          className={cn(
-                            'border-t transition-colors',
-                            theme === 'dark' ? 'border-gray-700' : 'border-gray-100',
-                            sel ? (theme === 'dark' ? 'bg-blue-900/20' : 'bg-blue-50') : '',
-                          )}
-                        >
-                          <td className="p-2 text-center">
-                            <input
-                              type="checkbox"
-                              checked={!!sel}
-                              onChange={() => toggleLine(inv.id)}
-                              title={projectInventoryItemLabel(inv, ar)}
-                              aria-label={projectInventoryItemLabel(inv, ar)}
-                            />
-                          </td>
-                          <td className="p-2">{projectInventoryItemLabel(inv, ar)}</td>
-                          <td className="p-2 text-center">{inv.unit}</td>
-                          <td className="p-2 text-center font-mono text-green-600">
-                            {formatQuantity(avail, language)}
-                          </td>
-                          <td className="p-2 text-center">
-                            {sel && (
-                              <input
-                                type="number"
-                                min={0}
-                                step="0.01"
-                                value={sel.qty}
-                                onChange={(e) => updateQty(inv.id, e.target.value)}
-                                className={cn(inputCls(theme), 'w-28 text-center')}
-                                placeholder="0"
-                              />
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="flex justify-end gap-2 mt-5">
-          <button
-            type="button"
-            onClick={onClose}
-            className={cn(
-              'px-4 py-2 rounded-lg border text-sm transition-colors',
-              theme === 'dark' ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-50',
-            )}
-          >
-            {ar ? 'إلغاء' : 'Cancel'}
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleSave()}
-            disabled={loading}
-            className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-60 flex items-center gap-2 transition-colors"
-          >
-            {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-            {ar ? 'إرسال طلب التحويل' : 'Submit Transfer'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─── Tab 1: مخزن المشروع ──────────────────────────────────────────────────────
 
 function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefreshNeeded }: {
@@ -1071,9 +633,6 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
   } | null>(null);
   const [selectedMaterialId, setSelectedMaterialId] = useState<number | null>(null);
   const [showUnlinkedReport, setShowUnlinkedReport] = useState(false);
-  const [openingImportDate, setOpeningImportDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [openingImportLoading, setOpeningImportLoading] = useState(false);
-  const openingImportInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSelectedMaterialId(null);
@@ -1393,71 +952,6 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
     }
   };
 
-  const handleOpeningTemplate = () => {
-    exportOpeningInventoryTemplate(language === 'ar' ? 'ar' : 'en');
-  };
-
-  const handleOpeningImportFile = async (file: File | null) => {
-    if (!file) return;
-    if (!selectedProject) {
-      toast.error(t('inventory_opening_need_project'));
-      return;
-    }
-    if (!linkedWarehouseAccount) {
-      toast.error(t('inventory_opening_need_warehouse'));
-      return;
-    }
-    setOpeningImportLoading(true);
-    try {
-      const buffer = await file.arrayBuffer();
-      const parsed = parseOpeningInventoryFile(buffer);
-      if (parsed.length === 0) {
-        toast.error(t('inventory_opening_empty_file'));
-        return;
-      }
-      const result = await inventoryApi.importOpeningBalances(selectedProject, {
-        date: openingImportDate,
-        rows: parsed.map((r) => ({
-          materialCategoryCode: r.materialCategoryCode,
-          quantity: r.quantity,
-          avgUnitCost: r.avgUnitCost,
-        })),
-      });
-      await loadInventory();
-      onRefreshNeeded();
-      const summary = t('inventory_opening_result')
-        .replace('{imported}', String(result.imported))
-        .replace('{skipped}', String(result.skipped));
-      if (result.imported > 0) {
-        toast.success(
-          result.reference
-            ? `${t('inventory_opening_success')} — ${summary} — ${t('inventory_opening_gl_ref').replace('{reference}', result.reference)}`
-            : `${t('inventory_opening_success')} — ${summary}`,
-        );
-      } else {
-        toast(summary || t('inventory_opening_none'), { icon: 'ℹ️' });
-      }
-      if (result.errors.length > 0) {
-        toast.error(
-          `${t('inventory_opening_errors').replace('{count}', String(result.errors.length))}: ${result.errors.slice(0, 3).join(' · ')}`,
-        );
-      }
-    } catch (e) {
-      const msg =
-        e instanceof ApiError
-          ? e.message
-          : e instanceof Error
-            ? e.message
-            : ar
-              ? 'فشل استيراد الأرصدة'
-              : 'Failed to import opening balances';
-      toast.error(msg);
-    } finally {
-      setOpeningImportLoading(false);
-      if (openingImportInputRef.current) openingImportInputRef.current.value = '';
-    }
-  };
-
   return (
     <>
     <div className={splitRowCls(dir)}>
@@ -1774,60 +1268,11 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
         </div>
         <div className={cn('pt-3 border-t space-y-2', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
           {canImportOpening && selectedProject && (
-            <div className="space-y-2">
-              <label className={cn('block text-[10px] font-bold', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                {t('inventory_opening_date')}
-              </label>
-              <input
-                type="date"
-                value={openingImportDate}
-                onChange={(e) => setOpeningImportDate(e.target.value)}
-                className={cn(
-                  'w-full rounded-lg border px-3 py-2 text-sm outline-none focus:border-blue-500',
-                  theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900',
-                )}
-              />
-              <p className={cn('text-[10px] leading-snug', theme === 'dark' ? 'text-gray-500' : 'text-gray-500')}>
-                {t('inventory_opening_hint')}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleOpeningTemplate}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium border transition-colors',
-                    theme === 'dark'
-                      ? 'border-gray-600 text-gray-200 hover:bg-gray-800'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50',
-                  )}
-                >
-                  <FileSpreadsheet className="w-3.5 h-3.5" />
-                  {t('inventory_opening_template')}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!linkedWarehouseAccount) {
-                      toast.error(t('inventory_opening_need_warehouse'));
-                      return;
-                    }
-                    openingImportInputRef.current?.click();
-                  }}
-                  disabled={openingImportLoading || !linkedWarehouseAccount}
-                  className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 transition-colors"
-                >
-                  {openingImportLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                  {t('inventory_opening_import')}
-                </button>
-              </div>
-              <input
-                ref={openingImportInputRef}
-                type="file"
-                accept=".xlsx,.xls"
-                className="hidden"
-                onChange={(e) => void handleOpeningImportFile(e.target.files?.[0] ?? null)}
-              />
-            </div>
+            <OpeningInventoryImportPanel
+              projectId={selectedProject}
+              hasWarehouse={!!linkedWarehouseAccount}
+              onImported={() => { void loadInventory(); onRefreshNeeded(); }}
+            />
           )}
           {selectedProject && inventoryRows.length > 0 && (
             <button
@@ -1918,109 +1363,6 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
       )}
       {ReportPreviewHost}
     </>
-  );
-}
-
-const MOVEMENT_TYPE_LABELS: Record<
-  ProjectInventoryMovement['movementType'],
-  { ar: string; en: string }
-> = {
-  receipt: { ar: 'وارد', en: 'Receipt' },
-  issue: { ar: 'صرف', en: 'Issue' },
-  return: { ar: 'مرتجع', en: 'Return' },
-  reserve: { ar: 'حجز', en: 'Reserve' },
-  release: { ar: 'إلغاء حجز', en: 'Release' },
-};
-
-function ProjectWarehouseMovements({ projectId, refreshKey }: { projectId: string; refreshKey: string }) {
-  const { language, theme } = useLanguage();
-  const ar = language === 'ar';
-  const [movements, setMovements] = useState<ProjectInventoryMovement[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [expanded, setExpanded] = useState(false);
-
-  const load = useCallback(async () => {
-    if (!projectId) return;
-    setLoading(true);
-    try {
-      const data = await inventoryApi.projectMovements(projectId);
-      setMovements(data.movements ?? []);
-    } catch {
-      toast.error(ar ? 'فشل تحميل حركات المخزن' : 'Failed to load warehouse movements');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, ar]);
-
-  useEffect(() => {
-    if (expanded) void load();
-  }, [expanded, load, refreshKey]);
-
-  return (
-    <div className={cn('mt-6 border rounded-xl overflow-hidden', theme === 'dark' ? 'border-gray-700' : 'border-gray-200')}>
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className={cn(
-          'w-full flex items-center justify-between px-4 py-3 text-sm font-semibold transition-colors',
-          theme === 'dark' ? 'bg-gray-800 hover:bg-gray-750' : 'bg-gray-50 hover:bg-gray-100',
-        )}
-      >
-        <span>{ar ? 'تقرير حركة مخزن المشروع' : 'Project warehouse movement report'}</span>
-        {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-      </button>
-      {expanded && (
-        <div className="p-4">
-          <div className="flex justify-end mb-2">
-            <button type="button" onClick={() => void load()} className={btnGhost(theme)} title={ar ? 'تحديث' : 'Refresh'} aria-label={ar ? 'تحديث' : 'Refresh'}>
-              <RefreshCw className={cn('w-4 h-4', loading && 'animate-spin')} />
-            </button>
-          </div>
-          {loading ? (
-            <div className={cn('flex items-center gap-2 py-6 text-sm', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              {ar ? 'جاري التحميل...' : 'Loading...'}
-            </div>
-          ) : movements.length === 0 ? (
-            <p className={cn('text-sm py-4 text-center', theme === 'dark' ? 'text-gray-500' : 'text-gray-400')}>
-              {ar ? 'لا توجد حركات مسجّلة بعد' : 'No movements recorded yet'}
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead className={tableTh(theme)}>
-                  <tr>
-                    <th className="p-2">{ar ? 'التاريخ' : 'Date'}</th>
-                    <th className={cn('p-2', ar ? 'text-right' : 'text-left')}>{ar ? 'الصنف' : 'Item'}</th>
-                    <th className="p-2 text-center">{ar ? 'النوع' : 'Type'}</th>
-                    <th className="p-2 text-center">{ar ? 'الكمية' : 'Qty'}</th>
-                    <th className="p-2 text-center">{ar ? 'التكلفة' : 'Unit cost'}</th>
-                    <th className="p-2">{ar ? 'المرجع' : 'Reference'}</th>
-                  </tr>
-                </thead>
-                <tbody className={cn('divide-y', theme === 'dark' ? 'divide-gray-700' : 'divide-gray-100')}>
-                  {movements.map((m) => {
-                    const typeLabel = MOVEMENT_TYPE_LABELS[m.movementType] ?? { ar: m.movementType, en: m.movementType };
-                    return (
-                      <tr key={m.id}>
-                        <td className="p-2 font-mono whitespace-nowrap">{m.createdAt?.slice(0, 16) ?? '—'}</td>
-                        <td className="p-2">{m.materialName || m.materialCode || '—'}</td>
-                        <td className="p-2 text-center">{ar ? typeLabel.ar : typeLabel.en}</td>
-                        <td className="p-2 text-center font-mono">{formatQuantity(m.quantity, language)}</td>
-                        <td className="p-2 text-center font-mono">{m.unitCost != null ? fmtMoney(m.unitCost) : '—'}</td>
-                        <td className="p-2 text-gray-500">
-                          {[m.referenceType, m.referenceId].filter(Boolean).join(' · ') || '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -2664,11 +2006,6 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
     seedLineIds?: number[];
   } | null>(null);
   const [printOrderId, setPrintOrderId] = useState<number | null>(null);
-  const [printNames, setPrintNames] = useState({
-    requester: '',
-    receiver: '',
-    storekeeper: '',
-  });
   const [contractId, setContractId] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'draft' | 'confirmed' | 'pending_cost'>('all');
   const [selectedHistoryKey, setSelectedHistoryKey] = useState<string | null>(null);
@@ -2719,11 +2056,10 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
   );
 
   const openPrintNamesModal = (orderId: number) => {
-    setPrintNames({ requester: '', receiver: '', storekeeper: '' });
     setPrintOrderId(orderId);
   };
 
-  const confirmPrintConsumption = () => {
+  const confirmPrintConsumption = (printNames: ConsumptionPrintNames) => {
     if (!printOrder) return;
     openDocPreview({
       reportId: 'consumption_order',
@@ -3298,68 +2634,12 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
       </aside>
 
       {printOrder && (
-        <div className={modalOverlay()} onClick={() => setPrintOrderId(null)}>
-          <div
-            className={cn(modalCard(theme), 'max-w-md w-full')}
-            onClick={(e) => e.stopPropagation()}
-            dir={dir}
-          >
-            <h3 className="font-bold text-base mb-1">{t('consume_order_print')}</h3>
-            <p className={cn('text-xs mb-4', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
-              {t('consume_order_print_names_hint')}
-            </p>
-            <p className={cn('text-sm font-mono mb-3', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>
-              {printOrder.orderNumber}
-            </p>
-            <div className="space-y-3 mb-5">
-              <div>
-                <label className={splitLabelCls(theme)}>{t('consume_order_sign_requester')}</label>
-                <input
-                  type="text"
-                  value={printNames.requester}
-                  onChange={(e) => setPrintNames((p) => ({ ...p, requester: e.target.value }))}
-                  className={inputCls(theme)}
-                  placeholder={t('consume_order_sign_name_ph')}
-                />
-              </div>
-              <div>
-                <label className={splitLabelCls(theme)}>{t('consume_order_sign_receiver')}</label>
-                <input
-                  type="text"
-                  value={printNames.receiver}
-                  onChange={(e) => setPrintNames((p) => ({ ...p, receiver: e.target.value }))}
-                  className={inputCls(theme)}
-                  placeholder={t('consume_order_sign_name_ph')}
-                />
-              </div>
-              <div>
-                <label className={splitLabelCls(theme)}>{t('consume_order_sign_storekeeper')}</label>
-                <input
-                  type="text"
-                  value={printNames.storekeeper}
-                  onChange={(e) => setPrintNames((p) => ({ ...p, storekeeper: e.target.value }))}
-                  className={inputCls(theme)}
-                  placeholder={t('consume_order_sign_name_ph')}
-                />
-              </div>
-            </div>
-            <div className="flex justify-end gap-2">
-              <button type="button" onClick={() => setPrintOrderId(null)} className={btnGhost(theme)}>
-                {t('cancel')}
-              </button>
-              <button
-                type="button"
-                onClick={confirmPrintConsumption}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-amber-600 hover:bg-amber-700 text-white inline-flex items-center gap-2"
-              >
-                <Printer className="w-4 h-4" />
-                {t('consume_order_print_preview')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ConsumptionPrintNamesModal
+          orderNumber={printOrder.orderNumber}
+          onClose={() => setPrintOrderId(null)}
+          onConfirm={confirmPrintConsumption}
+        />
       )}
-
       {returnModal && (
         <ReturnOrderModal
           projectId={returnModal.projectId}
@@ -3374,52 +2654,6 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
         />
       )}
       {ReportPreviewHost}
-    </div>
-  );
-}
-
-// ─── Setup guide (empty stock) ────────────────────────────────────────────────
-
-function InventorySetupGuide({ theme }: { theme: Theme }) {
-  const { language } = useLanguage();
-  const ar = language === 'ar';
-  const steps = ar
-    ? [
-        { n: '1', title: 'شجرة الأصناف', body: 'من تبويب «الأصناف» هنا أو من أسفل موديول المشاريع — أنشئ مجموعات وأصناف المواد.' },
-        { n: '2', title: 'ربط BOQ', body: 'في جدول الكميات → زر الحزمة على البند — اختر الأصناف المسموح صرفها لهذا البند.' },
-        { n: '3', title: 'فاتورة موزعة', body: 'التكاليف الفعلية → فاتورة مشتريات → اختر الصنف لكل بند واحفظ بحالة مؤكدة لتسجيل الوارد في المخزون.' },
-        { n: '4', title: 'صرف وتحويل', body: 'من رصيد المخزون: «أمر صرف جديد» أو «صرف» على صف؛ من تبويب التحويلات: نقل بين العقود.' },
-      ]
-    : [
-        { n: '1', title: 'Materials tree', body: 'Use the Materials tab here (or Projects module) to define groups and categories.' },
-        { n: '2', title: 'Link BOQ', body: 'In BOQ → Package on a line → pick allowed materials for that item.' },
-        { n: '3', title: 'Distributed invoice', body: 'Actual Costs → purchase invoice → material per line → save as confirmed to post stock.' },
-        { n: '4', title: 'Issue & return', body: 'Balance tab: consumption order; History tab: returns. Legacy contract transfers are frozen.' },
-      ];
-
-  return (
-    <div
-      className={cn(
-        'mb-6 rounded-xl border p-5 space-y-3',
-        theme === 'dark' ? 'border-blue-800/50 bg-blue-950/30' : 'border-blue-200 bg-blue-50/80',
-      )}
-    >
-      <p className={cn('text-sm font-bold', theme === 'dark' ? 'text-blue-300' : 'text-blue-800')}>
-        {ar ? 'لا يوجد رصيد مخزون بعد — اتبع الخطوات:' : 'No inventory balance yet — follow these steps:'}
-      </p>
-      <ol className="space-y-2">
-        {steps.map((s) => (
-          <li key={s.n} className={cn('text-sm flex gap-3', theme === 'dark' ? 'text-gray-300' : 'text-gray-700')}>
-            <span className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center">
-              {s.n}
-            </span>
-            <span>
-              <span className="font-semibold">{s.title}: </span>
-              {s.body}
-            </span>
-          </li>
-        ))}
-      </ol>
     </div>
   );
 }
@@ -3456,6 +2690,10 @@ export default function Inventory() {
     return isLocalBackend ? 'materials' : 'balance';
   });
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefreshNeeded = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
     if (!isErpShell || !erp || draftHydrated.current) return;
@@ -3580,11 +2818,11 @@ export default function Inventory() {
             contracts={contractRows}
             contractsLoading={contractsLoading}
             myContractIds={myContractIds}
-            onRefreshNeeded={() => setRefreshKey((k) => k + 1)}
+            onRefreshNeeded={handleRefreshNeeded}
           />
         )}
         {activeTab === 'receipts' && (
-          <WarehouseReceiptsPanel onRefreshNeeded={() => setRefreshKey((k) => k + 1)} />
+          <WarehouseReceiptsPanel onRefreshNeeded={handleRefreshNeeded} />
         )}
         {activeTab === 'transfers' && (
           <InventoryTransfers
@@ -3599,7 +2837,7 @@ export default function Inventory() {
           <ConsumptionHistory
             contracts={contractRows}
             myContractIds={myContractIds}
-            onRefreshNeeded={() => setRefreshKey((k) => k + 1)}
+            onRefreshNeeded={handleRefreshNeeded}
           />
         )}
       </div>

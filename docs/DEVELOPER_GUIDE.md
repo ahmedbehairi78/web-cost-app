@@ -397,7 +397,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 - **فاتورة — آجلة/نقدية (2026-07-27):** مبدّل في النموذج؛ زر «فاتورة جديدة» أعلى الشريط الجانبي؛ نقدية → `supplierId: null` + دائن COA `12102…`.
 - **تسوية عهدة:** ترقيم `SET-{كود-المشروع}-0001`؛ لا `createTransaction` مباشرة عند الحفظ.
 
-**الملفات:** `ActualCosts.tsx` · `GLCustodySettlement.tsx` · `server/src/modules/purchaseTransactions.ts` · `server/src/modules/custodySettlements.ts`.
+**الملفات:** `ActualCosts.tsx` (parent — حفظ/اعتماد/GL) · `actualCosts/*` (قائمة · بنود فاتورة · شبكة IPC · مودالات) · `GLCustodySettlement.tsx` · `server/src/modules/purchaseTransactions.ts` · `server/src/modules/custodySettlements.ts`.
 
 ### 6.5.0 ربط BOQ ↔ أصناف المخزون (2026-07-24)
 
@@ -416,7 +416,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 
 | بند | تفصيل |
 |-----|--------|
-| UI | مخزون → رصيد → قالب / استيراد (يتطلب مخزن 127 مربوط) |
+| UI | مخزون → رصيد → **`OpeningInventoryImportPanel`** (يعزل تاريخ الاستيراد عن جدول الرصيد) · قالب / استيراد (يتطلب مخزن 127 مربوط) |
 | Excel | كود الصنف · الكمية · متوسط التكلفة — `inventoryOpeningExcel.ts` |
 | API | `POST /api/inventory/project/:projectId/opening-import` |
 | GL | قيد واحد `INV-OPEN-…` — Dr 127… / Cr جاري الشركاء `31401001` |
