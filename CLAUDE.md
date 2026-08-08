@@ -151,7 +151,9 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `server/src/accounting/syncCoaBatch.ts` | Firestore→SQLite COA batch upsert; **preserves `active`** on project-linked 127… accounts when Firestore sync would disable them |
 | `server/src/modules/projectInventoryTransfers.ts` | Project warehouse transfer workflow + GL on `approve-projects` |
 | `server/src/modules/ensureLocalProject.ts` | Insert missing `projects` row before FK writes (Firestore ahead of SQLite) |
-| `src/main.tsx` | `ThemedToaster` (toast styles follow active theme) |
+| `src/main.tsx` | App boot · `installExcelLikeInputBehavior()` · `ThemedToaster` |
+| `src/lib/excelLikeInputs.ts` | **Excel-like inputs (app-wide):** focus → select-all (typing replaces); arrow/Tab/Enter navigate cells inside editable `<table>`s. Opt-out: `data-excel-nav="off"` / `data-excel-select="off"`. Tests: `excelLikeInputs.test.ts` |
+| `src/lib/spreadsheetGridNav.ts` · `SpreadsheetCellInput` | Explicit grid refs (e.g. Actual Costs IPC) — `data-excel-nav="managed"` so global navigator skips them |
 | `firestore.rules` | Security rules |
 | `firestore.indexes.json` | Composite indexes — 7 indexes covering all `where + orderBy` query patterns |
 | `server/src/app.ts` | Express app — registers all routers; **dev CORS** allows any `localhost` / `127.0.0.1` port (Vite may use 3002+ if 3000 is busy) |
@@ -966,6 +968,35 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — إدخال شبيه بإكسل على الجداول والحقول ✅ (2026-08-08)
+
+> **جلسة 2026-08-08:** تعميم سلوك إكسل — تحديد القيمة عند التركيز (الكتابة تمحو الموجود) · تنقل بالأسهم داخل جداول التحرير (مستخلصات، قيد، رواتب، …).
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **طبقة عامة** | `installExcelLikeInputBehavior()` عند الإقلاع | `excelLikeInputs.ts` · `main.tsx` |
+| **تحديد عند التركيز** | text/number/textarea | نفس الملف |
+| **تنقل جدول** | Arrow / Enter / Tab؛ صفوف بأعداد أعمدة مختلفة | اكتشاف DOM داخل `<table>` |
+| **توافق** | `SpreadsheetCellInput` → `data-excel-nav="managed"` | `SpreadsheetCellInput.tsx` |
+| **اختبارات** | 8 + 4 حالات | `excelLikeInputs.test.ts` · `spreadsheetGridNav.test.ts` |
+
+### لا تراجع
+
+- لا تعطّل التثبيت من `main.tsx` دون بديل.
+- للتنقل اليدوي الخاص: `data-excel-nav="managed"` أو `off`.
+- لا تعتمد على استبدال كل `<input>` يدوياً — الطبقة العامة تغطي الجداول الموجودة.
+
+### تحقق
+
+```powershell
+npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.ts
+# Ctrl+Shift+R → مستخلصات / تكاليف IPC → ركّز خلية → اكتب (يستبدل) → أسهم بين الخلايا
+```
 
 ---
 

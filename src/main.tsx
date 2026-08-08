@@ -10,10 +10,16 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemedToaster } from './components/ThemedToaster';
 import { enforceDevLocalhostOrigin } from './lib/devOriginGuard';
 import { clearChunkReloadFlag } from './lib/lazyImport';
+import { installExcelLikeInputBehavior } from './lib/excelLikeInputs';
 import { MobileApprovalApp } from './pages/mobile/MobileApprovalApp';
 
 enforceDevLocalhostOrigin();
 clearChunkReloadFlag();
+
+const uninstallExcelLikeInputs = installExcelLikeInputBehavior();
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => uninstallExcelLikeInputs());
+}
 
 function RootApp() {
   if (typeof window !== 'undefined' && window.location.pathname.startsWith('/m')) {

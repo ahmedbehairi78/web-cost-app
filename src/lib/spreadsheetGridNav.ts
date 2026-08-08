@@ -81,9 +81,7 @@ export function handleSpreadsheetCellKeyDown(
   if (!next) return;
 
   const moved = next.row !== current.row || next.col !== current.col;
-  if (e.key === 'Enter' || e.key === 'Tab' || moved) {
-    e.preventDefault();
-  }
+  e.preventDefault();
   if (moved) {
     focusSpreadsheetCell(refs, next.row, next.col);
   }

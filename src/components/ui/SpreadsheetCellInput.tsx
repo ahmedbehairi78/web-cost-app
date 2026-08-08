@@ -11,6 +11,11 @@ type Props = Omit<React.InputHTMLAttributes<HTMLInputElement>, 'ref'> & {
   /** When true, uses theme-aware spreadsheet cell styling (rate vs qty columns). */
   variant?: 'rate' | 'qty';
   theme?: string;
+  /**
+   * When true (default), marks the input so the global table navigator ignores it
+   * and this component owns arrow/Tab/Enter movement via `gridRefs`.
+   */
+  manageNav?: boolean;
 };
 
 export function SpreadsheetCellInput({
@@ -21,6 +26,7 @@ export function SpreadsheetCellInput({
   gridRefs,
   variant = 'qty',
   theme = 'dark',
+  manageNav = true,
   className,
   onFocus,
   onKeyDown,
@@ -48,22 +54,25 @@ export function SpreadsheetCellInput({
 
   return (
     <input
+      {...props}
       ref={setRef}
       className={cellCls}
+      data-excel-nav={manageNav ? 'managed' : props['data-excel-nav']}
       onFocus={(e) => {
         e.target.select();
         onFocus?.(e);
       }}
       onKeyDown={(e) => {
-        handleSpreadsheetCellKeyDown(
-          e,
-          { row, col },
-          { rows: rowCount, cols: colCount },
-          gridRefs.current,
-        );
+        if (manageNav) {
+          handleSpreadsheetCellKeyDown(
+            e,
+            { row, col },
+            { rows: rowCount, cols: colCount },
+            gridRefs.current,
+          );
+        }
         onKeyDown?.(e);
       }}
-      {...props}
     />
   );
 }
