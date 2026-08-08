@@ -71,7 +71,7 @@ describe('resolveNotificationNavigation', () => {
         moduleId: 'inventory',
         entityId: 'wr-1',
       }),
-    ).toEqual({ moduleId: 'inventory', viewId: 'receipts' });
+    ).toEqual({ moduleId: 'costs', viewId: 'invoice' });
   });
 
   it('maps bank cheques and movement drafts to transactions', () => {

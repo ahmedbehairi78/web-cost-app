@@ -37,6 +37,8 @@ type Props = {
   boqItems: InvoiceBoqOption[];
   materialCategories: InvoiceMaterialOption[];
   showMaterials: boolean;
+  /** When true (warehouse receipt linked): no add/remove/material/qty edits — unit cost only. */
+  structureLocked?: boolean;
   formatMoney: (value: unknown) => string;
   onAddLine: () => void;
   onRemoveLine: (lineId: string) => void;
@@ -54,6 +56,7 @@ function InvoiceLinesEditorInner({
   boqItems,
   materialCategories,
   showMaterials,
+  structureLocked = false,
   formatMoney,
   onAddLine,
   onRemoveLine,
@@ -66,14 +69,16 @@ function InvoiceLinesEditorInner({
     <div className={cn('rounded-xl border p-4', theme === 'dark' ? 'border-gray-800 bg-gray-900/30' : 'border-gray-200 bg-gray-50')}>
       <div className="flex items-center justify-between mb-3">
         <h4 className="text-sm font-bold text-gray-400 uppercase">{title}</h4>
-        <button
-          type="button"
-          onClick={onAddLine}
-          className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded flex items-center gap-1"
-        >
-          <Plus size={12} />
-          {isAr ? 'إضافة بند' : 'Add Line'}
-        </button>
+        {!structureLocked && (
+          <button
+            type="button"
+            onClick={onAddLine}
+            className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded flex items-center gap-1"
+          >
+            <Plus size={12} />
+            {isAr ? 'إضافة بند' : 'Add Line'}
+          </button>
+        )}
       </div>
       <div className="space-y-4 max-h-80 overflow-y-auto pe-1">
         {lines.map((line, lineIdx) => (
@@ -85,14 +90,16 @@ function InvoiceLinesEditorInner({
               <span className="text-xs font-bold text-gray-400">
                 {isAr ? `البند ${lineIdx + 1}` : `Line ${lineIdx + 1}`}
               </span>
-              <button
-                type="button"
-                onClick={() => onRemoveLine(line.id)}
-                className="text-red-400 hover:text-red-300"
-                aria-label={isAr ? 'حذف البند' : 'Remove line'}
-              >
-                <Trash2 size={14} />
-              </button>
+              {!structureLocked && (
+                <button
+                  type="button"
+                  onClick={() => onRemoveLine(line.id)}
+                  className="text-red-400 hover:text-red-300"
+                  aria-label={isAr ? 'حذف البند' : 'Remove line'}
+                >
+                  <Trash2 size={14} />
+                </button>
+              )}
             </div>
             {boqItems.length > 0 && (
               <div>
@@ -150,6 +157,7 @@ function InvoiceLinesEditorInner({
                 onChange={(e) => onMaterialSelect(line.id, e.target.value)}
                 title={isAr ? 'اختيار صنف المادة' : 'Select material category'}
                 aria-label={isAr ? 'اختيار صنف المادة' : 'Select material category'}
+                disabled={structureLocked}
               >
                 <option value="">{isAr ? '— اختر الصنف —' : '— Select material —'}</option>
                 {materialCategories.map((c, idx) => (
@@ -167,7 +175,7 @@ function InvoiceLinesEditorInner({
                 className={cn(inputCls, 'py-2 px-3')}
                 value={line.itemDescription}
                 onChange={(e) => onFieldChange(line.id, 'itemDescription', e.target.value)}
-                readOnly={showMaterials && !!line.materialCategoryId}
+                readOnly={structureLocked || (showMaterials && !!line.materialCategoryId)}
               />
               <input
                 type="text"
@@ -176,6 +184,7 @@ function InvoiceLinesEditorInner({
                 className={cn(inputCls, 'py-2 px-3')}
                 value={line.unit}
                 onChange={(e) => onFieldChange(line.id, 'unit', e.target.value)}
+                readOnly={structureLocked}
               />
               <input
                 type="number"
@@ -185,6 +194,7 @@ function InvoiceLinesEditorInner({
                 className={cn(inputCls, 'py-2 px-3')}
                 value={line.quantity || ''}
                 onChange={(e) => onFieldChange(line.id, 'quantity', Number(e.target.value))}
+                readOnly={structureLocked}
               />
               <input
                 type="number"

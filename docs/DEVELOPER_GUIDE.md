@@ -436,10 +436,10 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 | بند | تفصيل |
 |-----|--------|
 | DB | `quantity_unpriced` · `warehouse_receipts` / lines · `consumption_orders.requires_cost_approval` + status `pending_cost` |
-| استلام | أمين المخزن يرسل → كمية فورية بلا GL؛ مشتريات تعتمد سعر + مورد `21101…` → قيد `WR-…` |
+| استلام | أمين المخزن يرسل → كمية فورية بلا GL؛ الاعتماد عبر **فاتورة مشتريات** (VAT/WHT) → `priceUnpriced` (لا قيد `WR-…` جديد؛ `/approve` = 410) |
+| UI | مخزون → تبويب **استلام مخزني** (إنشاء/رفض) · تكاليف فعلية → فاتورة ← اختيار استلام معلّق · سجل الحركات شارة/زر اعتماد تكلفة للصرف |
 | صرف | يمس كمية غير مسعّرة → حجز `pending_cost`؛ بعد التسعير `POST …/approve-cost` |
-| UI | مخزون → تبويب **استلام مخزني** · سجل الحركات شارة/زر اعتماد تكلفة |
-| إشعارات | `warehouse_receipt_pending` · `consumption_pending_cost` |
+| إشعارات | `warehouse_receipt_pending` → تكاليف/فاتورة · `consumption_pending_cost` |
 
 ### 6.5.0d صورة Railway أخف (2026-08-05)
 
@@ -770,7 +770,8 @@ npm run dev:local
 | فاتورة مشتريات | `POST /purchase-transactions/post-invoice` |
 | حركة بنكية / شيك ISS·CLR | `POST /bank-movements/:id/post` · `/bank-cheques/:id/issue|clear|…` |
 | صرف / إرجاع | `createAndConfirm` (`autoConfirm: true` على create) |
-| اعتماد IPC / عهدة / تحويل مخزن / استلام مخزني | مسار اعتماد الخادم (قيد + حالة داخل `$transaction`) |
+| اعتماد IPC / عهدة / تحويل مخزن | مسار اعتماد الخادم (قيد + حالة داخل `$transaction`) |
+| اعتماد استلام مخزني | عبر `post-invoice` + `warehouseReceiptId` (ليس `/warehouse-receipts/:id/approve`) |
 | تحويل بين مشاريع | `approve-projects` فقط — **لا** `recordProjectWarehouseTransfer` من الواجهة |
 
 **رواتب + أصول ثابتة:** `safe_save` للموظف/كشف المسودة/الأصل؛ `confirm_required` لاستحقاق الراتب والسداد وإعادة الفتح وترحيل الإهلاك. مسودات: `payroll_employee:new` · `fixed_asset:new`.

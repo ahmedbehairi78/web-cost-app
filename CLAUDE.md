@@ -971,6 +971,35 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — اعتماد الاستلام عبر فاتورة المشتريات ✅ (2026-08-09)
+
+> **جلسة 2026-08-09:** إيقاف اعتماد/قيد `WR-…` من المخزن · التسعير + VAT + WHT من **التكاليف الفعلية → فاتورة** مع `priceUnpriced` (بدون ازدواج كمية).
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **مخزن UI** | إنشاء/رفض فقط؛ لا تسعير/مورد/اعتماد | `WarehouseReceiptsPanel.tsx` |
+| **API استلام** | `POST /:id/approve` → **410** | `warehouseReceipts.ts` |
+| **فاتورة** | `warehouseReceiptId` على `post-invoice` → مطابقة بنود + `priceUnpriced` + ربط الاستلام | `purchaseTransactions.ts` · `warehouseReceiptInvoiceLink.ts` |
+| **تكاليف UI** | اختيار استلام معلّق يعبّئ الأصناف؛ قفل الهيكل | `ActualCosts.tsx` · `InvoiceLinesEditor.tsx` |
+| **إشعار** | يفتح `costs` / `invoice` | `notificationNavigation.ts` · `notificationFeed.ts` |
+
+### لا تراجع
+
+- لا ترحّل قيد `WR-…` من اعتماد المخزن.
+- لا تستدعِ `applyConfirmedProjectWarehouseInvoice` لاستلام مربوط.
+- الفاتورة فقط عبر `post-invoice` مع VAT/WHT.
+
+### تحقق
+
+```powershell
+npm run test -- server/src/modules/warehouseReceiptInvoiceLink.test.ts src/lib/notificationNavigation.test.ts
+# مخزن → إرسال استلام → تكاليف → فاتورة → اختر الاستلام → أسعار + ضريبة → حفظ
+```
+
+---
+
 ## 🔴 HANDOFF — تخفيف lag — BOQ ثم Projects ✅ (2026-08-09)
 
 > **جلسة 2026-08-09:** عزل نماذج الكتابة + صفوف memo لـ BOQ · مقاييس أخف + بطاقة/مودال memo للمشاريع — **بدون** تغيير حفظ البند / اعتماد VO / قيود GL.
@@ -1615,7 +1644,7 @@ Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`.
 1. **Materials tree** — define groups/categories (`/api/materials` or Excel import); link categories to BOQ items (`/api/boq-materials`).
 2. **Project warehouse COA** — warehouse accounts are 8-digit leaf accounts under prefix `127…` (parent/group `127`), selected/created/linked from `Inventory.tsx` → **Balance** tab. Link via `chart_of_accounts.projectId` + `projects.inventoryAccountCode`. Resolution: `src/lib/projectWarehouse.ts` (client) and `server/src/accounting/projectWarehouseGl.ts` (server). **Split-brain trap:** Firestore COA may show `active` while SQLite has `disabled` after `localCoaSync` / `syncCoaBatch` — fixed 2026-06-07 by preserving active on linked 127… rows + auto-reactivate on transfer approval. **Do not** disable COA when unlinking warehouse.
 2b. **Opening balances (optional)** — Excel import on Balance tab (see above) when bringing existing stock onto books; otherwise continue with purchase invoices.
-2c. **Warehouse receipt (unpriced)** — storekeeper `POST /api/warehouse-receipts` → on submit: `quantityIn++` + `quantityUnpriced++`, **no GL**. Purchasing approves with unit costs + supplier leaf `21101…` → `priceUnpriced` + journal `WR-…` Dr 127 / Cr supplier. UI: Inventory → **استلام مخزني**. Parallel to Actual Costs invoice (do not double-enter same goods).
+2c. **Warehouse receipt (unpriced)** — storekeeper `POST /api/warehouse-receipts` → on submit: `quantityIn++` + `quantityUnpriced++`, **no GL**. **Approve via Actual Costs → purchase invoice** (`warehouseReceiptId` on `POST /purchase-transactions/post-invoice`): VAT + WHT journal + `priceUnpriced` (does **not** receive stock again). `POST /warehouse-receipts/:id/approve` returns **410**. UI create/reject: Inventory → **استلام مخزني**. Do not double-enter the same goods as a normal invoice.
 3. **Purchase invoice** — entered in **Actual Costs** (invoice tab), not Inventory. `status: 'confirmed'` on distributed invoice → **100%** `project_inventory` receipt (VAT-inclusive avg cost) · GL Dr the linked `127xxxxx` warehouse account (no contract expense from invoice). Firestore projects/contracts/BOQ may exist without SQLite rows — **mirror project** (and consumption flow mirrors contract/BOQ) before FK-dependent writes.
 4. **Consumption** — `POST /api/consumption-orders` with **`lines[]`** (multi-BOQ + per-line expense). If issue draws **unpriced** stock → status `pending_cost` + **reserve** (no issue/GL/BOQ yet); purchasing `POST /:id/approve-cost` after receipts priced. Otherwise draft → `POST /:id/confirm` as today. GL via **`consumptionJournal.ts`**. UI: **`ConsumptionOrderModal`**; History shows pending-cost badge. **Do not** confirm `pending_cost` via normal confirm.
 5. **Return** — `POST /api/return-orders` → `confirm`: reverses BOQ actual + returns qty to project warehouse; GL via **`recordReturnToWarehouse`** in **`ReturnOrderModal`** (expense = consumption order account, else GL lookup on `CON-…` reference).
@@ -1649,7 +1678,7 @@ Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`.
 | `GET/POST /api/consumption-orders` | List/create consumption orders (`lines[]` multi-BOQ + optional **`expenseAccountCode` / `expenseAccountName`**) |
 | `POST /api/consumption-orders/:id/confirm` | Confirm draft → stock + **`boq_actual_costs`** per line + GL (`consumptionJournal.ts`) |
 | `POST /api/consumption-orders/:id/approve-cost` | Finalize `pending_cost` after unpriced receipts are priced |
-| `GET/POST /api/warehouse-receipts` · `POST /:id/submit\|approve\|reject` | Storekeeper receipt (unpriced qty) → purchasing cost + GL `WR-…` |
+| `GET/POST /api/warehouse-receipts` · `POST /:id/submit\|reject` · `POST /:id/approve` → **410** | Storekeeper receipt (unpriced qty); cost/VAT/WHT via `post-invoice` + `warehouseReceiptId` |
 | `GET/POST/DELETE /api/consumption-allocation-templates` | Saved BOQ allocation templates per contract + material |
 | `GET /api/return-orders` | List return orders (with lines; **`consumptionOrderNumber`** on lines) |
 | `GET /api/return-orders/returnable/:consumptionOrderLineId` | Returnable qty + consumption expense account |

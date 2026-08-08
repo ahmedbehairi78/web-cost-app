@@ -12,9 +12,101 @@ import { buildSubcontractorIpcEntries } from '../accounting/subcontractorIpcJour
 import { syncBoqActualCostsForIpc, type IpcBoqLineInput } from '../accounting/boqActualFromSources.js';
 import { notifySubcontractorIpcResolved, notifySubcontractorIpcSubmitted } from '../lib/notificationHooks.js';
 import { roundMoney } from '../lib/money.js';
-import { assertProjectAccess } from './inventoryHelpers.js';
+import { assertProjectAccess, priceUnpricedProjectInventory, unitCostInclVat, num } from './inventoryHelpers.js';
+import {
+  matchReceiptLinesToInvoiceLines,
+  receiptLineTotalExVat,
+} from './warehouseReceiptInvoiceLink.js';
 
 type DbLike = Prisma.TransactionClient | typeof prisma;
+
+type InvoiceInventoryLine = {
+  materialCategoryId?: number;
+  itemDescription?: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  totalCost?: number;
+  boqItemId?: string;
+};
+
+/**
+ * Price previously unpriced warehouse-receipt qty (do not receive again).
+ * Matches each receipt line to an invoice line by material + quantity.
+ */
+async function applyWarehouseReceiptPricingFromInvoice(
+  tx: Prisma.TransactionClient,
+  params: {
+    receiptId: string;
+    purchaseId: string;
+    transactionId: string;
+    projectId: string;
+    vatPct: number;
+    invoiceLines: InvoiceInventoryLine[];
+    supplierAccountCode: string | null;
+    supplierAccountName: string | null;
+    userId: string;
+  },
+): Promise<void> {
+  const receipt = await tx.warehouseReceipt.findUnique({
+    where: { id: params.receiptId },
+    include: { lines: true },
+  });
+  if (!receipt) {
+    throw new Error('استلام المخزن غير موجود');
+  }
+  if (receipt.status !== 'pending_approval') {
+    throw new Error(`لا يمكن اعتماد استلام بحالة: ${receipt.status}`);
+  }
+  if (receipt.purchaseTransactionId) {
+    throw new Error('هذا الاستلام مربوط بفاتورة مسبقاً');
+  }
+  if (receipt.projectId !== params.projectId) {
+    throw new Error('مشروع الفاتورة لا يطابق مشروع الاستلام المخزني');
+  }
+
+  const matched = matchReceiptLinesToInvoiceLines(
+    receipt.receiptNumber,
+    receipt.lines.map((line) => ({
+      id: line.id,
+      materialCategoryId: Number(line.materialCategoryId),
+      quantity: num(line.quantity),
+    })),
+    params.invoiceLines,
+  );
+
+  for (const m of matched) {
+    const inventoryUnitCost = unitCostInclVat(m.unitCostExVat, params.vatPct);
+    const totalCost = receiptLineTotalExVat(m.quantity, m.unitCostExVat);
+
+    await tx.warehouseReceiptLine.update({
+      where: { id: m.receiptLineId },
+      data: { unitCost: m.unitCostExVat, totalCost },
+    });
+
+    await priceUnpricedProjectInventory(
+      tx,
+      receipt.projectId,
+      m.materialCategoryId,
+      m.quantity,
+      inventoryUnitCost,
+      { referenceType: 'purchase_invoice', referenceId: params.purchaseId },
+    );
+  }
+
+  await tx.warehouseReceipt.update({
+    where: { id: receipt.id },
+    data: {
+      status: 'approved',
+      approvedBy: params.userId,
+      approvedAt: new Date(),
+      purchaseTransactionId: params.purchaseId,
+      transactionId: params.transactionId,
+      supplierAccountCode: params.supplierAccountCode,
+      supplierAccountName: params.supplierAccountName,
+    },
+  });
+}
 
 type IpcPayloadMeta = {
   items?: unknown[];
@@ -150,6 +242,7 @@ purchaseTransactionsRouter.post(
   asyncHandler(async (req, res) => {
     const user = req.user!;
     const body = (req.body ?? {}) as {
+      warehouseReceiptId?: string;
       purchase?: Record<string, unknown>;
       journal?: {
         date?: string;
@@ -192,6 +285,11 @@ purchaseTransactionsRouter.post(
       res.status(400).json({ error: 'post-invoice is for type=invoice only' });
       return;
     }
+
+    const warehouseReceiptId =
+      body.warehouseReceiptId != null && String(body.warehouseReceiptId).trim()
+        ? String(body.warehouseReceiptId).trim()
+        : '';
 
     const { applyConfirmedProjectWarehouseInvoice } = await import('./sqliteCore.js');
 
@@ -245,15 +343,60 @@ purchaseTransactionsRouter.post(
       const inv = body.inventory;
       if (inv?.projectId && Array.isArray(inv.lines) && inv.lines.length > 0) {
         await assertProjectAccess(tx, user, String(inv.projectId));
-        await applyConfirmedProjectWarehouseInvoice(tx, {
-          invoiceId: String(created.id),
-          invoiceNumber: inv.invoiceNumber ?? String(purchaseBody.referenceNumber || created.id),
-          invoiceDate: String(purchaseBody.date || journal.date || ''),
-          supplierName: purchaseBody.supplierName != null ? String(purchaseBody.supplierName) : null,
-          projectId: String(inv.projectId),
-          vatPct: Number(inv.vatPct ?? 0),
-          lines: inv.lines,
-        });
+
+        if (warehouseReceiptId) {
+          let supplierAccountCode: string | null = null;
+          let supplierAccountName: string | null =
+            purchaseBody.supplierName != null ? String(purchaseBody.supplierName) : null;
+          const supplierAccountId =
+            purchaseBody.supplierAccountId != null
+              ? String(purchaseBody.supplierAccountId).trim()
+              : '';
+          if (supplierAccountId) {
+            const coa = await tx.chartOfAccount.findUnique({ where: { id: supplierAccountId } });
+            if (coa) {
+              supplierAccountCode = coa.accountCode;
+              supplierAccountName =
+                supplierAccountName || coa.accountName || coa.accountCode;
+            }
+          }
+          if (!supplierAccountCode) {
+            const creditLeaf = entries.find(
+              (e) => Number(e.credit ?? 0) > 0 && String(e.accountCode || '').trim().length === 8,
+            );
+            if (creditLeaf) {
+              supplierAccountCode = String(creditLeaf.accountCode).trim();
+              supplierAccountName =
+                supplierAccountName
+                || (creditLeaf.accountName != null ? String(creditLeaf.accountName) : null)
+                || supplierAccountCode;
+            }
+          }
+
+          await applyWarehouseReceiptPricingFromInvoice(tx, {
+            receiptId: warehouseReceiptId,
+            purchaseId: String(created.id),
+            transactionId: glTx.id,
+            projectId: String(inv.projectId),
+            vatPct: Number(inv.vatPct ?? 0),
+            invoiceLines: inv.lines,
+            supplierAccountCode,
+            supplierAccountName,
+            userId: user.id,
+          });
+        } else {
+          await applyConfirmedProjectWarehouseInvoice(tx, {
+            invoiceId: String(created.id),
+            invoiceNumber: inv.invoiceNumber ?? String(purchaseBody.referenceNumber || created.id),
+            invoiceDate: String(purchaseBody.date || journal.date || ''),
+            supplierName: purchaseBody.supplierName != null ? String(purchaseBody.supplierName) : null,
+            projectId: String(inv.projectId),
+            vatPct: Number(inv.vatPct ?? 0),
+            lines: inv.lines,
+          });
+        }
+      } else if (warehouseReceiptId) {
+        throw new Error('ربط استلام مخزني يتطلب بنود مخزون (inventory.lines) ومشروع');
       }
 
       const full = await tx.purchaseTransaction.findUnique({

@@ -50,6 +50,7 @@ import {
   inventoryApi,
   materialsApi,
   purchaseTransactionsApi,
+  warehouseReceiptsApi,
   glApi,
   suppliersApi,
   chartOfAccountsApi,
@@ -639,6 +640,25 @@ export function ActualCosts() {
   const [materialCategories, setMaterialCategories] = useState<MaterialCategory[]>([]);
   /** مواد مُثبتة على BOQ (صرف/مرتجع) — لا تشمل فواتير المشتريات */
   const [boqSpentByContract, setBoqSpentByContract] = useState<Map<string, number>>(new Map());
+  const [pendingWarehouseReceipts, setPendingWarehouseReceipts] = useState<
+    Array<{
+      id: string;
+      receiptNumber: string;
+      projectId: string;
+      projectName?: string;
+      supplierInvoiceRef: string;
+      receiptDate: string;
+      lines: Array<{
+        id?: number;
+        materialCategoryId: number;
+        quantity: number;
+        materialCode?: string;
+        materialName?: string;
+        materialUnit?: string;
+      }>;
+    }>
+  >([]);
+  const [linkedWarehouseReceiptId, setLinkedWarehouseReceiptId] = useState('');
 
   // ── UI state ───────────────────────────────────────────────────────────────
   const [showModal, setShowModal] = useState(false);
@@ -897,6 +917,86 @@ export function ActualCosts() {
   }, [activeTab]);
 
   useEffect(() => {
+    if (!isLocalBackend || activeTab !== 'invoice' || !showModal || isFixedAsset || editingPurchaseId) {
+      return;
+    }
+    let cancelled = false;
+    warehouseReceiptsApi
+      .list({ status: 'pending_approval' })
+      .then((rows) => {
+        if (cancelled) return;
+        setPendingWarehouseReceipts(Array.isArray(rows) ? (rows as typeof pendingWarehouseReceipts) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setPendingWarehouseReceipts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, showModal, isFixedAsset, editingPurchaseId]);
+
+  const pendingWarehouseReceiptOptions = useMemo(
+    () =>
+      pendingWarehouseReceipts.map((r) => ({
+        value: r.id,
+        label: `${r.receiptNumber} — ${r.projectName || r.projectId} · ${r.supplierInvoiceRef}`,
+      })),
+    [pendingWarehouseReceipts],
+  );
+
+  const applyWarehouseReceiptToInvoice = useCallback(
+    (receiptId: string) => {
+      setLinkedWarehouseReceiptId(receiptId);
+      if (!receiptId) return;
+      const receipt = pendingWarehouseReceipts.find((r) => r.id === receiptId);
+      if (!receipt) return;
+
+      const warehouse =
+        accounts.find(
+          (a) =>
+            isProjectWarehouseAccount(a)
+            && String(a.projectId) === String(receipt.projectId),
+        )
+        ?? accounts.find(
+          (a) =>
+            isProjectWarehouseAccount(a)
+            && resolveProjectIdForWarehouse(a, projects) === receipt.projectId,
+        );
+
+      const lines =
+        receipt.lines.length > 0
+          ? receipt.lines.map((line) => {
+              const cat = materialCategories.find((c) => c.id === Number(line.materialCategoryId));
+              return {
+                id: makeDraftId('line'),
+                materialCategoryId: Number(line.materialCategoryId),
+                itemDescription:
+                  line.materialName
+                  || cat?.name
+                  || `${line.materialCode || ''}`.trim()
+                  || String(line.materialCategoryId),
+                unit: line.materialUnit || cat?.unit || 'EA',
+                quantity: Number(line.quantity) || 0,
+                unitCost: 0,
+                boqItemId: '',
+                boqItemIds: [] as string[],
+              };
+            })
+          : [createInvoiceLineDraft()];
+
+      setIsFixedAsset(false);
+      setFormData((prev) => ({
+        ...prev,
+        warehouseAccountId: warehouse?.id || prev.warehouseAccountId,
+        referenceNumber: prev.referenceNumber || receipt.supplierInvoiceRef || '',
+        date: receipt.receiptDate || prev.date,
+        invoiceLines: lines,
+      }));
+    },
+    [pendingWarehouseReceipts, accounts, materialCategories, projects],
+  );
+
+  useEffect(() => {
     if (!isLocalBackend) {
       setBoqSpentByContract(new Map());
       return;
@@ -1029,6 +1129,7 @@ export function ActualCosts() {
 
     ipcBoqSyncKeyRef.current = '';
     setActiveTab('invoice');
+    setLinkedWarehouseReceiptId('');
     setIsFixedAsset(isFixedLoad);
     if (isFixedLoad) {
       setFixedAssetAccountCode(assetCode);
@@ -1874,6 +1975,9 @@ export function ActualCosts() {
                 },
               }
             : {}),
+          ...(linkedWarehouseReceiptId && inventoryProjectId && !isIndirectInvoice && !isFixedAsset
+            ? { warehouseReceiptId: linkedWarehouseReceiptId }
+            : {}),
         });
 
         const purchaseId = String(posted.id);
@@ -2274,6 +2378,7 @@ export function ActualCosts() {
     ipcBoqSyncKeyRef.current = '';
     setEditingPurchaseId(null);
     ipcSaveModeRef.current = 'submit';
+    setLinkedWarehouseReceiptId('');
     setFormData({
       supplierId: '', paymentType: 'credit', projectId: '', contractId: '', costCenterId: '', warehouseAccountId: '', expenseAccountId: '',
       date: new Date().toISOString().split('T')[0], referenceNumber: '',
@@ -2993,6 +3098,7 @@ export function ActualCosts() {
                               const checked = e.target.checked;
                               setIsFixedAsset(checked);
                               if (checked) {
+                                setLinkedWarehouseReceiptId('');
                                 setFormData((p) => ({
                                   ...p,
                                   costCenterId: indirectCenters.some((c) => c.id === p.costCenterId) ? '' : p.costCenterId,
@@ -3085,6 +3191,31 @@ export function ActualCosts() {
                           </div>
                         ) : (
                           <div className="space-y-2">
+                            {isLocalBackend && !editingPurchaseId && (
+                              <div className="space-y-2">
+                                <label className="text-xs font-bold text-gray-400 uppercase">
+                                  {t('wr_link_receipt')}
+                                </label>
+                                <SearchableSelect
+                                  value={linkedWarehouseReceiptId}
+                                  onChange={(v) => {
+                                    if (!v) {
+                                      setLinkedWarehouseReceiptId('');
+                                      return;
+                                    }
+                                    applyWarehouseReceiptToInvoice(v);
+                                  }}
+                                  theme={theme}
+                                  dir={dir}
+                                  placeholder={t('wr_link_receipt_placeholder')}
+                                  options={[
+                                    { value: '', label: t('wr_link_receipt_placeholder') },
+                                    ...pendingWarehouseReceiptOptions,
+                                  ]}
+                                />
+                                <p className="text-[11px] text-amber-400/90">{t('wr_link_receipt_hint')}</p>
+                              </div>
+                            )}
                             <label className="text-xs font-bold text-gray-400 uppercase">{t('project_warehouse_account')}</label>
                             <SearchableSelect
                               value={formData.warehouseAccountId}
@@ -3152,6 +3283,7 @@ export function ActualCosts() {
                       boqItems={invoiceBoqItems}
                       materialCategories={materialCategories}
                       showMaterials={isLocalBackend}
+                      structureLocked={Boolean(linkedWarehouseReceiptId)}
                       formatMoney={formatMoney}
                       onAddLine={addInvoiceLine}
                       onRemoveLine={removeInvoiceLine}

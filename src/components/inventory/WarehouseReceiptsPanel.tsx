@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Check, Loader2, Plus, Trash2, X } from 'lucide-react';
+import { Loader2, Plus, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, listKey } from '../../lib/utils';
 import { useLanguage } from '../../context/LanguageContext';
 import { usePermissions } from '../../context/PermissionsContext';
-import { useChartOfAccountsRef } from '../../hooks/useChartOfAccountsRef';
 import { materialsApi, projectsApi, warehouseReceiptsApi } from '../../services/local/modulesApi';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { formatQuantity } from '../../lib/formatQuantity';
@@ -58,7 +57,7 @@ export function WarehouseReceiptsPanel({
   const ar = language === 'ar';
   const { isAdmin, role, can } = usePermissions();
   const canCreate = can('inventory').create;
-  const canApprove =
+  const canReject =
     isAdmin || role === 'projects_manager' || can('costs').edit === true;
 
   const [receipts, setReceipts] = useState<WarehouseReceipt[]>([]);
@@ -77,22 +76,6 @@ export function WarehouseReceiptsPanel({
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { key: '1', materialCategoryId: '', quantity: '' },
   ]);
-
-  const [approveSupplierCode, setApproveSupplierCode] = useState('');
-  const [approveCosts, setApproveCosts] = useState<Record<number, string>>({});
-
-  const { accounts: coaAccounts } = useChartOfAccountsRef({ leafOnly: true });
-
-  const supplierOptions = useMemo(
-    () =>
-      coaAccounts
-        .filter((a) => String(a.accountCode || '').startsWith('21101') && String(a.accountCode).length === 8)
-        .map((a) => ({
-          value: String(a.accountCode),
-          label: `${a.accountCode} — ${language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName)}`,
-        })),
-    [coaAccounts, language],
-  );
 
   const materialOptions = useMemo(
     () =>
@@ -158,23 +141,10 @@ export function WarehouseReceiptsPanel({
     [receipts, selectedId],
   );
 
-  useEffect(() => {
-    if (!selected || selected.status !== 'pending_approval') {
-      setApproveCosts({});
-      setApproveSupplierCode('');
-      return;
-    }
-    const next: Record<number, string> = {};
-    for (const line of selected.lines) {
-      if (line.id != null) next[line.id] = line.unitCost != null ? String(line.unitCost) : '';
-    }
-    setApproveCosts(next);
-  }, [selected]);
-
   const statusBadge = (status: string) => {
     const map: Record<string, string> = {
       draft: ar ? 'مسودة' : 'Draft',
-      pending_approval: ar ? 'بانتظار الاعتماد' : 'Pending approval',
+      pending_approval: t('wr_filter_pending'),
       approved: ar ? 'معتمد' : 'Approved',
       rejected: ar ? 'مرفوض' : 'Rejected',
     };
@@ -230,40 +200,6 @@ export function WarehouseReceiptsPanel({
     }
   };
 
-  const handleApprove = async () => {
-    if (!selected) return;
-    if (!approveSupplierCode.trim()) {
-      toast.error(t('wr_toast_supplier_required'));
-      return;
-    }
-    const lines = selected.lines
-      .filter((l) => l.id != null)
-      .map((l) => ({
-        id: Number(l.id),
-        unitCost: Number(approveCosts[Number(l.id)] ?? NaN),
-      }));
-    if (lines.some((l) => !Number.isFinite(l.unitCost) || l.unitCost < 0)) {
-      toast.error(t('wr_toast_unit_cost_required'));
-      return;
-    }
-    const supplier = coaAccounts.find((a) => String(a.accountCode) === approveSupplierCode);
-    setSaving(true);
-    try {
-      await warehouseReceiptsApi.approve(selected.id, {
-        supplierAccountCode: approveSupplierCode,
-        supplierAccountName: supplier?.accountName,
-        lines,
-      });
-      toast.success(t('wr_toast_approved'));
-      onRefreshNeeded?.();
-      await load();
-    } catch (e: unknown) {
-      toast.error(e instanceof Error ? e.message : t('toast_boq_import_error'));
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const handleReject = async () => {
     if (!selected) return;
     setSaving(true);
@@ -283,6 +219,10 @@ export function WarehouseReceiptsPanel({
     'w-full rounded-lg border px-3 py-2 text-sm',
     theme === 'dark' ? 'bg-gray-800 border-gray-600 text-gray-100' : 'bg-white border-gray-300',
   );
+
+  const showUnitCostCol =
+    selected != null &&
+    (selected.status === 'approved' || selected.lines.some((l) => l.unitCost != null));
 
   return (
     <div className="flex flex-col gap-4 h-full" dir={dir}>
@@ -376,15 +316,18 @@ export function WarehouseReceiptsPanel({
                 {statusBadge(selected.status)}
               </div>
 
+              {selected.status === 'pending_approval' && (
+                <p className={cn('text-sm rounded-lg px-3 py-2', theme === 'dark' ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-50 text-amber-900')}>
+                  {t('wr_pending_invoice_hint')}
+                </p>
+              )}
+
               <table className="w-full text-sm">
                 <thead>
                   <tr className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}>
                     <th className="text-start py-1">{t('wr_col_material')}</th>
                     <th className="text-end py-1">{t('wr_col_qty')}</th>
-                    {canApprove && selected.status === 'pending_approval' && (
-                      <th className="text-end py-1">{t('wr_col_unit_cost')}</th>
-                    )}
-                    {(selected.status === 'approved' || selected.lines.some((l) => l.unitCost != null)) && (
+                    {showUnitCostCol && (
                       <th className="text-end py-1">{t('wr_col_unit_cost')}</th>
                     )}
                   </tr>
@@ -397,60 +340,27 @@ export function WarehouseReceiptsPanel({
                         <span className="opacity-60 text-xs ms-1">({line.materialUnit})</span>
                       </td>
                       <td className="py-2 text-end">{formatQuantity(Number(line.quantity), language)}</td>
-                      {canApprove && selected.status === 'pending_approval' && line.id != null ? (
+                      {showUnitCostCol && (
                         <td className="py-2 text-end">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={approveCosts[line.id] ?? ''}
-                            onChange={(e) =>
-                              setApproveCosts((prev) => ({ ...prev, [line.id!]: e.target.value }))
-                            }
-                            className={cn(inputCls, 'w-28 ms-auto')}
-                          />
+                          {line.unitCost != null ? Number(line.unitCost).toFixed(2) : '—'}
                         </td>
-                      ) : (
-                        (selected.status === 'approved' || line.unitCost != null) && (
-                          <td className="py-2 text-end">
-                            {line.unitCost != null ? Number(line.unitCost).toFixed(2) : '—'}
-                          </td>
-                        )
                       )}
                     </tr>
                   ))}
                 </tbody>
               </table>
 
-              {canApprove && selected.status === 'pending_approval' && (
-                <div className="space-y-3 border-t pt-3">
-                  <label className="block text-sm font-medium">{t('wr_supplier_account')}</label>
-                  <SearchableSelect
-                    value={approveSupplierCode}
-                    onChange={setApproveSupplierCode}
-                    options={supplierOptions}
-                    placeholder={t('wr_supplier_placeholder')}
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => void handleApprove()}
-                      className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm disabled:opacity-50"
-                    >
-                      {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                      {t('wr_approve')}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={() => void handleReject()}
-                      className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm disabled:opacity-50"
-                    >
-                      <X className="w-4 h-4" />
-                      {t('wr_reject')}
-                    </button>
-                  </div>
+              {canReject && selected.status === 'pending_approval' && (
+                <div className="flex flex-wrap gap-2 border-t pt-3">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => void handleReject()}
+                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm disabled:opacity-50"
+                  >
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
+                    {t('wr_reject')}
+                  </button>
                 </div>
               )}
 

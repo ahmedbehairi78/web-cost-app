@@ -11,17 +11,12 @@ import {
   moduleAccess,
   normalizeUserPermissions,
 } from '../permissions.js';
-import { resolveProjectWarehouseAccount } from '../accounting/projectWarehouseGl.js';
-import { postWarehouseReceiptJournal } from '../accounting/warehouseReceiptJournal.js';
-import { roundMoney } from '../lib/money.js';
 import {
   assertProjectAccess,
   getAccessibleProjectIds,
   num,
   receiveUnpricedProjectInventory,
-  priceUnpricedProjectInventory,
   reverseUnpricedProjectInventory,
-  toMoney,
 } from './inventoryHelpers.js';
 
 export const warehouseReceiptsRouter = Router();
@@ -319,111 +314,12 @@ warehouseReceiptsRouter.post(
 warehouseReceiptsRouter.post(
   '/:id/approve',
   requireReceiptApprover,
-  asyncHandler(async (req, res) => {
-    const user = req.user!;
-    const id = String(req.params.id);
-    const body = req.body as {
-      supplierAccountCode: string;
-      supplierAccountName?: string;
-      lines: Array<{ id: number; unitCost: number }>;
-    };
-
-    if (!body.supplierAccountCode?.trim()) {
-      res.status(400).json({ error: 'supplierAccountCode is required' });
-      return;
-    }
-    if (!Array.isArray(body.lines) || body.lines.length === 0) {
-      res.status(400).json({ error: 'lines with unitCost are required' });
-      return;
-    }
-
-    const supplierCode = body.supplierAccountCode.trim();
-    const coa = await prisma.chartOfAccount.findFirst({
-      where: { accountCode: supplierCode, status: 'active' },
+  asyncHandler(async (_req, res) => {
+    res.status(410).json({
+      error:
+        'اعتماد الاستلام يتم عبر فاتورة المشتريات في التكاليف الفعلية (مع الضريبة وخصم الإضافة). لا يُرحَّل قيد WR من المخزن.',
+      code: 'WAREHOUSE_RECEIPT_APPROVE_VIA_INVOICE',
     });
-    if (!coa || coa.isGroup) {
-      res.status(400).json({ error: 'حساب المورد غير موجود أو ليس ورقة' });
-      return;
-    }
-    const supplierName =
-      body.supplierAccountName?.trim() || coa.accountName || supplierCode;
-
-    await prisma.$transaction(async (tx) => {
-      const receipt = await tx.warehouseReceipt.findUnique({
-        where: { id },
-        include: {
-          lines: true,
-          project: { select: { projectName: true } },
-        },
-      });
-      if (!receipt) throw new Error('Receipt not found');
-      if (receipt.status !== 'pending_approval') {
-        throw new Error(`Cannot approve from status: ${receipt.status}`);
-      }
-      await assertProjectAccess(tx, user, receipt.projectId);
-
-      const costByLineId = new Map(body.lines.map((l) => [Number(l.id), Number(l.unitCost)]));
-      let totalAmount = 0;
-
-      for (const line of receipt.lines) {
-        const unitCost = costByLineId.get(line.id);
-        if (unitCost == null || !Number.isFinite(unitCost) || unitCost < 0) {
-          throw new Error(`Unit cost required for line ${line.id}`);
-        }
-        const qty = num(line.quantity);
-        const totalCost = toMoney(qty * unitCost);
-        totalAmount = toMoney(totalAmount + totalCost);
-
-        await tx.warehouseReceiptLine.update({
-          where: { id: line.id },
-          data: { unitCost: unitCost, totalCost },
-        });
-
-        await priceUnpricedProjectInventory(
-          tx,
-          receipt.projectId,
-          Number(line.materialCategoryId),
-          qty,
-          unitCost,
-          { referenceType: 'warehouse_receipt_approve', referenceId: id },
-        );
-      }
-
-      const warehouse = await resolveProjectWarehouseAccount(tx, receipt.projectId);
-      if (!warehouse) {
-        throw new Error(
-          'Warehouse account (127…) is not linked to this project — link inventoryAccountCode on the project or a 127 leaf in chart of accounts',
-        );
-      }
-
-      const transactionId = await postWarehouseReceiptJournal(tx, {
-        date: receipt.receiptDate,
-        reference: receipt.receiptNumber,
-        projectId: receipt.projectId,
-        projectName: receipt.project?.projectName || receipt.projectId,
-        supplierInvoiceRef: receipt.supplierInvoiceRef,
-        totalAmount: roundMoney(totalAmount),
-        warehouse,
-        supplierAccountCode: supplierCode,
-        supplierAccountName: supplierName,
-        userId: user.id,
-      });
-
-      await tx.warehouseReceipt.update({
-        where: { id },
-        data: {
-          status: 'approved',
-          approvedBy: user.id,
-          approvedAt: new Date(),
-          supplierAccountCode: supplierCode,
-          supplierAccountName: supplierName,
-          transactionId,
-        },
-      });
-    });
-
-    const loaded = await loadReceipt(id);
-    res.json({ ok: true, receipt: loaded });
   }),
 );
 

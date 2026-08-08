@@ -240,7 +240,7 @@ web-cost-app/
 ```
 1. شجرة أصناف (يدوي أو Excel)     → /api/materials
 2. ربط BOQ بأصناف مسموحة         → BoqMaterialsModal / ربط فوري من الصرف /api/boq-materials
-3a. استلام مخزني (كمية بلا قيد)   → warehouse-receipts → quantityUnpriced؛ اعتماد مشتريات → GL WR-…
+3a. استلام مخزني (كمية بلا قيد)   → warehouse-receipts → quantityUnpriced؛ الاعتماد عبر فاتورة مشتريات (VAT/WHT) → priceUnpriced (لا قيد WR جديد)
 3b. فاتورة مشتريات `confirmed`   → ActualCosts → sqlite-core → **project_inventory** + GL مخزون
 4. أمر صرف — مسعّر: confirm؛ غير مسعّر: pending_cost + reserve ثم approve-cost
 5. إذن إرجاع confirm             → return-orders → عكس BOQ + مخزن المشروع
@@ -248,7 +248,7 @@ web-cost-app/
 7. تحويل بين عقود (legacy)       → `inventory-transfers` — إكمال المعلّق فقط (لا طلبات جديدة من الواجهة)
 ```
 
-**استلام معلّق (2026-08-05):** تبويب مخزون «استلام مخزني» · `quantity_unpriced` · صرف يمس غير المسعّر → `pending_cost` · إشعارات `warehouse_receipt_pending` / `consumption_pending_cost`.
+**استلام معلّق (2026-08-09):** تبويب مخزون «استلام مخزني» = كمية فقط (رفض متاح) · الاعتماد من **التكاليف الفعلية → فاتورة مشتريات** مع ضريبة وخصم إضافة · إشعار `warehouse_receipt_pending` يفتح تبويب الفاتورة · صرف يمس غير المسعّر → `pending_cost`.
 
 **ربط BOQ↔أصناف (2026-07-24):** شارات عدد الروابط في `BOQ.tsx` · منع حذف بند مربوط (`DeleteBlockedModal` + `can-delete`) · **ربط فوري** من أمر الصرف (`QuickLinkMaterialModal` — قائمة بنود **المشروع** عبر `boqApi.list(?projectId=)`) · تحذير كمية منصرفة في نافذة الربط · تقرير غير المربوط من رصيد المخزون · وراثة روابط للبند الجديد / بنود VO (`POST …/inherit`).
 

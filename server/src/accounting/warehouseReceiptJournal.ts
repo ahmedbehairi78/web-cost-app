@@ -1,3 +1,8 @@
+/**
+ * Legacy builder for WR-… journals posted by the old Inventory approve path.
+ * New approvals go through purchase invoice (`post-invoice` + warehouseReceiptId)
+ * with VAT/WHT — do not call `postWarehouseReceiptJournal` from new code.
+ */
 import { createTransaction } from './journal.js';
 import type { JournalEntryInput } from './journalShared.js';
 import type { Prisma } from '@prisma/client';

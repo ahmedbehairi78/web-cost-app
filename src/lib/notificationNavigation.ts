@@ -97,7 +97,7 @@ export function resolveNotificationNavigation(item: NotificationNavItem): Notifi
     return { moduleId: 'inventory', viewId: 'history' };
   }
   if (item.type === 'warehouse_receipt_pending') {
-    return { moduleId: 'inventory', viewId: 'receipts' };
+    return { moduleId: 'costs', viewId: 'invoice' };
   }
   if (BANK_TRANSACTION_TYPES.has(item.type)) {
     return { moduleId: 'banks', viewId: 'transactions' };
