@@ -31,6 +31,8 @@ export async function offlineWrite<T>(opts: {
   path: string;
   body?: unknown;
   summary: string;
+  /** Skip the generic queued toast (caller shows a summary). */
+  quiet?: boolean;
   /** Fallback when offline queue not applicable */
   execute: () => Promise<T>;
 }): Promise<T> {
@@ -49,18 +51,25 @@ export async function offlineWrite<T>(opts: {
     });
   } catch (err) {
     if (err instanceof NetworkQueuedError) {
-      tQueued(err.requiresUserConfirm);
+      if (!opts.quiet) tQueued(err.requiresUserConfirm);
       throw err;
     }
     throw err;
   }
 }
 
+type OfflineMeta = {
+  opType: SyncOpType;
+  opClass: SyncOpClass;
+  summary: string;
+  quiet?: boolean;
+};
+
 /** Convenience: POST with offline queue */
 export function offlinePost<T>(
   path: string,
   body: unknown,
-  meta: { opType: SyncOpType; opClass: SyncOpClass; summary: string },
+  meta: OfflineMeta,
 ): Promise<T> {
   return offlineWrite({
     ...meta,
@@ -74,7 +83,7 @@ export function offlinePost<T>(
 export function offlinePatch<T>(
   path: string,
   body: unknown,
-  meta: { opType: SyncOpType; opClass: SyncOpClass; summary: string },
+  meta: OfflineMeta,
 ): Promise<T> {
   return offlineWrite({
     ...meta,
@@ -88,7 +97,7 @@ export function offlinePatch<T>(
 export function offlinePut<T>(
   path: string,
   body: unknown,
-  meta: { opType: SyncOpType; opClass: SyncOpClass; summary: string },
+  meta: OfflineMeta,
 ): Promise<T> {
   return offlineWrite({
     ...meta,
@@ -96,5 +105,17 @@ export function offlinePut<T>(
     path,
     body,
     execute: () => apiClient.put<T>(path, body),
+  });
+}
+
+export function offlineDelete<T>(
+  path: string,
+  meta: OfflineMeta,
+): Promise<T> {
+  return offlineWrite({
+    ...meta,
+    method: 'DELETE',
+    path,
+    execute: () => apiClient.delete<T>(path),
   });
 }

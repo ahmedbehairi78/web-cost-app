@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
 import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -10,6 +11,7 @@ import { syncFixedAssetsFromGl } from '../accounting/fixedAssetGlSync.js';
 
 export const fixedAssetsRouter = Router();
 fixedAssetsRouter.use(requireAuth);
+fixedAssetsRouter.use(withIdempotency());
 
 const viewPerm = requireReferenceRead('assets' as never);
 const writePerm = requireModuleWrite('assets' as never);

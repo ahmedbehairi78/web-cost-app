@@ -309,15 +309,28 @@ custodySettlementsRouter.post(
     }
 
     const items = serializeRow(row).items as CustodySettlementLine[];
-    const transactionIds = await postCustodySettlementJournals({
-      settlementNumber: row.settlementNumber,
-      projectId: row.projectId,
-      custodyAccountCode: row.custodyAccountCode,
-      custodyAccountName: row.custodyAccountName || row.custodyAccountCode,
-      date: row.date,
-      description: row.description || `تسوية عهدة ${row.settlementNumber}`,
-      items,
-      userId: user.id,
+    const updated = await prisma.$transaction(async (tx) => {
+      const transactionIds = await postCustodySettlementJournals({
+        settlementNumber: row.settlementNumber,
+        projectId: row.projectId,
+        custodyAccountCode: row.custodyAccountCode,
+        custodyAccountName: row.custodyAccountName || row.custodyAccountCode,
+        date: row.date,
+        description: row.description || `تسوية عهدة ${row.settlementNumber}`,
+        items,
+        userId: user.id,
+        client: tx,
+      });
+
+      return tx.custodySettlement.update({
+        where: { id: row.id },
+        data: {
+          status: 'approved',
+          approvedBy: user.id,
+          transactionIds,
+        },
+        include: { items: true },
+      });
     });
 
     // Report-only: optional BOQ allocation (does not alter GL above).
@@ -325,16 +338,6 @@ custodySettlementsRouter.post(
       custodySettlementId: row.id,
       date: row.date,
       items,
-    });
-
-    const updated = await prisma.custodySettlement.update({
-      where: { id: row.id },
-      data: {
-        status: 'approved',
-        approvedBy: user.id,
-        transactionIds,
-      },
-      include: { items: true },
     });
 
     notifyCustodySettlementResolved(row.id);

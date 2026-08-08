@@ -737,8 +737,24 @@ npm run dev:local
 - `safe_save` — مسودات (أوامر شراء، مستخلصات، بنوك…) تُفرَّغ تلقائياً عند `online`
 - `confirm_required` — ترحيل/اعتماد/صرف/إرجاع — تظهر في لوحة التأكيد فقط
 
+**قاعدة الذرّية (لا تراجع):** أي عملية تغيّر GL + سجلاً تشغيلياً يجب أن تكون **طلب HTTP واحد** (`confirm_required`)، وليس `glApi.createTransaction` ثم `update`/`create` منفصلين.
+
+| العملية | المسار الصحيح |
+|---------|----------------|
+| فاتورة مشتريات | `POST /purchase-transactions/post-invoice` |
+| حركة بنكية / شيك ISS·CLR | `POST /bank-movements/:id/post` · `/bank-cheques/:id/issue|clear|…` |
+| صرف / إرجاع | `createAndConfirm` (`autoConfirm: true` على create) |
+| اعتماد IPC / عهدة / تحويل مخزن / استلام مخزني | مسار اعتماد الخادم (قيد + حالة داخل `$transaction`) |
+| تحويل بين مشاريع | `approve-projects` فقط — **لا** `recordProjectWarehouseTransfer` من الواجهة |
+
+**رواتب + أصول ثابتة:** `safe_save` للموظف/كشف المسودة/الأصل؛ `confirm_required` لاستحقاق الراتب والسداد وإعادة الفتح وترحيل الإهلاك. مسودات: `payroll_employee:new` · `fixed_asset:new`.
+
+**BOQ + أوامر التغيير:** `safe_save` لإنشاء/تعديل/حذف بند BOQ وإنشاء VO وتقديمه ورفضه وحذفه؛ `confirm_required` لاعتماد VO (يطبّق بنود الكميات). مسودات: `boq_item:{contractId}:new` · `vo:{contractId}:new`. استيراد Excel لـ BOQ يتطلب اتصالاً (لا يُقسَّم إلى طابور صف-بصف).
+
+إصلاح صفوف يتيمة (فاتورة): `npx tsx server/src/scripts/linkOrphanPurchaseInvoiceJournals.ts` ثم `--live`.
+
 **خمول الجلسة:** `useIdleLogout` يتوقف أثناء الانقطاع أو وجود مسودة/طابور (`idleGate.ts`).
 
 **اختبارات:** `npm run test -- src/lib/offline/offline.test.ts`
 
-**لا تراجع:** لا ترحيل GL صامت من الطابور؛ اربط النماذج الجديدة عبر `useFormDraftAutosave` + `offlinePost`/`offlineWrite` حسب التصنيف.
+**لا تراجع:** لا ترحيل GL صامت من الطابور؛ لا تفصل قيد فاتورة/بنك عن صفها التشغيلي؛ اربط النماذج الجديدة عبر `useFormDraftAutosave` + `offlinePost`/`offlineWrite` حسب التصنيف.

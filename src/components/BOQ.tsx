@@ -37,7 +37,11 @@ import * as XLSX from 'xlsx';
 import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
 import { isLocalBackend } from '../lib/dataBackend';
 import { ApiError } from '../lib/apiClient';
-import { boqApi, billingApi, contractsApi, inventoryApi, projectsApi, settingsApi, boqMaterialsApi } from '../services/local/modulesApi';
+import { boqApi, billingApi, contractsApi, inventoryApi, projectsApi, settingsApi, boqMaterialsApi, NetworkQueuedError } from '../services/local/modulesApi';
+import { useOfflineUserId } from '../hooks/useOfflineUserId';
+import { useFormDraftAutosave } from '../hooks/useFormDraftAutosave';
+import { FORM_DRAFT_KEYS } from '../lib/offline/formDraftKeys';
+import { FormDraftRestoreBanner } from './offline/FormDraftRestoreBanner';
 import { consumePendingBoqFocus } from '../lib/shellNavigation';
 import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { useVoPrintPreview } from '../hooks/useVoPrintPreview';
@@ -393,7 +397,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
   // Form State
-  const [formData, setFormData] = useState({
+  const EMPTY_BOQ_FORM = {
     chapterCode: '',
     chapterName: '',
     workTypeCode: '',
@@ -409,7 +413,22 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
     rateOverheadPct: 10,
     rateProfitPct: 12,
     startDate: '',
-    expectedDuration: 0
+    expectedDuration: 0,
+  };
+  const [formData, setFormData] = useState({ ...EMPTY_BOQ_FORM });
+
+  const offlineUserId = useOfflineUserId();
+  const {
+    clearDraft: clearBoqDraft,
+    restorePrompt: boqRestorePrompt,
+    acceptRestore: acceptBoqRestore,
+    dismissRestore: dismissBoqRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: selectedContractId ? FORM_DRAFT_KEYS.boqItemNew(selectedContractId) : 'boq_item:none',
+    value: formData,
+    enabled: Boolean(isLocalBackend && isModalOpen && !editingItem && selectedContractId),
+    isEmpty: (v) => !String(v.itemCode || '').trim() && !String(v.description || '').trim(),
   });
 
   // Compute progress map from approved/paid billings
@@ -583,6 +602,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
         } else {
           const created = await boqApi.create(payload);
           newItemId = created.id;
+          await clearBoqDraft();
           // وراثة الروابط من بند مشابه
           if (newItemId && data.sectionCode) {
             const similarItem = sortedItems.find(
@@ -632,25 +652,16 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
       setIsModalOpen(false);
       setEditingItem(null);
       setBoqModalVariant('default');
-      setFormData({
-        chapterCode: '',
-        chapterName: '',
-        workTypeCode: '',
-        sectionCode: '',
-        sectionName: '',
-        itemCode: '',
-        description: '',
-        unit: '',
-        tenderQty: 0,
-        rateMaterials: 0,
-        rateLabour: 0,
-        rateEquipment: 0,
-        rateOverheadPct: 10,
-        rateProfitPct: 12,
-        startDate: '',
-        expectedDuration: 0,
-      });
+      setFormData({ ...EMPTY_BOQ_FORM });
     } catch (error) {
+      if (error instanceof NetworkQueuedError) {
+        if (!editingItem) await clearBoqDraft();
+        setIsModalOpen(false);
+        setEditingItem(null);
+        setBoqModalVariant('default');
+        setFormData({ ...EMPTY_BOQ_FORM });
+        return;
+      }
       handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, 'boq_items');
     } finally {
       setIsSubmitting(false);
@@ -773,6 +784,10 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           }
           setConfirmConfig(prev => ({ ...prev, isOpen: false }));
         } catch (error) {
+          if (error instanceof NetworkQueuedError) {
+            setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+            return;
+          }
           handleFirestoreError(error, OperationType.DELETE, 'boq_items');
         }
       }
@@ -904,6 +919,16 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const handleImportTemplate = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedContractId) return;
+
+    if (isLocalBackend && typeof navigator !== 'undefined' && !navigator.onLine) {
+      toast.error(
+        language === 'ar'
+          ? 'استيراد Excel يتطلب اتصالاً بالشبكة'
+          : 'Excel import requires a network connection',
+      );
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = async (event) => {
@@ -1692,6 +1717,22 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           theme={theme}
           language={language}
           existingItems={items}
+          draftBanner={
+            !editingItem ? (
+              <FormDraftRestoreBanner
+                show={Boolean(boqRestorePrompt)}
+                updatedAt={boqRestorePrompt?.updatedAt}
+                onRestore={() => {
+                  const p = boqRestorePrompt?.payload;
+                  if (p) setFormData(p);
+                  acceptBoqRestore();
+                }}
+                onDiscard={() => {
+                  void dismissBoqRestore();
+                }}
+              />
+            ) : undefined
+          }
         />
       </AnimatePresence>
 

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -51,6 +52,7 @@ async function loadPayrollExpenseCoaNames(
 
 export const payrollRouter = Router();
 payrollRouter.use(requireAuth);
+payrollRouter.use(withIdempotency());
 
 const viewPerm = requireReferenceRead('payroll');
 const writePerm = requireModuleWrite('payroll');

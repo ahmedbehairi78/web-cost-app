@@ -13,6 +13,11 @@ import {
   type FixedAssetGroup,
   type FixedAssetDepreciationLine,
 } from '../services/local/modulesApi';
+import { NetworkQueuedError } from '../services/local/modulesApi';
+import { useFormDraftAutosave } from '../hooks/useFormDraftAutosave';
+import { useOfflineUserId } from '../hooks/useOfflineUserId';
+import { FormDraftRestoreBanner } from './offline/FormDraftRestoreBanner';
+import { FORM_DRAFT_KEYS } from '../lib/offline/formDraftKeys';
 import { useReportDocumentPreview } from '../hooks/useReportDocumentPreview';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import { downloadFixedAssetsTemplate, parseFixedAssetsImportFile, exportFixedAssetsRegister } from '../lib/fixedAssetsExcel';
@@ -229,6 +234,20 @@ function AssetModal({ mode, asset, groups, onClose, onSaved }: AssetModalProps) 
   });
   const [saving, setSaving] = useState(false);
 
+  const offlineUserId = useOfflineUserId();
+  const {
+    clearDraft: clearAssetDraft,
+    restorePrompt: assetRestorePrompt,
+    acceptRestore: acceptAssetRestore,
+    dismissRestore: dismissAssetRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: FORM_DRAFT_KEYS.fixedAssetNew,
+    value: form,
+    enabled: mode === 'create',
+    isEmpty: (v) => !String(v.assetName || '').trim() && !v.assetValue,
+  });
+
   const set = useCallback(<K extends keyof AssetFormData>(k: K, v: AssetFormData[K]) => {
     setForm((f) => ({ ...f, [k]: v }));
   }, []);
@@ -285,6 +304,7 @@ function AssetModal({ mode, asset, groups, onClose, onSaved }: AssetModalProps) 
 
       if (mode === 'create') {
         await fixedAssetsApi.create(payload as Parameters<typeof fixedAssetsApi.create>[0]);
+        await clearAssetDraft();
         toast.success(language === 'ar' ? 'تم إنشاء الأصل بنجاح' : 'Asset created');
       } else {
         await fixedAssetsApi.update(asset!.id, payload);
@@ -292,11 +312,18 @@ function AssetModal({ mode, asset, groups, onClose, onSaved }: AssetModalProps) 
       }
       onSaved();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        if (mode === 'create') {
+          await clearAssetDraft();
+          onSaved();
+        }
+        return;
+      }
       toast.error(String(err));
     } finally {
       setSaving(false);
     }
-  }, [form, mode, asset, language, onSaved]);
+  }, [form, mode, asset, language, onSaved, clearAssetDraft]);
 
   const isSetupMode = mode === 'setup';
   const title = mode === 'create'
@@ -317,6 +344,18 @@ function AssetModal({ mode, asset, groups, onClose, onSaved }: AssetModalProps) 
         </div>
 
         <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          {mode === 'create' && (
+            <FormDraftRestoreBanner
+              show={Boolean(assetRestorePrompt)}
+              updatedAt={assetRestorePrompt?.updatedAt}
+              onRestore={() => {
+                const p = assetRestorePrompt?.payload;
+                if (p) setForm(p);
+                acceptAssetRestore();
+              }}
+              onDiscard={() => { void dismissAssetRestore(); }}
+            />
+          )}
           {/* Basic info */}
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -581,6 +620,10 @@ function DepreciationTab({ language, formatMoney }: DepreciationTabProps) {
       setPreview(null);
       setRefreshKey((k) => k + 1);
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        setPreview(null);
+        return;
+      }
       toast.error(String(err));
     } finally {
       setPosting(false);
@@ -785,6 +828,7 @@ export function FixedAssets() {
         toast.error(language === 'ar' ? `${result.errors.length} صف بها أخطاء` : `${result.errors.length} rows had errors`);
       }
     } catch (err) {
+      if (err instanceof NetworkQueuedError) return;
       toast.error(String(err));
     } finally {
       setImporting(false);

@@ -215,7 +215,7 @@
 
 ### المرحلة 9 — حماية الكود + مزامنة دون اتصال
 - [x] `app.asar` + عدم تضمين أسرار (مفاتيح Firebase العامة فقط).
-- [x] **Offline sync (2026-08-08):** مسودات IndexedDB + طابور `safe_save` / `confirm_required` + `Idempotency-Key` + شريط حالة + لوحة تأكيد — `src/lib/offline/*`
+- [x] **Offline sync (2026-08-08):** مسودات IndexedDB + طابور `safe_save` / `confirm_required` + `Idempotency-Key` + شريط حالة + لوحة تأكيد — يشمل BOQ/VO — `src/lib/offline/*`
 - [ ] تعتيم حزمة الواجهة (obfuscator اختياري فوق minify).
 - **Done:** فحص الحزمة لا يكشف أسراراً؛ المنطق المالي يبقى على الخادم؛ المسودات/الطابور تمنع ضياع التعبئة عند انقطاع الشبكة.
 

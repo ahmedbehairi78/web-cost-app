@@ -347,6 +347,129 @@ returnOrdersRouter.post(
     });
 
     const result = await loadReturnOrderWithLines(prisma, returnOrderId);
+    if (Boolean((body as { autoConfirm?: boolean }).autoConfirm)) {
+      // Re-enter confirm path in-process (one offline outbox op).
+      req.params = { id: String(returnOrderId) };
+      const user = req.user!;
+      const confirmed = await prisma.$transaction(async (tx) => {
+        const order = await tx.returnOrder.findUnique({ where: { id: returnOrderId } });
+        if (!order) throw new Error('Return order not found');
+        if (order.status !== 'draft') throw new Error(`Cannot confirm from status: ${order.status}`);
+
+        assertContractAccess(user, order.contractId);
+        await assertProjectAccess(tx, user, order.projectId);
+
+        const lines = await tx.returnOrderLine.findMany({ where: { returnOrderId } });
+        if (lines.length === 0) throw new Error('Return order has no lines');
+
+        let orderTotalCost = 0;
+
+        for (const [idx, line] of lines.entries()) {
+          const col = await tx.consumptionOrderLine.findUnique({
+            where: { id: line.consumptionOrderLineId },
+            include: { order: true },
+          });
+          if (!col || col.order.status !== 'confirmed') {
+            throw new Error(`Line ${idx + 1}: linked consumption order is not confirmed`);
+          }
+
+          const alreadyReturned = await getReturnedQuantityForConsumptionLine(
+            tx,
+            line.consumptionOrderLineId,
+            returnOrderId,
+          );
+          const returnable = num(col.quantity) - alreadyReturned;
+          if (num(line.quantity) > returnable + EPSILON) {
+            throw new Error(`Line ${idx + 1}: return quantity exceeds returnable balance at confirmation`);
+          }
+
+          await returnProjectInventory(tx, order.projectId, line.materialCategoryId, num(line.quantity), {
+            referenceType: 'return_order',
+            referenceId: String(returnOrderId),
+          });
+
+          await tx.boqActualCost.create({
+            data: {
+              boqItemId: line.boqItemId,
+              contractId: order.contractId,
+              materialCategoryId: line.materialCategoryId,
+              consumptionOrderId: col.orderId,
+              quantity: -num(line.quantity),
+              unitCost: line.unitCost,
+              totalCost: -num(line.totalCost),
+              costElement: 'materials',
+            },
+          });
+
+          orderTotalCost = toMoney(orderTotalCost + num(line.totalCost));
+        }
+
+        await tx.returnOrder.update({
+          where: { id: returnOrderId },
+          data: { status: 'confirmed' },
+        });
+
+        if (orderTotalCost > 0) {
+          const warehouse = await resolveProjectWarehouseAccount(tx, order.projectId);
+          if (!warehouse) {
+            throw new Error(
+              'حساب مخزن المشروع (127…) غير مربوط — اربط المخزن من تبويب الرصيد قبل تأكيد الإرجاع',
+            );
+          }
+
+          const expenseGroups: Array<{
+            expenseAccountCode: string;
+            expenseAccountName: string;
+            totalCost: number;
+          }> = [];
+
+          for (const line of lines) {
+            const expense = await resolveExpenseFromConsumptionLine(tx, line.consumptionOrderLineId);
+            expenseGroups.push({
+              expenseAccountCode:
+                expense?.expenseAccountCode?.trim() || AccountCodes.EXPENSE_MATERIALS,
+              expenseAccountName: expense?.expenseAccountName?.trim() || 'مواد البناء',
+              totalCost: num(line.totalCost),
+            });
+          }
+
+          const journalEntries = buildReturnToWarehouseEntries({
+            inventoryAccountCode: warehouse.accountCode,
+            inventoryAccountName: warehouse.accountName,
+            expenseGroups,
+          });
+
+          await createTransaction(
+            {
+              date: order.returnDate,
+              description:
+                String(order.notes || '').trim() || `إرجاع مخزن — ${order.returnNumber}`,
+              reference: order.returnNumber,
+              projectId: order.projectId,
+              costCenterId: order.contractId,
+              entries: journalEntries,
+            },
+            user.id,
+            tx,
+          );
+        }
+
+        const expense = await resolveExpenseFromConsumptionLine(tx, lines[0]!.consumptionOrderLineId);
+        const loaded = await loadReturnOrderWithLines(tx, returnOrderId);
+
+        return {
+          ...loaded,
+          projectId: order.projectId,
+          contractId: order.contractId,
+          returnDate: order.returnDate,
+          totalCost: orderTotalCost,
+          expenseAccountCode: expense?.expenseAccountCode ?? null,
+          expenseAccountName: expense?.expenseAccountName ?? null,
+        };
+      });
+      res.status(201).json({ ok: true, order: confirmed });
+      return;
+    }
     res.status(201).json({ ok: true, order: result });
   }),
 );

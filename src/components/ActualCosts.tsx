@@ -9,7 +9,14 @@ import { listenQuery } from '../lib/firestoreListen';
 import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { ApiError } from '../lib/apiClient';
-import { accountingService, invalidateCoaCache, buildSubcontractorIpcEntries, type Account } from '../services/accountingService';
+import {
+  accountingService,
+  invalidateCoaCache,
+  buildSubcontractorIpcEntries,
+  buildPurchaseWithholdingJournalLines,
+  type Account,
+} from '../services/accountingService';
+import { NetworkQueuedError } from '../lib/offline/offlineWrite';
 import { ManualHelpButton } from './help/ManualHelpButton';
 import type { ManualTopicId } from '../lib/operationsManual';
 import { JournalPreviewModal, type JournalPreviewEntry } from './gl/JournalPreviewModal';
@@ -1737,6 +1744,194 @@ export function ActualCosts() {
           });
         }
       }
+
+      // Local invoices: one API call (GL + purchase row + optional stock) so offline sync cannot orphan the journal.
+      if (isLocalBackend && activeTab === 'invoice') {
+        const invoiceRef = formData.referenceNumber.trim()
+          ? `INV-${formData.referenceNumber.trim()}`
+          : undefined;
+        const journalDescription =
+          isFixedAsset && fixedAssetAccountCode.trim()
+            ? formData.description ||
+              `${t('invoice_entry')} - ${resolvedSupplierName} - ${fixedAssetName.trim() || fixedAssetAccountCode.trim()}`
+            : formData.description || `${t('invoice_entry')} - ${resolvedSupplierName}`;
+
+        let journalEntries: ReturnType<typeof buildPurchaseWithholdingJournalLines>;
+        let journalProjectId: string | undefined;
+        let journalCostCenterId: string | undefined;
+
+        if (isIndirectInvoice && expenseCoaAccount) {
+          journalEntries = buildPurchaseWithholdingJournalLines({
+            debitAccountCode: expenseCoaAccount.accountCode,
+            debitAccountName: expenseCoaAccount.accountName || expenseCoaAccount.accountNameEn || '',
+            supplierAccountCode: supplierCoaAccount.accountCode,
+            supplierLabel: `موردين - ${resolvedSupplierName}`,
+            baseAmount: worksValue,
+            vatAmount: vat,
+            whtAmount: wht,
+            costCenterId: costCenterIdForGl!,
+          });
+          journalCostCenterId = costCenterIdForGl!;
+        } else if (isFixedAsset && fixedAssetAccountCode.trim()) {
+          journalEntries = buildPurchaseWithholdingJournalLines({
+            debitAccountCode: fixedAssetAccountCode.trim(),
+            debitAccountName: fixedAssetAccountName.trim() || fixedAssetAccountCode.trim(),
+            supplierAccountCode: supplierCoaAccount.accountCode,
+            supplierLabel: `موردين - ${resolvedSupplierName}`,
+            baseAmount: worksValue,
+            vatAmount: vat,
+            whtAmount: wht,
+          });
+        } else if (warehouseAccount) {
+          journalEntries = buildPurchaseWithholdingJournalLines({
+            debitAccountCode: warehouseAccount.accountCode,
+            debitAccountName: warehouseAccount.accountName,
+            supplierAccountCode: supplierCoaAccount.accountCode,
+            supplierLabel: `موردين - ${resolvedSupplierName}`,
+            baseAmount: worksValue,
+            vatAmount: vat,
+            whtAmount: wht,
+          });
+          journalProjectId = inventoryProjectId || undefined;
+          journalCostCenterId = costCenterIdForGl || undefined;
+        } else {
+          toast.error(
+            language === 'ar'
+              ? 'تعذر بناء قيد الفاتورة — تحقق من المخزن أو الأصل أو مركز التكلفة.'
+              : 'Cannot build invoice journal — check warehouse, asset, or cost center.',
+          );
+          return;
+        }
+
+        if (inventoryProjectId && !isIndirectInvoice && !isFixedAsset) {
+          const projectHint = projects?.find((p) => p.id === inventoryProjectId);
+          await ensureLocalProjectExists(inventoryProjectId, {
+            projectName: projectHint?.projectName,
+            projectCode: projectHint?.projectCode as string | undefined,
+            clientName: projectHint?.clientName as string | undefined,
+            budget: Number(projectHint?.budget ?? 0),
+          });
+        }
+
+        const apiBody = {
+          type: 'invoice' as const,
+          supplierId:
+            invoicePaymentType === 'cash'
+              ? null
+              : nullIfEmpty(supplierFromDirectory?.id || supplierCoaAccount.supplierId || ''),
+          supplierAccountId: nullIfEmpty(supplierCoaAccount.id),
+          supplierName: resolvedSupplierName,
+          paymentType: invoicePaymentType,
+          projectId: projectIdForSave,
+          contractId: contractIdForSave,
+          expenseAccountId: isIndirectInvoice ? nullIfEmpty(expenseCoaAccount?.id) : null,
+          expenseAccountName: isIndirectInvoice ? expenseCoaAccount?.accountName || '' : '',
+          date: formData.date,
+          referenceNumber: formData.referenceNumber,
+          amount: worksValue,
+          vatAmount: vat,
+          whtAmount: wht,
+          execGuaranteeAmount: exec,
+          labourInsuranceAmount: insurance,
+          manpowerLevyAmount: levy,
+          advancePaymentRecovery: advance,
+          totalAmount: net,
+          description: formData.description || '',
+          status: 'pending',
+          isDeleted: false,
+          invoiceLines: !isSimpleAmountInvoice
+            ? normalizedInvoiceLines.map(mapInvoiceLineForPersistence)
+            : undefined,
+        };
+
+        const posted = await purchaseTransactionsApi.postInvoice({
+          purchase: apiBody,
+          journal: {
+            date: formData.date,
+            description: journalDescription,
+            ...(invoiceRef ? { reference: invoiceRef } : {}),
+            ...(journalProjectId ? { projectId: journalProjectId } : {}),
+            ...(journalCostCenterId ? { costCenterId: journalCostCenterId } : {}),
+            entries: journalEntries,
+          },
+          ...(inventoryProjectId && !isIndirectInvoice && !isFixedAsset
+            ? {
+                inventory: {
+                  projectId: inventoryProjectId,
+                  vatPct: formData.invoiceVatPct,
+                  invoiceNumber: formData.referenceNumber,
+                  lines: normalizedInvoiceLines.map(mapInvoiceLineForPersistence),
+                },
+              }
+            : {}),
+        });
+
+        const purchaseId = String(posted.id);
+        transactionId = String(posted.transactionId || '');
+
+        if (isFixedAsset && fixedAssetAccountCode.trim()) {
+          try {
+            const assetValue = worksValue + vat;
+            await import('../services/local/modulesApi').then(({ fixedAssetsApi }) =>
+              fixedAssetsApi.create({
+                assetName: fixedAssetName.trim() || `${resolvedSupplierName} - ${formData.date}`,
+                acquisitionDate: formData.date,
+                assetValue,
+                assetAccountCode: fixedAssetAccountCode.trim(),
+                assetAccountName: fixedAssetAccountName.trim() || fixedAssetAccountCode.trim(),
+                accumulatedDepreciationAccountCode: '',
+                expenseAccountCode: '',
+                purchaseTransactionId: purchaseId,
+                status: 'pending_setup',
+              } as Parameters<typeof fixedAssetsApi.create>[0]),
+            );
+            toast(
+              language === 'ar'
+                ? 'تم إنشاء سجل الأصل الثابت في وضع "انتظار الإعداد" — يرجى إكمال البيانات في موديول الأصول الثابتة'
+                : 'Fixed asset record created (pending setup) — complete details in the Fixed Assets module',
+              { duration: 6000 },
+            );
+          } catch (faErr) {
+            console.warn('Fixed asset record creation failed:', faErr);
+            toast.error(
+              language === 'ar'
+                ? `تم ترحيل القيد لكن فشل إنشاء سجل الأصل الثابت: ${faErr instanceof Error ? faErr.message : String(faErr)}`
+                : `Journal posted but fixed asset register row failed: ${faErr instanceof Error ? faErr.message : String(faErr)}`,
+              { duration: 8000 },
+            );
+          }
+        }
+
+        if (inventoryProjectId && !isIndirectInvoice && !isFixedAsset) {
+          try {
+            const summary = (await inventoryApi.projectSummary(inventoryProjectId)) as {
+              items: InventoryBalanceItem[];
+            };
+            if (summary?.items) setInventorySnapshot(summary.items);
+          } catch {
+            // non-critical
+          }
+          try {
+            const spentRows = await inventoryApi.spentByContract();
+            const spentMap = new Map<string, number>();
+            for (const row of spentRows) spentMap.set(row.contractId, row.totalSpent);
+            setBoqSpentByContract(spentMap);
+          } catch {
+            // non-critical
+          }
+        }
+
+        toast.success(
+          language === 'ar'
+            ? 'تم حفظ الفاتورة وإنشاء القيد بنجاح.'
+            : 'Invoice saved and journal entry created successfully.',
+        );
+        setPurchaseRefreshKey((k) => k + 1);
+        setShowModal(false);
+        resetForm();
+        return;
+      }
+
       if (activeTab === 'invoice' && isIndirectInvoice && expenseCoaAccount) {
         const invoiceRef = formData.referenceNumber.trim()
           ? `INV-${formData.referenceNumber.trim()}`
@@ -2033,6 +2228,11 @@ export function ActualCosts() {
       setShowModal(false);
       resetForm();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        setShowModal(false);
+        resetForm();
+        return;
+      }
       if (transactionId) {
         try {
           await accountingService.deleteTransaction(transactionId);

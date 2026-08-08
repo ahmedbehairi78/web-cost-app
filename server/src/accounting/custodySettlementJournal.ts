@@ -26,7 +26,9 @@ export async function postCustodySettlementJournals(params: {
   description: string;
   items: CustodySettlementLine[];
   userId: string;
+  client?: Parameters<typeof createTransaction>[2];
 }): Promise<string[]> {
+  const db = params.client ?? prisma;
   const validItems = params.items.filter(
     (i) => i.accountCode.trim() && roundMoney(Number(i.amount)) > 0,
   );
@@ -34,7 +36,7 @@ export async function postCustodySettlementJournals(params: {
     throw new Error('No valid settlement lines');
   }
 
-  const contracts = await prisma.contract.findMany({
+  const contracts = await db.contract.findMany({
     where: { projectId: params.projectId, isDeleted: false },
     select: { id: true, projectId: true },
   });
@@ -46,7 +48,7 @@ export async function postCustodySettlementJournals(params: {
     groups.get(key)!.push(item);
   }
 
-  const coaRows = await prisma.chartOfAccount.findMany({
+  const coaRows = await db.chartOfAccount.findMany({
     where: { status: { not: 'disabled' } },
     select: { accountCode: true, accountName: true },
   });
@@ -91,6 +93,7 @@ export async function postCustodySettlementJournals(params: {
         ],
       },
       params.userId,
+      params.client,
     );
     transactionIds.push(tx.id);
     void isDirect;

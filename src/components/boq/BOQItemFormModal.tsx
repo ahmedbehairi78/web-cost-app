@@ -45,13 +45,15 @@ interface Props {
   theme: string;
   language: string;
   existingItems?: ExistingItem[];
+  /** Offline draft restore banner (new items only). */
+  draftBanner?: React.ReactNode;
 }
 
 const NEW_OPTION = '__new__';
 
 export function BOQItemFormModal({
   isOpen, editingItem, variant = 'default', formData, setFormData, isSubmitting,
-  onSubmit, onClose, theme, language, existingItems = [],
+  onSubmit, onClose, theme, language, existingItems = [], draftBanner,
 }: Props) {
   const isAr = language === 'ar';
   const isChangeOrder = variant === 'changeOrder';
@@ -241,7 +243,7 @@ export function BOQItemFormModal({
             </div>
 
             <form onSubmit={handleFormSubmit} className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
-
+              {draftBanner}
               {!isChangeOrder && (
               <>
               {/* ── Chapter ── */}

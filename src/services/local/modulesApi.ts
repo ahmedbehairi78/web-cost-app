@@ -1,7 +1,13 @@
 import type { AppUser, BillingRecord, BOQItem, MosCertificate, MosExtract, Project, Supplier, Transaction, VariationOrder } from '../../types';
 import { apiClient } from '../../lib/apiClient';
 import { createCrudApi } from './crudApi';
-import { offlinePost, offlinePatch, offlinePut, NetworkQueuedError } from '../../lib/offline/offlineWrite';
+import {
+  offlinePost,
+  offlinePatch,
+  offlinePut,
+  offlineDelete,
+  NetworkQueuedError,
+} from '../../lib/offline/offlineWrite';
 
 export { NetworkQueuedError };
 
@@ -16,7 +22,29 @@ function buildQuery(params: Record<string, string | undefined>): string {
 
 export const projectsApi = createCrudApi<Project>('/projects');
 export const contractsApi = createCrudApi('/contracts');
-export const boqApi = createCrudApi<BOQItem>('/boq-items');
+export const boqApi = {
+  ...createCrudApi<BOQItem>('/boq-items'),
+  create: (data: Partial<BOQItem>, opts?: { quiet?: boolean }) =>
+    offlinePost<BOQItem>('/boq-items', data, {
+      opType: 'boq.create',
+      opClass: 'safe_save',
+      summary: 'Create BOQ item',
+      quiet: opts?.quiet,
+    }),
+  update: (id: string, data: Partial<BOQItem>, opts?: { quiet?: boolean }) =>
+    offlinePut<BOQItem>(`/boq-items/${encodeURIComponent(id)}`, data, {
+      opType: 'boq.update',
+      opClass: 'safe_save',
+      summary: `Update BOQ ${id}`,
+      quiet: opts?.quiet,
+    }),
+  remove: (id: string) =>
+    offlineDelete<BOQItem>(`/boq-items/${encodeURIComponent(id)}`, {
+      opType: 'boq.delete',
+      opClass: 'safe_save',
+      summary: `Delete BOQ ${id}`,
+    }),
+};
 export const suppliersApi = createCrudApi<Supplier>('/suppliers');
 export const chartOfAccountsApi = {
   ...createCrudApi('/chart-of-accounts'),
@@ -50,6 +78,16 @@ export const purchaseTransactionsApi = {
       opType: 'purchase_tx.update',
       opClass: 'safe_save',
       summary: `Update purchase ${id}`,
+    }),
+  /**
+   * Atomic invoice: GL + purchase row + optional warehouse stock (confirm_required offline).
+   * Do not call glApi.createTransaction separately for purchase invoices — orphans the list.
+   */
+  postInvoice: (data: unknown) =>
+    offlinePost<Record<string, unknown>>('/purchase-transactions/post-invoice', data, {
+      opType: 'purchase_invoice.post',
+      opClass: 'confirm_required',
+      summary: 'Post purchase invoice',
     }),
   approve: (id: string) =>
     offlinePost<Record<string, unknown>>(`/purchase-transactions/${encodeURIComponent(id)}/approve`, {}, {
@@ -410,15 +448,40 @@ export const variationOrdersApi = {
       newTenderQty?: number;
       newUnitRate?: number;
     }>;
-  }) => apiClient.post<VariationOrder>('/variation-orders', data),
+  }) =>
+    offlinePost<VariationOrder & { newBoqItemIds?: string[] }>('/variation-orders', data, {
+      opType: 'vo.create',
+      opClass: 'safe_save',
+      summary: 'Create variation order',
+    }),
 
-  submit: (id: string) => apiClient.post<VariationOrder>(`/variation-orders/${id}/submit`, {}),
+  submit: (id: string) =>
+    offlinePost<VariationOrder>(`/variation-orders/${encodeURIComponent(id)}/submit`, {}, {
+      opType: 'vo.submit',
+      opClass: 'safe_save',
+      summary: `Submit VO ${id}`,
+    }),
 
-  approve: (id: string) => apiClient.post<VariationOrder>(`/variation-orders/${id}/approve`, {}),
+  approve: (id: string) =>
+    offlinePost<VariationOrder>(`/variation-orders/${encodeURIComponent(id)}/approve`, {}, {
+      opType: 'vo.approve',
+      opClass: 'confirm_required',
+      summary: `Approve VO ${id}`,
+    }),
 
-  reject: (id: string) => apiClient.post<VariationOrder>(`/variation-orders/${id}/reject`, {}),
+  reject: (id: string) =>
+    offlinePost<VariationOrder>(`/variation-orders/${encodeURIComponent(id)}/reject`, {}, {
+      opType: 'vo.reject',
+      opClass: 'safe_save',
+      summary: `Reject VO ${id}`,
+    }),
 
-  delete: (id: string) => apiClient.delete<{ ok: boolean }>(`/variation-orders/${id}`),
+  delete: (id: string) =>
+    offlineDelete<{ ok: boolean }>(`/variation-orders/${encodeURIComponent(id)}`, {
+      opType: 'vo.delete',
+      opClass: 'safe_save',
+      summary: `Delete VO ${id}`,
+    }),
 };
 
 export type PurchaseInvoiceLinePayload = {
@@ -562,6 +625,27 @@ export const consumptionOrdersApi = {
       opType: 'consumption.create',
       opClass: 'safe_save',
       summary: 'Consumption order draft',
+    }),
+  /** Create + confirm in one offline op (issue modal). pending_cost still returns without GL. */
+  createAndConfirm: (data: {
+    contractId: string;
+    projectId?: string;
+    orderDate: string;
+    notes?: string;
+    expenseAccountCode?: string;
+    expenseAccountName?: string;
+    lines: Array<{
+      boqItemId: string;
+      materialCategoryId: number;
+      quantity: number;
+      expenseAccountCode?: string;
+      expenseAccountName?: string;
+    }>;
+  }) =>
+    offlinePost('/consumption-orders', { ...data, autoConfirm: true }, {
+      opType: 'consumption.confirm',
+      opClass: 'confirm_required',
+      summary: 'Confirm consumption issue',
     }),
   confirm: (id: number) =>
     offlinePost<{
@@ -714,6 +798,18 @@ export const returnOrdersApi = {
       opType: 'return.create',
       opClass: 'safe_save',
       summary: 'Return order draft',
+    }),
+  createAndConfirm: (data: {
+    contractId: string;
+    projectId?: string;
+    returnDate: string;
+    notes?: string;
+    lines: Array<{ consumptionOrderLineId: number; quantity: number; reason?: string }>;
+  }) =>
+    offlinePost('/return-orders', { ...data, autoConfirm: true }, {
+      opType: 'return.confirm',
+      opClass: 'confirm_required',
+      summary: 'Confirm return order',
     }),
   confirm: (id: number) =>
     offlinePost<{
@@ -1360,6 +1456,19 @@ export const banksApi = {
         opClass: 'safe_save',
         summary: `Update bank movement ${id}`,
       }),
+    /** Atomic GL + status=posted (confirm_required offline). */
+    post: (id: string, body: unknown) =>
+      offlinePost(`/bank-movements/${encodeURIComponent(id)}/post`, body, {
+        opType: 'bank_movement.post',
+        opClass: 'confirm_required',
+        summary: `Post bank movement ${id}`,
+      }),
+    cancelPosted: (id: string) =>
+      offlinePost(`/bank-movements/${encodeURIComponent(id)}/cancel`, {}, {
+        opType: 'bank_movement.post',
+        opClass: 'confirm_required',
+        summary: `Cancel bank movement ${id}`,
+      }),
   },
   cheques: {
     ...createCrudApi('/bank-cheques'),
@@ -1374,6 +1483,30 @@ export const banksApi = {
         opType: 'bank_cheque.update',
         opClass: 'safe_save',
         summary: `Update bank cheque ${id}`,
+      }),
+    issue: (id: string, body: unknown) =>
+      offlinePost(`/bank-cheques/${encodeURIComponent(id)}/issue`, body, {
+        opType: 'bank_cheque.iss',
+        opClass: 'confirm_required',
+        summary: `Issue cheque ${id}`,
+      }),
+    clear: (id: string, body: unknown) =>
+      offlinePost(`/bank-cheques/${encodeURIComponent(id)}/clear`, body, {
+        opType: 'bank_cheque.clr',
+        opClass: 'confirm_required',
+        summary: `Clear cheque ${id}`,
+      }),
+    reject: (id: string) =>
+      offlinePost(`/bank-cheques/${encodeURIComponent(id)}/reject`, {}, {
+        opType: 'bank_cheque.iss',
+        opClass: 'confirm_required',
+        summary: `Reject cheque ${id}`,
+      }),
+    cancelIssue: (id: string) =>
+      offlinePost(`/bank-cheques/${encodeURIComponent(id)}/cancel-issue`, {}, {
+        opType: 'bank_cheque.iss',
+        opClass: 'confirm_required',
+        summary: `Cancel cheque issue ${id}`,
       }),
   },
   statements: createCrudApi('/bank-statements'),
@@ -1583,18 +1716,34 @@ export const fixedAssetsApi = {
   // Groups
   listGroups: () => apiClient.get<FixedAssetGroup[]>('/fixed-assets/groups'),
   createGroup: (data: Omit<FixedAssetGroup, 'id' | 'isDeleted'>) =>
-    apiClient.post<FixedAssetGroup>('/fixed-assets/groups', data),
+    offlinePost<FixedAssetGroup>('/fixed-assets/groups', data, {
+      opType: 'fixed_asset.create',
+      opClass: 'safe_save',
+      summary: 'Fixed asset group',
+    }),
   updateGroup: (id: number, data: Partial<FixedAssetGroup>) =>
-    apiClient.put<FixedAssetGroup>(`/fixed-assets/groups/${id}`, data),
+    offlinePut<FixedAssetGroup>(`/fixed-assets/groups/${id}`, data, {
+      opType: 'fixed_asset.update',
+      opClass: 'safe_save',
+      summary: `Update asset group ${id}`,
+    }),
 
   // Assets
   list: (params?: { status?: string; groupId?: number; costCenterId?: string }) =>
     apiClient.get<FixedAsset[]>(`/fixed-assets${buildQuery({ status: params?.status, groupId: params?.groupId?.toString(), costCenterId: params?.costCenterId })}`),
   get: (id: string) => apiClient.get<FixedAsset & { depreciationEntries: FixedAssetDepreciationEntry[]; depreciationSchedule: unknown[] }>(`/fixed-assets/${id}`),
   create: (data: Partial<FixedAsset> & { assetName: string; acquisitionDate: string; assetValue: number }) =>
-    apiClient.post<FixedAsset>('/fixed-assets', data),
+    offlinePost<FixedAsset>('/fixed-assets', data, {
+      opType: 'fixed_asset.create',
+      opClass: 'safe_save',
+      summary: 'Create fixed asset',
+    }),
   update: (id: string, data: Partial<FixedAsset>) =>
-    apiClient.put<FixedAsset>(`/fixed-assets/${id}`, data),
+    offlinePut<FixedAsset>(`/fixed-assets/${encodeURIComponent(id)}`, data, {
+      opType: 'fixed_asset.update',
+      opClass: 'safe_save',
+      summary: `Update fixed asset ${id}`,
+    }),
   remove: (id: string) => apiClient.delete<{ ok: boolean }>(`/fixed-assets/${id}`),
 
   // Depreciation
@@ -1607,7 +1756,15 @@ export const fixedAssetsApi = {
       total: number;
     }>('/fixed-assets/depreciation/compute', { periodLabel }),
   postDepreciation: (periodLabel: string, lines: FixedAssetDepreciationLine[]) =>
-    apiClient.post<{ ok: boolean; periodLabel: string; posted: number }>('/fixed-assets/depreciation/post', { periodLabel, lines }),
+    offlinePost<{ ok: boolean; periodLabel: string; posted: number }>(
+      '/fixed-assets/depreciation/post',
+      { periodLabel, lines },
+      {
+        opType: 'fixed_asset.depreciation_post',
+        opClass: 'confirm_required',
+        summary: `Post depreciation ${periodLabel}`,
+      },
+    ),
   listDepreciation: (params?: { periodLabel?: string; assetId?: string }) =>
     apiClient.get<FixedAssetDepreciationEntry[]>(`/fixed-assets/depreciation${buildQuery({ periodLabel: params?.periodLabel, assetId: params?.assetId })}`),
 
@@ -1618,7 +1775,15 @@ export const fixedAssetsApi = {
       totals: { totalAssetValue: number; totalAccumulatedDepr: number; totalNetBookValue: number };
     }>(`/fixed-assets/register-report${status ? `?status=${status}` : ''}`),
   importAssets: (rows: Partial<FixedAsset & { groupName: string }>[]) =>
-    apiClient.post<{ created: number; errors: Array<{ row: number; error: string }> }>('/fixed-assets/import', { rows }),
+    offlinePost<{ created: number; errors: Array<{ row: number; error: string }> }>(
+      '/fixed-assets/import',
+      { rows },
+      {
+        opType: 'fixed_asset.import',
+        opClass: 'safe_save',
+        summary: 'Import fixed assets',
+      },
+    ),
   syncFromGl: () =>
     apiClient.post<{
       scanned: number;
@@ -1756,37 +1921,98 @@ export const payrollApi = {
   listEmployees: (params?: { status?: string; department?: string }) =>
     apiClient.get<PayrollEmployee[]>(`/payroll/employees${buildQuery({ status: params?.status, department: params?.department })}`),
   createEmployee: (data: Partial<PayrollEmployee> & { employeeCode: string; name: string }) =>
-    apiClient.post<PayrollEmployee>('/payroll/employees', data),
+    offlinePost<PayrollEmployee>('/payroll/employees', data, {
+      opType: 'payroll.employee.create',
+      opClass: 'safe_save',
+      summary: 'Create payroll employee',
+    }),
   updateEmployee: (id: string, data: Partial<PayrollEmployee>) =>
-    apiClient.put<PayrollEmployee>(`/payroll/employees/${id}`, data),
+    offlinePut<PayrollEmployee>(`/payroll/employees/${encodeURIComponent(id)}`, data, {
+      opType: 'payroll.employee.update',
+      opClass: 'safe_save',
+      summary: `Update employee ${id}`,
+    }),
   removeEmployee: (id: string) => apiClient.delete<{ ok: boolean }>(`/payroll/employees/${id}`),
   importEmployees: (rows: Array<Partial<PayrollEmployee> & { carriedLeaveDays?: number }>) =>
-    apiClient.post<{ created: number; updated: number; errors: Array<{ row: number; error: string }> }>('/payroll/employees/import', { rows }),
+    offlinePost<{ created: number; updated: number; errors: Array<{ row: number; error: string }> }>(
+      '/payroll/employees/import',
+      { rows },
+      {
+        opType: 'payroll.employee.create',
+        opClass: 'safe_save',
+        summary: 'Import payroll employees',
+      },
+    ),
 
   // Runs
   listRuns: (params?: { status?: string; year?: number }) =>
     apiClient.get<PayrollRun[]>(`/payroll/runs${buildQuery({ status: params?.status, year: params?.year?.toString() })}`),
   getRun: (id: string) => apiClient.get<PayrollRun>(`/payroll/runs/${id}`),
   createRun: (data: { periodMonth: number; periodYear: number; description?: string; lines?: PayrollLineInput[] }) =>
-    apiClient.post<PayrollRun>('/payroll/runs', data),
+    offlinePost<PayrollRun>('/payroll/runs', data, {
+      opType: 'payroll.run.create',
+      opClass: 'safe_save',
+      summary: 'Create payroll run',
+    }),
   replaceLines: (id: string, lines: PayrollLineInput[]) =>
-    apiClient.put<PayrollRun>(`/payroll/runs/${id}/lines`, { lines }),
+    offlinePut<PayrollRun>(`/payroll/runs/${encodeURIComponent(id)}/lines`, { lines }, {
+      opType: 'payroll.run.lines',
+      opClass: 'safe_save',
+      summary: `Save payroll run lines ${id}`,
+    }),
   removeRun: (id: string) => apiClient.delete<{ ok: boolean }>(`/payroll/runs/${id}`),
   accrue: (id: string, accrualDate?: string) =>
-    apiClient.post<PayrollRun & { transactionId: string }>(`/payroll/runs/${id}/accrue`, { accrualDate }),
+    offlinePost<PayrollRun & { transactionId: string }>(
+      `/payroll/runs/${encodeURIComponent(id)}/accrue`,
+      { accrualDate },
+      {
+        opType: 'payroll.run.accrue',
+        opClass: 'confirm_required',
+        summary: `Accrue payroll run ${id}`,
+      },
+    ),
   accruePreview: (id: string) =>
-    apiClient.get<JournalPreviewResponse>(`/payroll/runs/${id}/accrue-preview`),
+    apiClient.get<JournalPreviewResponse>(`/payroll/runs/${encodeURIComponent(id)}/accrue-preview`),
   pay: (id: string, data: { paymentAccountCode: string; paymentAccountName?: string; paymentDate?: string }) =>
-    apiClient.post<PayrollRun & { transactionId: string }>(`/payroll/runs/${id}/pay`, data),
-  reopen: (id: string) => apiClient.post<PayrollRun>(`/payroll/runs/${id}/reopen`, {}),
+    offlinePost<PayrollRun & { transactionId: string }>(
+      `/payroll/runs/${encodeURIComponent(id)}/pay`,
+      data,
+      {
+        opType: 'payroll.run.pay',
+        opClass: 'confirm_required',
+        summary: `Pay payroll run ${id}`,
+      },
+    ),
+  reopen: (id: string) =>
+    offlinePost<PayrollRun>(`/payroll/runs/${encodeURIComponent(id)}/reopen`, {}, {
+      opType: 'payroll.run.reopen',
+      opClass: 'confirm_required',
+      summary: `Reopen payroll run ${id}`,
+    }),
 
   // Employee default cost-center split
   getEmployeeAllocations: (employeeId: string) =>
     apiClient.get<EmployeeCostCenterAllocation[]>(`/payroll/employees/${employeeId}/cost-center-allocations`),
   setEmployeeAllocations: (employeeId: string, allocations: EmployeeCostCenterAllocation[]) =>
-    apiClient.put<EmployeeCostCenterAllocation[]>(`/payroll/employees/${employeeId}/cost-center-allocations`, { allocations }),
+    offlinePut<EmployeeCostCenterAllocation[]>(
+      `/payroll/employees/${encodeURIComponent(employeeId)}/cost-center-allocations`,
+      { allocations },
+      {
+        opType: 'payroll.employee.allocations',
+        opClass: 'safe_save',
+        summary: `Employee cost centers ${employeeId}`,
+      },
+    ),
   setRunLineAllocations: (lineId: string, allocations: Array<Omit<PayrollRunLineAllocation, 'amount' | 'id' | 'runLineId'>>) =>
-    apiClient.put<PayrollRunLineAllocation[]>(`/payroll/run-lines/${lineId}/allocations`, { allocations }),
+    offlinePut<PayrollRunLineAllocation[]>(
+      `/payroll/run-lines/${encodeURIComponent(lineId)}/allocations`,
+      { allocations },
+      {
+        opType: 'payroll.run.lines',
+        opClass: 'safe_save',
+        summary: `Run line allocations ${lineId}`,
+      },
+    ),
 
   // Salary notifications
   notifySalaries: (id: string, languageCode?: string) =>

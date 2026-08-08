@@ -25,6 +25,11 @@ import {
   type EmployeeLeaveBalance,
   type JournalPreviewResponse,
 } from '../services/local/modulesApi';
+import { NetworkQueuedError } from '../services/local/modulesApi';
+import { useFormDraftAutosave } from '../hooks/useFormDraftAutosave';
+import { useOfflineUserId } from '../hooks/useOfflineUserId';
+import { FormDraftRestoreBanner } from './offline/FormDraftRestoreBanner';
+import { FORM_DRAFT_KEYS } from '../lib/offline/formDraftKeys';
 import { JournalPreviewModal } from './gl/JournalPreviewModal';
 import { useReportDocumentPreview } from '../hooks/useReportDocumentPreview';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
@@ -184,6 +189,21 @@ function EmployeeModal({ employee, costCenters, onClose, onSaved }: EmployeeModa
   const [allocs, setAllocs] = useState<AllocRow[]>([]);
   const set = useCallback(<K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v })), []);
 
+  const offlineUserId = useOfflineUserId();
+  const employeeDraftValue = useMemo(() => ({ form, allocs }), [form, allocs]);
+  const {
+    clearDraft: clearEmployeeDraft,
+    restorePrompt: employeeRestorePrompt,
+    acceptRestore: acceptEmployeeRestore,
+    dismissRestore: dismissEmployeeRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: FORM_DRAFT_KEYS.payrollEmployeeNew,
+    value: employeeDraftValue,
+    enabled: !employee,
+    isEmpty: (v) => !String(v.form?.employeeCode || '').trim() && !String(v.form?.name || '').trim(),
+  });
+
   // Load the employee's existing default cost-center split when editing
   useEffect(() => {
     let cancelled = false;
@@ -272,14 +292,22 @@ function EmployeeModal({ employee, costCenters, onClose, onSaved }: EmployeeModa
         expenseAccountName: costCenters.find((c) => c.id === r.costCenterId)?.name ?? null,
         percentage: Number(r.percentage),
       })));
+      if (!employee) await clearEmployeeDraft();
       toast.success(employee ? (language === 'ar' ? 'تم حفظ التعديلات' : 'Employee updated') : (language === 'ar' ? 'تمت إضافة الموظف' : 'Employee added'));
       onSaved();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        if (!employee) {
+          await clearEmployeeDraft();
+          onSaved();
+        }
+        return;
+      }
       toast.error(String(err));
     } finally {
       setSaving(false);
     }
-  }, [form, allocs, employee, costCenters, language, onSaved]);
+  }, [form, allocs, employee, costCenters, language, onSaved, clearEmployeeDraft]);
 
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100';
 
@@ -294,6 +322,21 @@ function EmployeeModal({ employee, costCenters, onClose, onSaved }: EmployeeModa
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X size={18} /></button>
         </div>
         <form onSubmit={handleSubmit} className="p-4 grid grid-cols-2 gap-3">
+          {!employee && (
+            <div className="col-span-2">
+              <FormDraftRestoreBanner
+                show={Boolean(employeeRestorePrompt)}
+                updatedAt={employeeRestorePrompt?.updatedAt}
+                onRestore={() => {
+                  const p = employeeRestorePrompt?.payload;
+                  if (p?.form) setForm(p.form);
+                  if (p?.allocs) setAllocs(p.allocs);
+                  acceptEmployeeRestore();
+                }}
+                onDiscard={() => { void dismissEmployeeRestore(); }}
+              />
+            </div>
+          )}
           <div>
             <label className="block text-xs text-gray-500 mb-1">{language === 'ar' ? 'كود الموظف *' : 'Employee Code *'}</label>
             <input className={cn(inputCls, 'font-mono')} value={form.employeeCode} onChange={(e) => set('employeeCode', e.target.value)} disabled={!!employee} />
@@ -436,11 +479,15 @@ function RunModal({ employees, costCenters, onClose, onCreated }: RunModalProps)
       toast.success(language === 'ar' ? `تم إنشاء كشف ${run.runNumber}` : `Run ${run.runNumber} created`);
       onCreated(run);
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        onClose();
+        return;
+      }
       toast.error(String(err));
     } finally {
       setSaving(false);
     }
-  }, [month, year, description, populate, employees, costCenters, language, onCreated]);
+  }, [month, year, description, populate, employees, costCenters, language, onCreated, onClose]);
 
   const inputCls = 'w-full border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100';
 
@@ -515,6 +562,10 @@ function PayModal({ run, paymentAccounts, onClose, onPaid }: PayModalProps) {
       toast.success(language === 'ar' ? 'تم تسجيل سداد الرواتب' : 'Payroll payment recorded');
       onPaid();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        onClose();
+        return;
+      }
       toast.error(String(err));
     } finally {
       setSaving(false);
@@ -1615,6 +1666,10 @@ function RunDetail({ runId, costCenters, paymentAccounts, onBack, onChanged, emb
       setRefreshKey((k) => k + 1);
       onChanged();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        setAccruePreview(null);
+        return;
+      }
       toast.error(String(err));
     } finally {
       setBusy(false);
@@ -1648,6 +1703,7 @@ function RunDetail({ runId, costCenters, paymentAccounts, onBack, onChanged, emb
       setRefreshKey((k) => k + 1);
       onChanged();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) return;
       toast.error(String(err));
     } finally {
       setBusy(false);
@@ -2691,6 +2747,7 @@ export function Payroll() {
       if (result.errors.length) toast.error(language === 'ar' ? `${result.errors.length} صف به أخطاء` : `${result.errors.length} rows had errors`);
       handleRefresh();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) return;
       toast.error(String(err));
     } finally {
       setImportingEmp(false);

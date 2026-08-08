@@ -35,7 +35,27 @@ export type SyncOpType =
   | 'bank_cheque.iss'
   | 'bank_cheque.clr'
   | 'gl.create_transaction'
-  | 'gl.reverse';
+  | 'gl.reverse'
+  | 'payroll.employee.create'
+  | 'payroll.employee.update'
+  | 'payroll.employee.allocations'
+  | 'payroll.run.create'
+  | 'payroll.run.lines'
+  | 'payroll.run.accrue'
+  | 'payroll.run.pay'
+  | 'payroll.run.reopen'
+  | 'fixed_asset.create'
+  | 'fixed_asset.update'
+  | 'fixed_asset.depreciation_post'
+  | 'fixed_asset.import'
+  | 'boq.create'
+  | 'boq.update'
+  | 'boq.delete'
+  | 'vo.create'
+  | 'vo.submit'
+  | 'vo.approve'
+  | 'vo.reject'
+  | 'vo.delete';
 
 export type OutboxStatus = 'queued' | 'syncing' | 'failed' | 'awaiting_confirm';
 

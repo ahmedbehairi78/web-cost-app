@@ -209,18 +209,13 @@ export function ReturnOrderModal({
 
     setSaving(true);
     try {
-      const created = (await returnOrdersApi.create({
+      await returnOrdersApi.createAndConfirm({
         contractId,
         projectId,
         returnDate,
         notes: notes.trim() || undefined,
         lines,
-      })) as { ok?: boolean; order?: { id: number } };
-
-      const returnOrderId = created?.order?.id;
-      if (!returnOrderId) throw new Error(ar ? 'لم يُنشأ إذن الإرجاع' : 'Return order was not created');
-
-      await returnOrdersApi.confirm(returnOrderId);
+      });
       toast.success(ar ? 'تم تأكيد الإرجاع وتحديث المخزن وBOQ' : 'Return confirmed — inventory and BOQ updated');
       if (offlineUserId) await clearFormDraft(offlineUserId, returnDraftKey);
       onSaved();

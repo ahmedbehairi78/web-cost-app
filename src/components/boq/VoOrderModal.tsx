@@ -2,11 +2,15 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { ManualHelpButton } from '../help/ManualHelpButton';
 import { FileDiff, Loader2, X, Plus, Trash2 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { variationOrdersApi, boqMaterialsApi } from '../../services/local/modulesApi';
+import { variationOrdersApi, boqMaterialsApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import { cn, listKey } from '../../lib/utils';
 import type { VoLineType } from '../../types';
 import toast from 'react-hot-toast';
 import { isLocalBackend } from '../../lib/dataBackend';
+import { useOfflineUserId } from '../../hooks/useOfflineUserId';
+import { useFormDraftAutosave } from '../../hooks/useFormDraftAutosave';
+import { FORM_DRAFT_KEYS } from '../../lib/offline/formDraftKeys';
+import { FormDraftRestoreBanner } from '../offline/FormDraftRestoreBanner';
 
 export interface VoBoqRow {
   id: string;
@@ -40,6 +44,14 @@ type DraftLine = {
   newUnitRate?: string;
 };
 
+type VoDraftPayload = {
+  voDate: string;
+  title: string;
+  notes: string;
+  lines: DraftLine[];
+  lineKeySeq: number;
+};
+
 function roundMoney(v: number): number {
   return Math.round(v);
 }
@@ -63,6 +75,24 @@ export function VoOrderModal({ contractId, boqItems, theme, dir, onClose, onCrea
   const [lines, setLines] = useState<DraftLine[]>([]);
   const [saving, setSaving] = useState(false);
   const [lineKeySeq, setLineKeySeq] = useState(0);
+
+  const offlineUserId = useOfflineUserId();
+  const draftValue = useMemo<VoDraftPayload>(
+    () => ({ voDate, title, notes, lines, lineKeySeq }),
+    [voDate, title, notes, lines, lineKeySeq],
+  );
+  const {
+    clearDraft: clearVoDraft,
+    restorePrompt: voRestorePrompt,
+    acceptRestore: acceptVoRestore,
+    dismissRestore: dismissVoRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: FORM_DRAFT_KEYS.voNew(contractId),
+    value: draftValue,
+    enabled: isLocalBackend,
+    isEmpty: (v) => !String(v.title || '').trim() && (!v.lines || v.lines.length === 0),
+  });
 
   const addLine = (lineType: VoLineType) => {
     setLineKeySeq((n) => n + 1);
@@ -165,7 +195,8 @@ export function VoOrderModal({ contractId, boqItems, theme, dir, onClose, onCrea
         notes: notes.trim() || undefined,
         lines: payload,
       });
-      
+      await clearVoDraft();
+
       // وراثة روابط الأصناف للبنود الجديدة في VO من البند الأصلي المختار
       if (isLocalBackend && result.newBoqItemIds && Array.isArray(result.newBoqItemIds)) {
         let inheritedCount = 0;
@@ -193,16 +224,22 @@ export function VoOrderModal({ contractId, boqItems, theme, dir, onClose, onCrea
       } else {
         toast.success(t('vo_created'));
       }
-      
+
       onCreated();
       onClose();
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        await clearVoDraft();
+        onCreated();
+        onClose();
+        return;
+      }
       const msg = err instanceof Error && err.message ? err.message : t('vo_create_failed');
       toast.error(msg);
     } finally {
       setSaving(false);
     }
-  }, [contractId, lines, notes, onClose, onCreated, t, title, voDate]);
+  }, [clearVoDraft, contractId, lines, notes, onClose, onCreated, t, title, voDate]);
 
   const inputCls = cn(
     'w-full rounded-lg border px-2 py-1.5 text-sm',
@@ -229,6 +266,24 @@ export function VoOrderModal({ contractId, boqItems, theme, dir, onClose, onCrea
         </div>
 
         <div className="p-4 overflow-y-auto flex-1 space-y-4">
+          <FormDraftRestoreBanner
+            show={Boolean(voRestorePrompt)}
+            updatedAt={voRestorePrompt?.updatedAt}
+            onRestore={() => {
+              const p = voRestorePrompt?.payload;
+              if (p) {
+                setVoDate(p.voDate);
+                setTitle(p.title);
+                setNotes(p.notes);
+                setLines(p.lines || []);
+                setLineKeySeq(p.lineKeySeq || 0);
+              }
+              acceptVoRestore();
+            }}
+            onDiscard={() => {
+              void dismissVoRestore();
+            }}
+          />
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <label className="text-sm">
               <span className="text-gray-500 block mb-1">{t('vo_date')}</span>

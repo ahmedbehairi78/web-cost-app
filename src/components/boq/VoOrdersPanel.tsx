@@ -10,7 +10,7 @@ import {
   Printer,
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { variationOrdersApi } from '../../services/local/modulesApi';
+import { variationOrdersApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import { cn, listKey } from '../../lib/utils';
 import { formatNumber } from '../../lib/numberLocale';
 import type { VariationOrder, VariationOrderLine, VoStatus } from '../../types';
@@ -140,6 +140,11 @@ export function VoOrdersPanel({
         setLocalRefresh((k) => k + 1);
         onChanged();
       } catch (err) {
+        if (err instanceof NetworkQueuedError) {
+          setLocalRefresh((k) => k + 1);
+          onChanged();
+          return;
+        }
         const msg = err instanceof Error && err.message ? err.message : t('vo_action_failed');
         toast.error(msg);
       } finally {

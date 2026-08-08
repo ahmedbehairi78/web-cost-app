@@ -357,6 +357,78 @@ async function processProjectWarehouseLine(
   };
 }
 
+/**
+ * Apply confirmed project-warehouse stock for a purchase invoice (used by atomic post-invoice).
+ * Upserts purchase_invoices header + lines and posts weighted-avg receipts.
+ */
+export async function applyConfirmedProjectWarehouseInvoice(
+  client: DbClient,
+  params: {
+    invoiceId: string;
+    invoiceNumber?: string;
+    invoiceDate: string;
+    supplierName?: string | null;
+    projectId: string;
+    vatPct: number;
+    lines: PurchaseInvoiceLineInput[];
+  },
+): Promise<void> {
+  const { invoiceId, projectId, vatPct, lines } = params;
+  if (!projectId?.trim()) throw new Error('projectId is required');
+  if (!Array.isArray(lines) || lines.length === 0) {
+    throw new Error('At least one invoice line is required');
+  }
+
+  await client.purchaseInvoice.upsert({
+    where: { invoiceId },
+    create: {
+      invoiceId,
+      invoiceNumber: params.invoiceNumber ?? invoiceId,
+      invoiceDate: params.invoiceDate,
+      supplierName: params.supplierName ?? null,
+      status: 'confirmed',
+      vatPct: dec(vatPct),
+      projectId,
+    },
+    update: {
+      invoiceNumber: params.invoiceNumber ?? invoiceId,
+      invoiceDate: params.invoiceDate,
+      supplierName: params.supplierName ?? null,
+      status: 'confirmed',
+      vatPct: dec(vatPct),
+      projectId,
+    },
+  });
+
+  // Re-posting the same invoiceId must not duplicate lines / stock.
+  const existingLines = await client.purchaseInvoiceLine.count({ where: { invoiceId } });
+  if (existingLines > 0) return;
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const processed = await processProjectWarehouseLine(
+      client,
+      projectId,
+      invoiceId,
+      line,
+      lineIndex,
+      true,
+      vatPct,
+    );
+    await client.purchaseInvoiceLine.create({
+      data: {
+        invoiceId,
+        materialCategoryId: processed.materialCategoryId,
+        itemDescription: processed.itemDescription,
+        unit: line.unit?.trim() || 'EA',
+        quantity: dec(processed.quantity),
+        unitCost: dec(line.unitCost),
+        totalCost: dec(processed.lineTotal),
+        boqItemId: line.boqItemId ?? null,
+      },
+    });
+  }
+}
+
 sqliteCoreRouter.post(
   '/purchase-invoices/distributed',
   requirePermission('costs'),

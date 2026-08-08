@@ -25,7 +25,7 @@
 
 **جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول → خروج بعد **3 دقائق** (`IDLE_LOGOUT_MS`) — **يُيقاف** أثناء الانقطاع أو وجود مسودة/طابور مزامنة (`idleGate` + `useIdleLogout`).
 
-**Offline sync (محلي/ريلواي):** مسودات نماذج في IndexedDB + طابور إرسال (`safe_save` تلقائي · `confirm_required` بمراجعة يدوية) — شريط حالة + `PendingSyncPanel`. مفاتيح: `src/lib/offline/`. دليل: موضوع `tools.offline.sync`.
+**Offline sync (محلي/ريلواي):** مسودات نماذج في IndexedDB + طابور إرسال (`safe_save` تلقائي · `confirm_required` بمراجعة يدوية) — شريط حالة + `PendingSyncPanel`. يشمل المشتريات/التكاليف/البنوك/المخزون/الرواتب/الأصول/**BOQ·VO**/GL. مفاتيح: `src/lib/offline/`. دليل: موضوع `tools.offline.sync`.
 
 ---
 

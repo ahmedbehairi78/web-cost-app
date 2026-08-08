@@ -14,4 +14,8 @@ export const FORM_DRAFT_KEYS = {
   bankChequeNew: 'bank_cheque:new',
   glJournalNew: 'gl_journal:new',
   warehouseReceiptNew: (projectId: string) => `warehouse_receipt:${projectId}:new`,
+  payrollEmployeeNew: 'payroll_employee:new',
+  fixedAssetNew: 'fixed_asset:new',
+  boqItemNew: (contractId: string) => `boq_item:${contractId}:new`,
+  voNew: (contractId: string) => `vo:${contractId}:new`,
 } as const;

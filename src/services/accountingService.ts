@@ -449,8 +449,9 @@ async function findConsumptionExpenseFromJournal(
 /**
  * Purchase / fixed-asset / inventory invoice: Dr (base+VAT) · Cr supplier net · Cr WHT.
  * Amounts to 2 decimals; supplier credit = (base+VAT)−WHT for an exact balance.
+ * Exported so local invoice post can send entries in one atomic API call (no orphan GL).
  */
-function buildPurchaseWithholdingJournalLines(args: {
+export function buildPurchaseWithholdingJournalLines(args: {
   debitAccountCode: string;
   debitAccountName: string;
   supplierAccountCode: string;

@@ -297,13 +297,6 @@ async function ensureLinkedWarehouseActiveForProject(
   }
 }
 
-function transferTotalCost(t: ProjectInventoryTransfer): number {
-  return (t.lines ?? []).reduce(
-    (sum, line) => sum + Number(line.totalCost ?? Number(line.quantity) * Number(line.unitCost)),
-    0,
-  );
-}
-
 function nextWarehouseAccountCode(accounts: WarehouseAccountRow[]): string {
   const nums = accounts
     .filter(isWarehouseAccountRow)
@@ -2210,32 +2203,13 @@ function InventoryTransfers({
             }
             return;
           }
-          const totalCost = transferTotalCost(t);
           await projectInventoryTransfersApi.approveProjects(id, {
             fromWarehouseAccountCode: fromWh.accountCode,
             fromWarehouseAccountName: fromWh.accountName,
             toWarehouseAccountCode: toWh.accountCode,
             toWarehouseAccountName: toWh.accountName,
           });
-          if (totalCost > 0) {
-            const fromLabel = t.fromProjectName || fromRow?.projectName || t.fromProjectId;
-            const toLabel = t.toProjectName || toRow?.projectName || t.toProjectId;
-            await accountingService.recordProjectWarehouseTransfer({
-              totalCost,
-              fromInventoryAccountCode: fromWh.accountCode,
-              fromInventoryAccountName: fromWh.accountName,
-              toInventoryAccountCode: toWh.accountCode,
-              toInventoryAccountName: toWh.accountName,
-              fromProjectName: fromLabel,
-              toProjectName: toLabel,
-              description: ar
-                ? `تحويل مخزن — ${fromLabel} → ${toLabel} (${t.transferNumber})`
-                : `Warehouse transfer — ${fromLabel} → ${toLabel} (${t.transferNumber})`,
-              fromProjectId: t.fromProjectId,
-              date: t.transferDate,
-              reference: t.transferNumber,
-            });
-          }
+          // GL is posted server-side inside approve-projects — do not post a second journal here.
           break;
         }
         case 'reject-projects':

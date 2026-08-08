@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
+import type { Prisma } from '@prisma/client';
 import { requireAuth, requireModuleWrite, requireReferenceRead, requireRole } from '../middleware/auth.js';
 import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
@@ -11,6 +12,9 @@ import { buildSubcontractorIpcEntries } from '../accounting/subcontractorIpcJour
 import { syncBoqActualCostsForIpc, type IpcBoqLineInput } from '../accounting/boqActualFromSources.js';
 import { notifySubcontractorIpcResolved, notifySubcontractorIpcSubmitted } from '../lib/notificationHooks.js';
 import { roundMoney } from '../lib/money.js';
+import { assertProjectAccess } from './inventoryHelpers.js';
+
+type DbLike = Prisma.TransactionClient | typeof prisma;
 
 type IpcPayloadMeta = {
   items?: unknown[];
@@ -67,6 +71,7 @@ function serializePurchaseRow(row: {
 async function upsertLinePayload(
   purchaseTransactionId: string,
   body: Record<string, unknown>,
+  client: DbLike = prisma,
 ): Promise<void> {
   const items = body.items;
   const invoiceLines = body.invoiceLines;
@@ -80,7 +85,7 @@ async function upsertLinePayload(
         : null;
 
   if (!lineSource || lineSource.length === 0) {
-    await prisma.purchaseTransactionItem.deleteMany({ where: { purchaseTransactionId } });
+    await client.purchaseTransactionItem.deleteMany({ where: { purchaseTransactionId } });
     return;
   }
 
@@ -91,8 +96,8 @@ async function upsertLinePayload(
     ...(body.expenseAccountId != null ? { expenseAccountId: String(body.expenseAccountId) } : {}),
   };
 
-  await prisma.purchaseTransactionItem.deleteMany({ where: { purchaseTransactionId } });
-  await prisma.purchaseTransactionItem.create({
+  await client.purchaseTransactionItem.deleteMany({ where: { purchaseTransactionId } });
+  await client.purchaseTransactionItem.create({
     data: {
       id: randomUUID(),
       purchaseTransactionId,
@@ -114,7 +119,7 @@ purchaseTransactionsRouter.use((req, res, next) => {
   if (req.method === 'POST' && req.path.endsWith('/approve')) return next();
   const path = req.path || '/';
   const isWrite =
-    (req.method === 'POST' && (path === '/' || path === '')) ||
+    (req.method === 'POST' && (path === '/' || path === '' || path === '/post-invoice')) ||
     (req.method === 'PUT' && path !== '/' && path !== '') ||
     (req.method === 'DELETE' && path !== '/' && path !== '');
   if (!isWrite) return next();
@@ -133,6 +138,136 @@ purchaseTransactionsRouter.get(
       include: { items: true },
     });
     res.json(rows.map(serializePurchaseRow));
+  }),
+);
+
+/**
+ * Atomic purchase invoice post: GL journal + purchase_transactions row + optional warehouse stock.
+ * Prevents orphan journals when the client was offline between glApi.create and purchase create.
+ */
+purchaseTransactionsRouter.post(
+  '/post-invoice',
+  asyncHandler(async (req, res) => {
+    const user = req.user!;
+    const body = (req.body ?? {}) as {
+      purchase?: Record<string, unknown>;
+      journal?: {
+        date?: string;
+        description?: string;
+        reference?: string;
+        projectId?: string;
+        costCenterId?: string;
+        entries?: Array<{
+          accountCode: string;
+          accountName?: string;
+          debit?: number;
+          credit?: number;
+          costCenterId?: string;
+        }>;
+      };
+      inventory?: {
+        projectId?: string;
+        vatPct?: number;
+        invoiceNumber?: string;
+        lines?: Array<{
+          materialCategoryId?: number;
+          itemDescription?: string;
+          unit: string;
+          quantity: number;
+          unitCost: number;
+          totalCost?: number;
+          boqItemId?: string;
+        }>;
+      };
+    };
+
+    const purchaseBody = body.purchase ?? {};
+    const journal = body.journal ?? {};
+    const entries = Array.isArray(journal.entries) ? journal.entries : [];
+    if (entries.length === 0) {
+      res.status(400).json({ error: 'journal.entries required' });
+      return;
+    }
+    if (String(purchaseBody.type || 'invoice') !== 'invoice') {
+      res.status(400).json({ error: 'post-invoice is for type=invoice only' });
+      return;
+    }
+
+    const { applyConfirmedProjectWarehouseInvoice } = await import('./sqliteCore.js');
+
+    const result = await prisma.$transaction(async (tx) => {
+      const glTx = await createTransaction(
+        {
+          date: String(journal.date || purchaseBody.date || ''),
+          description: String(journal.description || purchaseBody.description || 'فاتورة مشتريات'),
+          ...(journal.reference ? { reference: String(journal.reference) } : {}),
+          ...(journal.projectId ? { projectId: String(journal.projectId) } : {}),
+          ...(journal.costCenterId ? { costCenterId: String(journal.costCenterId) } : {}),
+          entries: entries.map((e) => ({
+            accountCode: String(e.accountCode),
+            accountName: e.accountName != null ? String(e.accountName) : undefined,
+            debit: Number(e.debit ?? 0),
+            credit: Number(e.credit ?? 0),
+            ...(e.costCenterId ? { costCenterId: String(e.costCenterId) } : {}),
+          })),
+        },
+        user.id,
+        tx,
+      );
+
+      // If this journal was already linked to a purchase (retry / orphan repair), return it.
+      const existingLinked = await tx.purchaseTransaction.findFirst({
+        where: { transactionId: glTx.id, isDeleted: false },
+        include: { items: true },
+      });
+      if (existingLinked) {
+        return { purchase: existingLinked, transactionId: glTx.id, reused: true as const };
+      }
+
+      const data = pickFields(purchaseBody, [
+        'createdAt',
+        'updatedAt',
+        'items',
+        'invoiceLines',
+        'distributedLines',
+        'whtPct',
+        'execGuaranteePct',
+      ]);
+      data.id = String(purchaseBody.id || randomUUID());
+      data.type = 'invoice';
+      data.transactionId = glTx.id;
+      data.status = String(purchaseBody.status || 'pending');
+      data.isDeleted = false;
+
+      const created = await tx.purchaseTransaction.create({ data: data as never });
+      await upsertLinePayload(String(created.id), purchaseBody, tx);
+
+      const inv = body.inventory;
+      if (inv?.projectId && Array.isArray(inv.lines) && inv.lines.length > 0) {
+        await assertProjectAccess(tx, user, String(inv.projectId));
+        await applyConfirmedProjectWarehouseInvoice(tx, {
+          invoiceId: String(created.id),
+          invoiceNumber: inv.invoiceNumber ?? String(purchaseBody.referenceNumber || created.id),
+          invoiceDate: String(purchaseBody.date || journal.date || ''),
+          supplierName: purchaseBody.supplierName != null ? String(purchaseBody.supplierName) : null,
+          projectId: String(inv.projectId),
+          vatPct: Number(inv.vatPct ?? 0),
+          lines: inv.lines,
+        });
+      }
+
+      const full = await tx.purchaseTransaction.findUnique({
+        where: { id: created.id },
+        include: { items: true },
+      });
+      return { purchase: full!, transactionId: glTx.id, reused: false as const };
+    });
+
+    res.status(201).json({
+      ...serializePurchaseRow(result.purchase),
+      transactionId: result.transactionId,
+      reusedExisting: result.reused,
+    });
   }),
 );
 
@@ -273,16 +408,28 @@ purchaseTransactionsRouter.post(
     });
 
     const costCenterId = row.contractId ?? undefined;
-    const tx = await createTransaction(
-      {
-        date: row.date,
-        description: row.description || `مستخلص مقاول - ${row.supplierName}`,
-        ...(row.projectId ? { projectId: row.projectId } : {}),
-        ...(costCenterId ? { costCenterId } : {}),
-        entries,
-      },
-      user.id,
-    );
+    const updated = await prisma.$transaction(async (tx) => {
+      const glTx = await createTransaction(
+        {
+          date: row.date,
+          description: row.description || `مستخلص مقاول - ${row.supplierName}`,
+          ...(row.projectId ? { projectId: row.projectId } : {}),
+          ...(costCenterId ? { costCenterId } : {}),
+          entries,
+        },
+        user.id,
+        tx,
+      );
+
+      return tx.purchaseTransaction.update({
+        where: { id: row.id },
+        data: {
+          status: 'approved',
+          transactionId: glTx.id,
+        },
+        include: { items: true },
+      });
+    });
 
     // Report-only: allocate period works (currentQty×rate) to BOQ — GL unchanged above.
     const ipcItems = (serializePurchaseRow(row).items ?? []) as IpcBoqLineInput[];
@@ -291,15 +438,6 @@ purchaseTransactionsRouter.post(
       contractId: row.contractId,
       date: row.date,
       items: ipcItems,
-    });
-
-    const updated = await prisma.purchaseTransaction.update({
-      where: { id: row.id },
-      data: {
-        status: 'approved',
-        transactionId: tx.id,
-      },
-      include: { items: true },
     });
 
     notifySubcontractorIpcResolved(row.id);

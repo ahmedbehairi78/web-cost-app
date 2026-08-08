@@ -318,6 +318,158 @@ consumptionOrdersRouter.post(
     });
 
     const loaded = await loadOrderWithLines(prisma, result);
+    const autoConfirm = Boolean((body as { autoConfirm?: boolean }).autoConfirm);
+    const loadedStatus = loaded ? String((loaded as { status?: string }).status ?? '') : '';
+    if (
+      autoConfirm
+      && loaded
+      && loadedStatus === 'draft'
+      && !requiresCostApproval
+    ) {
+      // Continue below via internal confirm — keep one HTTP op for offline queue.
+      req.params = { ...req.params, id: String(result) };
+      // Fall through: invoke confirm handler body by posting to same flow
+      const confirmResult = await prisma.$transaction(async (tx) => {
+        const orderId = result;
+        const order = await tx.consumptionOrder.findUnique({ where: { id: orderId } });
+        if (!order) throw new Error('Order not found');
+        if (order.status !== 'draft') throw new Error(`Cannot confirm from status: ${order.status}`);
+
+        const projectId =
+          String(order.projectId || '').trim() ||
+          (await resolveProjectIdForContract(order.contractId));
+        await assertProjectAccess(tx, user, projectId);
+
+        if (!order.projectId) {
+          await tx.consumptionOrder.update({
+            where: { id: orderId },
+            data: { projectId },
+          });
+        }
+
+        const lines = await tx.consumptionOrderLine.findMany({ where: { orderId } });
+        if (lines.length === 0) throw new Error('Consumption order has no lines');
+
+        const maxAvailableByMaterial = new Map<number, number>();
+        for (const line of lines) {
+          const materialCategoryId = Number(line.materialCategoryId);
+          if (maxAvailableByMaterial.has(materialCategoryId)) continue;
+          const inv = await getProjectInventoryByMaterial(tx, projectId, materialCategoryId);
+          maxAvailableByMaterial.set(
+            materialCategoryId,
+            inv ? getProjectAvailableQuantity(inv) : 0,
+          );
+        }
+        validateConsumptionLines({
+          lines: lines.map((line) => ({
+            boqItemId: line.boqItemId,
+            materialCategoryId: Number(line.materialCategoryId),
+            quantity: num(line.quantity),
+          })),
+          maxAvailableByMaterial,
+        });
+
+        const boqIds = [...new Set(lines.map((line) => line.boqItemId))];
+        const boqItems =
+          boqIds.length > 0
+            ? await tx.boqItem.findMany({
+                where: { id: { in: boqIds } },
+                select: { id: true, itemCode: true, description: true },
+              })
+            : [];
+        const boqMap = new Map(boqItems.map((item) => [item.id, item]));
+
+        let orderTotalCost = 0;
+
+        for (const [idx, line] of lines.entries()) {
+          await assertBoqMaterialAllowed(tx, line.boqItemId, line.materialCategoryId);
+
+          const inv = await getProjectInventoryByMaterial(tx, projectId, line.materialCategoryId);
+          if (!inv) throw new Error(`Line ${idx + 1}: project inventory not found`);
+
+          await issueProjectInventory(tx, projectId, line.materialCategoryId, num(line.quantity), {
+            referenceType: 'consumption_order',
+            referenceId: String(orderId),
+          });
+
+          await tx.boqActualCost.create({
+            data: {
+              boqItemId: line.boqItemId,
+              contractId: order.contractId,
+              materialCategoryId: line.materialCategoryId,
+              consumptionOrderId: orderId,
+              quantity: line.quantity,
+              unitCost: line.unitCost,
+              totalCost: line.totalCost,
+              costElement: 'materials',
+            },
+          });
+
+          orderTotalCost = toMoney(orderTotalCost + num(line.totalCost));
+        }
+
+        if (orderTotalCost > 0) {
+          const warehouse = await resolveProjectWarehouseAccount(tx, projectId);
+          if (!warehouse) {
+            throw new Error(
+              'Warehouse account (127…) is not linked to this project — link inventoryAccountCode on the project or a 127 leaf in chart of accounts',
+            );
+          }
+
+          const journalEntries = buildConsumptionIssueEntries({
+            expenseAccountCode: order.expenseAccountCode,
+            expenseAccountName: order.expenseAccountName,
+            inventoryAccountCode: warehouse.accountCode,
+            inventoryAccountName: warehouse.accountName,
+            lines: lines.map((line) => {
+              const boq = boqMap.get(line.boqItemId);
+              return {
+                totalCost: num(line.totalCost),
+                boqItemCode: boq?.itemCode,
+                boqDescription: boq?.description,
+                expenseAccountCode: line.expenseAccountCode,
+                expenseAccountName: line.expenseAccountName,
+              };
+            }),
+          });
+
+          await createTransaction(
+            {
+              date: order.orderDate,
+              description:
+                String(order.notes || '').trim() ||
+                `Warehouse issue — ${order.orderNumber}`,
+              reference: order.orderNumber,
+              projectId,
+              costCenterId: order.contractId,
+              entries: journalEntries,
+            },
+            user.id,
+            tx,
+          );
+        }
+
+        await tx.consumptionOrder.update({
+          where: { id: orderId },
+          data: { status: 'confirmed' },
+        });
+
+        const confirmed = await loadOrderWithLines(tx, orderId);
+        return {
+          ...confirmed,
+          projectId,
+          contractId: order.contractId,
+          orderDate: order.orderDate,
+          orderNumber: order.orderNumber,
+          expenseAccountCode: order.expenseAccountCode,
+          expenseAccountName: order.expenseAccountName,
+          totalCost: orderTotalCost,
+        };
+      });
+      res.status(201).json({ ok: true, order: confirmResult });
+      return;
+    }
+
     res.status(201).json({ ok: true, order: loaded });
   }),
 );

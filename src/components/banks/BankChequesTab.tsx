@@ -12,7 +12,7 @@ import toast from 'react-hot-toast';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
 import { isLocalBackend } from '../../lib/dataBackend';
-import { contractsApi, projectsApi, costCentersApi } from '../../services/local/modulesApi';
+import { contractsApi, projectsApi, costCentersApi, banksApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import type { Account } from '../../services/accountingService';
 import { accountingService } from '../../services/accountingService';
 import {
@@ -489,27 +489,43 @@ export function BankChequesTab({
           : isAr
             ? `شيك وارد ${c.chequeNo}`
             : `Received cheque ${c.chequeNo}`;
-      const txId = await accountingService.createTransaction({
-        date: c.issueDate,
-        description: desc,
-        reference: issueRef,
-        projectId: projectId || undefined,
-        costCenterId: contractId || undefined,
-        entries,
-      });
-      const nextStatus = c.direction === 'issued' ? 'issued' : 'received';
-      await updateBankCheque(c.id, {
-        status: nextStatus,
-        glIssueTransactionId: txId,
-        postedIssueReference: issueRef,
-        projectId: projectId || deleteField(),
-        contractId: contractId || deleteField(),
-        updatedAt: Timestamp.now(),
-      });
+      const txId = isLocalBackend
+        ? null
+        : await accountingService.createTransaction({
+            date: c.issueDate,
+            description: desc,
+            reference: issueRef,
+            projectId: projectId || undefined,
+            costCenterId: contractId || undefined,
+            entries,
+          });
+      if (isLocalBackend) {
+        await banksApi.cheques.issue(c.id, {
+          journal: {
+            date: c.issueDate,
+            description: desc,
+            reference: issueRef,
+            projectId: projectId || null,
+            costCenterId: contractId || null,
+            entries,
+          },
+        });
+      } else {
+        const nextStatus = c.direction === 'issued' ? 'issued' : 'received';
+        await updateBankCheque(c.id, {
+          status: nextStatus,
+          glIssueTransactionId: txId,
+          postedIssueReference: issueRef,
+          projectId: projectId || deleteField(),
+          contractId: contractId || deleteField(),
+          updatedAt: Timestamp.now(),
+        });
+      }
       onMutated?.();
       toast.success(isAr ? 'تم ترحيل القيد الأول.' : 'First journal posted.');
       setIssueModalCheque(null);
     } catch (e) {
+      if (e instanceof NetworkQueuedError) return;
       toast.error(e instanceof Error ? e.message : isAr ? 'تعذر الترحيل.' : 'Post failed.');
     } finally {
       setIssueSaving(false);
@@ -568,26 +584,42 @@ export function BankChequesTab({
           : isAr
             ? `تحصيل شيك وارد ${c.chequeNo}`
             : `Received cheque collected ${c.chequeNo}`;
-      const txId = await accountingService.createTransaction({
-        date: dClear,
-        description: desc,
-        reference: clrRef,
-        projectId: projectId || undefined,
-        costCenterId: contractId || undefined,
-        entries,
-      });
-      await updateBankCheque(c.id, {
-        status: 'cleared',
-        glClearTransactionId: txId,
-        postedClearReference: clrRef,
-        projectId: projectId || deleteField(),
-        contractId: contractId || deleteField(),
-        updatedAt: Timestamp.now(),
-      });
+      const txId = isLocalBackend
+        ? null
+        : await accountingService.createTransaction({
+            date: dClear,
+            description: desc,
+            reference: clrRef,
+            projectId: projectId || undefined,
+            costCenterId: contractId || undefined,
+            entries,
+          });
+      if (isLocalBackend) {
+        await banksApi.cheques.clear(c.id, {
+          journal: {
+            date: dClear,
+            description: desc,
+            reference: clrRef,
+            projectId: projectId || null,
+            costCenterId: contractId || null,
+            entries,
+          },
+        });
+      } else {
+        await updateBankCheque(c.id, {
+          status: 'cleared',
+          glClearTransactionId: txId,
+          postedClearReference: clrRef,
+          projectId: projectId || deleteField(),
+          contractId: contractId || deleteField(),
+          updatedAt: Timestamp.now(),
+        });
+      }
       onMutated?.();
       toast.success(isAr ? 'تم التحصيل/الصرف.' : 'Cleared to bank.');
       setClearTarget(null);
     } catch (e) {
+      if (e instanceof NetworkQueuedError) return;
       toast.error(e instanceof Error ? e.message : isAr ? 'تعذر التحصيل.' : 'Clear failed.');
     } finally {
       setClearSaving(false);
@@ -618,19 +650,24 @@ export function BankChequesTab({
     });
     if (!ok) return;
     try {
-      const issueRef = c.postedIssueReference?.trim() || (await resolveIssueReference(c));
-      const revId = c.glIssueTransactionId
-        ? await accountingService.reverseJournalByTransactionId(c.glIssueTransactionId)
-        : await accountingService.reverseJournalByReference(issueRef);
-      await updateBankCheque(c.id, {
-        status: 'rejected',
-        glRejectTransactionId: revId,
-        ...(c.postedIssueReference?.trim() ? {} : { postedIssueReference: issueRef }),
-        updatedAt: Timestamp.now(),
-      });
+      if (isLocalBackend) {
+        await banksApi.cheques.reject(c.id);
+      } else {
+        const issueRef = c.postedIssueReference?.trim() || (await resolveIssueReference(c));
+        const revId = c.glIssueTransactionId
+          ? await accountingService.reverseJournalByTransactionId(c.glIssueTransactionId)
+          : await accountingService.reverseJournalByReference(issueRef);
+        await updateBankCheque(c.id, {
+          status: 'rejected',
+          glRejectTransactionId: revId,
+          ...(c.postedIssueReference?.trim() ? {} : { postedIssueReference: issueRef }),
+          updatedAt: Timestamp.now(),
+        });
+      }
       onMutated?.();
       toast.success(isAr ? 'تم رد الشيك.' : 'Cheque rejected / returned.');
     } catch (e) {
+      if (e instanceof NetworkQueuedError) return;
       toast.error(e instanceof Error ? e.message : isAr ? 'تعذر الرفض.' : 'Reject failed.');
     }
   };
@@ -649,21 +686,26 @@ export function BankChequesTab({
     });
     if (!ok) return;
     try {
-      const issueRef = await resolveIssueReference(c);
-      if (c.glIssueTransactionId) {
-        await accountingService.reverseJournalByTransactionId(c.glIssueTransactionId);
+      if (isLocalBackend) {
+        await banksApi.cheques.cancelIssue(c.id);
       } else {
-        await accountingService.reverseJournalByReference(issueRef);
+        const issueRef = await resolveIssueReference(c);
+        if (c.glIssueTransactionId) {
+          await accountingService.reverseJournalByTransactionId(c.glIssueTransactionId);
+        } else {
+          await accountingService.reverseJournalByReference(issueRef);
+        }
+        await updateBankCheque(c.id, {
+          status: 'cancelled',
+          glIssueTransactionId: deleteField(),
+          postedIssueReference: deleteField(),
+          updatedAt: Timestamp.now(),
+        });
       }
-      await updateBankCheque(c.id, {
-        status: 'cancelled',
-        glIssueTransactionId: deleteField(),
-        postedIssueReference: deleteField(),
-        updatedAt: Timestamp.now(),
-      });
       onMutated?.();
       toast.success(isAr ? 'تم الإلغاء.' : 'Cancelled.');
     } catch (e) {
+      if (e instanceof NetworkQueuedError) return;
       toast.error(e instanceof Error ? e.message : isAr ? 'تعذر الإلغاء.' : 'Cancel failed.');
     }
   };

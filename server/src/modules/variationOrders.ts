@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
 import { requireAuth, requirePermission, requireAnyPermission, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
 import { roundMoney } from '../lib/money.js';
@@ -12,6 +13,7 @@ import { notifyVoSubmitted, notifyVoResolved } from '../lib/notificationHooks.js
 
 export const variationOrdersRouter = Router();
 variationOrdersRouter.use(requireAuth);
+variationOrdersRouter.use(withIdempotency());
 
 const readPerm = requireAnyPermission('boq', 'projects', 'billing');
 const writePerm = requirePermission('boq');

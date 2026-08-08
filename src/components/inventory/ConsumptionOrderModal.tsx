@@ -543,7 +543,7 @@ export function ConsumptionOrderModal({
 
     setSaving(true);
     try {
-      const created = (await consumptionOrdersApi.create({
+      const created = (await consumptionOrdersApi.createAndConfirm({
         contractId,
         projectId,
         orderDate,
@@ -553,7 +553,7 @@ export function ConsumptionOrderModal({
         lines: flatLines,
       })) as {
         ok?: boolean;
-        order?: { id: number; status?: string; orderNumber?: string; requiresCostApproval?: boolean };
+        order?: { id: number; status?: string; orderNumber?: string; requiresCostApproval?: boolean } & ConfirmedOrderForPrint;
       };
 
       const orderId = created?.order?.id;
@@ -567,18 +567,14 @@ export function ConsumptionOrderModal({
         return;
       }
 
-      const confirmed = (await consumptionOrdersApi.confirm(orderId)) as {
-        ok?: boolean;
-        order?: ConfirmedOrderForPrint;
-      };
       toast.success(t('toast_consume_confirmed'));
       if (offlineUserId) await clearFormDraft(offlineUserId, consumeDraftKey);
       onSaved();
-      if (confirmed?.order?.orderNumber) {
+      if (created?.order?.orderNumber) {
         setConfirmedOrder({
-          ...confirmed.order,
-          projectName: confirmed.order.projectName || projectLabel,
-          contractName: confirmed.order.contractName || contractLabel,
+          ...created.order,
+          projectName: created.order.projectName || projectLabel,
+          contractName: created.order.contractName || contractLabel,
         });
         setPrintNames({ requester: '', receiver: '', storekeeper: '' });
       } else {

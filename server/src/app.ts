@@ -28,6 +28,7 @@ import { inventoryMaintenanceRouter } from './modules/inventoryMaintenance.js';
 import { financialMaintenanceRouter } from './modules/financialMaintenance.js';
 import { chartOfAccountsMaintenanceRouter } from './modules/chartOfAccountsMaintenance.js';
 import { mosExtractsRouter } from './modules/mosExtracts.js';
+import { bankMovementsGlRouter, bankChequesGlRouter } from './modules/bankGlPosting.js';
 import { mosCertificatesRouter } from './modules/mosCertificates.js';
 import { documentRegistryRouter } from './modules/documentRegistry.js';
 import { variationOrdersRouter } from './modules/variationOrders.js';
@@ -198,7 +199,10 @@ export function createApp() {
   app.use('/api/payroll',       payrollRouter);
   app.use('/api/purchase-requests', purchaseRequestsRouter);
   app.use('/api/bank-accounts', createCrudRouter(null, 'bankAccount', 'banks'));
+  // GL post/issue/clear must mount before CRUD so `/:id/post` is not treated as a CRUD id.
+  app.use('/api/bank-movements', bankMovementsGlRouter);
   app.use('/api/bank-movements', createCrudRouter(null, 'bankMovement', 'banks'));
+  app.use('/api/bank-cheques', bankChequesGlRouter);
   app.use('/api/bank-cheques', createCrudRouter(null, 'bankCheque', 'banks'));
   app.use('/api/bank-statements', createCrudRouter(null, 'bankStatement', 'banks'));
   app.use('/api/bank-statement-lines', createCrudRouter(null, 'bankStatementLine', 'banks'));

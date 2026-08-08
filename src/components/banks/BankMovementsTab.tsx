@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
 import { isLocalBackend } from '../../lib/dataBackend';
-import { contractsApi, projectsApi } from '../../services/local/modulesApi';
+import { contractsApi, projectsApi, banksApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import type { Account } from '../../services/accountingService';
 import { accountingService } from '../../services/accountingService';
 import { buildBankMovementJournalEntries, genBankDocNo, suggestInstapayFee } from '../../lib/bankMovementPosting';
@@ -415,27 +415,42 @@ export function BankMovementsTab({
         (m.descriptionAr?.trim() || m.note?.trim() || '').trim() ||
         (isAr ? `حركة بنكية ${docNo}` : `Bank movement ${docNo}`);
 
-      const txId = await accountingService.createTransaction({
-        date: m.date,
-        description: desc,
-        descriptionEn: m.descriptionEn?.trim() || null,
-        reference: glRef,
-        projectId: m.projectId,
-        costCenterId: m.contractId,
-        entries,
-      });
+      if (isLocalBackend) {
+        await banksApi.movements.post(m.id, {
+          documentNo: m.documentNo?.trim() ? undefined : docNo,
+          journal: {
+            date: m.date,
+            description: desc,
+            reference: glRef,
+            projectId: m.projectId || null,
+            costCenterId: m.contractId || null,
+            entries,
+          },
+        });
+      } else {
+        const txId = await accountingService.createTransaction({
+          date: m.date,
+          description: desc,
+          descriptionEn: m.descriptionEn?.trim() || null,
+          reference: glRef,
+          projectId: m.projectId,
+          costCenterId: m.contractId,
+          entries,
+        });
 
-      await updateBankMovement(m.id, {
-        status: 'posted',
-        ...(m.documentNo?.trim() ? {} : { documentNo: docNo }),
-        postedGlReference: glRef,
-        glTransactionId: txId,
-        postedAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
+        await updateBankMovement(m.id, {
+          status: 'posted',
+          ...(m.documentNo?.trim() ? {} : { documentNo: docNo }),
+          postedGlReference: glRef,
+          glTransactionId: txId,
+          postedAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+      }
       onMutated?.();
       toast.success(isAr ? 'تم ترحيل الحركة وإنشاء القيد في الأستاذ.' : 'Posted; journal entry created.');
     } catch (err) {
+      if (err instanceof NetworkQueuedError) return;
       const msg = err instanceof Error ? err.message : '';
       toast.error(msg || (isAr ? 'تعذر الترحيل.' : 'Failed to post movement.'));
     }
@@ -452,7 +467,7 @@ export function BankMovementsTab({
     if (!ok) return;
 
     const ref = bm.postedGlReference?.trim();
-    if (!ref) {
+    if (!ref && !bm.glTransactionId) {
       toast.error(
         isAr
           ? 'لا يوجد مرجع قيد محفوظ لحركة قديمة — تعذر العكس الآمن.'
@@ -461,16 +476,29 @@ export function BankMovementsTab({
       return;
     }
     try {
-      const revId = await accountingService.reverseJournalByReference(ref);
-      await updateBankMovement(bm.id, {
-        status: 'cancelled',
-        reversalTransactionId: revId,
-        cancelledAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
+      if (isLocalBackend) {
+        await banksApi.movements.cancelPosted(bm.id);
+      } else {
+        if (!ref) {
+          toast.error(
+            isAr
+              ? 'لا يوجد مرجع قيد محفوظ لحركة قديمة — تعذر العكس الآمن.'
+              : 'Missing saved GL reference for this legacy post; cannot safely reverse.',
+          );
+          return;
+        }
+        const revId = await accountingService.reverseJournalByReference(ref);
+        await updateBankMovement(bm.id, {
+          status: 'cancelled',
+          reversalTransactionId: revId,
+          cancelledAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
+      }
       onMutated?.();
       toast.success(isAr ? 'تم الإلغاء وقيد العكس.' : 'Cancelled with reversal journal.');
     } catch (err) {
+      if (err instanceof NetworkQueuedError) return;
       const msg = err instanceof Error ? err.message : '';
       toast.error(msg || (isAr ? 'تعذر الإلغاء.' : 'Failed to cancel.'));
     }
