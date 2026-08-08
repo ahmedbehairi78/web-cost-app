@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requirePermission, requireRole } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -13,6 +14,7 @@ import { assertTransactionPeriodUnlocked } from '../accounting/periodLock.js';
 export const billingRouter = Router();
 
 billingRouter.use(requireAuth, requirePermission('billing'));
+billingRouter.use(withIdempotency());
 
 const STATUS_TRANSITIONS: Record<string, readonly string[]> = {
   draft: ['submitted'],

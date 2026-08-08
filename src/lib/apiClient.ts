@@ -1,6 +1,7 @@
 import { getApiAuthIdToken, ensureApiAuthToken } from './authToken';
 import { isLocalBackend } from './dataBackend';
 import { isAuthExemptApiPath, notifyApiUnauthorized } from './apiSession';
+import { NetworkError } from './offline/NetworkError';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
@@ -13,6 +14,8 @@ export class ApiError extends Error {
     super(message);
   }
 }
+
+export { NetworkError };
 
 async function parseResponse(response: Response) {
   if (response.status === 204) return undefined;
@@ -30,15 +33,21 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (isLocalBackend && !idToken) {
     idToken = await ensureApiAuthToken();
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
-      ...(init.headers || {}),
-    },
-    ...init,
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      credentials: 'include',
+      ...init,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+        ...(init.headers || {}),
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Network request failed';
+    throw new NetworkError(message);
+  }
   const payload = await parseResponse(response);
   if (!response.ok) {
     if (response.status === 401 && !isAuthExemptApiPath(path)) {

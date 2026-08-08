@@ -22,10 +22,14 @@ import {
 import { exportPurchaseRequestsExcel } from '../lib/purchaseRequestsExcel';
 import {
   purchaseRequestsApi,
+  NetworkQueuedError,
   type PurchaseRequestPriority,
   type PurchaseRequestRow,
   type PurchaseRequestStatus,
 } from '../services/local/modulesApi';
+import { useFormDraftAutosave } from '../hooks/useFormDraftAutosave';
+import { useOfflineUserId } from '../hooks/useOfflineUserId';
+import { FormDraftRestoreBanner } from './offline/FormDraftRestoreBanner';
 
 type TabId = 'create' | 'open' | 'executed';
 
@@ -286,9 +290,67 @@ export function PurchaseRequests() {
     setPriority('medium');
   }, []);
 
-  useEffect(() => {
-    if (tab === 'create') resetForm();
-  }, [tab, resetForm]);
+  const offlineUserId = useOfflineUserId();
+  const prDraftValue = useMemo(
+    () => ({
+      materialMode,
+      materialCategoryId,
+      uncodedDescription,
+      uncodedUnit,
+      quantity,
+      projectId,
+      contractId,
+      boqItemId,
+      neededPreset,
+      neededByDate,
+      priority,
+    }),
+    [
+      materialMode,
+      materialCategoryId,
+      uncodedDescription,
+      uncodedUnit,
+      quantity,
+      projectId,
+      contractId,
+      boqItemId,
+      neededPreset,
+      neededByDate,
+      priority,
+    ],
+  );
+
+  const {
+    clearDraft: clearPrDraft,
+    restorePrompt: prRestorePrompt,
+    acceptRestore: acceptPrRestore,
+    dismissRestore: dismissPrRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: 'purchase_request:new',
+    value: prDraftValue,
+    enabled: tab === 'create' && canCreate,
+    isEmpty: (v) =>
+      !v.projectId
+      && !v.quantity
+      && !v.materialCategoryId
+      && !String(v.uncodedDescription || '').trim(),
+  });
+
+  const applyPrDraft = useCallback((payload: typeof prDraftValue) => {
+    setMaterialMode(payload.materialMode === 'uncoded' ? 'uncoded' : 'coded');
+    setMaterialCategoryId(payload.materialCategoryId || '');
+    setUncodedDescription(payload.uncodedDescription || '');
+    setUncodedUnit(payload.uncodedUnit || '');
+    setQuantity(payload.quantity || '');
+    setProjectId(payload.projectId || '');
+    setContractId(payload.contractId || '');
+    setBoqItemId(payload.boqItemId || '');
+    setNeededPreset(payload.neededPreset || 'today');
+    setNeededByDate(payload.neededByDate || todayYmd());
+    setPriority(payload.priority || 'medium');
+    acceptPrRestore();
+  }, [acceptPrRestore]);
 
   const statusLabel = (s: string) => {
     const map: Record<string, string> = {
@@ -350,9 +412,14 @@ export function PurchaseRequests() {
       await purchaseRequestsApi.create(body);
       toast.success(t('pr_created'));
       window.dispatchEvent(new CustomEvent('notifications:refresh'));
+      await clearPrDraft();
       resetForm();
       goToTab('open');
     } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        // Queued toast already shown; keep form until sync completes
+        return;
+      }
       toast.error(err instanceof Error ? err.message : t('pr_save_failed'));
     } finally {
       setSaving(false);
@@ -497,6 +564,16 @@ export function PurchaseRequests() {
           onSubmit={(e) => void handleCreate(e)}
           className={cn(cardCls, 'p-4 space-y-3 w-[75%] max-w-full')}
         >
+          <FormDraftRestoreBanner
+            show={!!prRestorePrompt}
+            updatedAt={prRestorePrompt?.updatedAt}
+            onRestore={() => {
+              if (prRestorePrompt) applyPrDraft(prRestorePrompt.payload);
+            }}
+            onDiscard={() => {
+              void dismissPrRestore();
+            }}
+          />
           <h3 className="font-bold text-lg">{t('pr_menu_create')}</h3>
 
           <div className="flex flex-wrap gap-3">

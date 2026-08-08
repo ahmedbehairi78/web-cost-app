@@ -589,6 +589,28 @@ const translations: Record<Language, Record<string, string>> = {
     login_subtitle: 'سجّل الدخول للمتابعة',
     login_mode_password: 'كلمة المرور',
     session_idle_logout: 'تم تسجيل الخروج بسبب عدم النشاط',
+    offline_status_offline: 'غير متصل — المسودات محفوظة محلياً',
+    offline_status_online: 'متصل',
+    offline_status_syncing: 'جارٍ مزامنة العمليات المؤجلة…',
+    offline_status_pending_confirm: 'عمليات بانتظار التأكيد',
+    offline_status_failed: 'فشلت بعض عمليات المزامنة',
+    offline_status_auth_paused: 'المزامنة متوقفة — أعد تسجيل الدخول',
+    offline_review_pending: 'مراجعة',
+    offline_pending_title: 'عمليات بانتظار الإرسال',
+    offline_pending_hint: 'عمليات الترحيل والاعتماد تُرسل فقط بعد تأكيدك. الحفظ الآمن يُزامَن تلقائياً.',
+    offline_pending_empty: 'لا توجد عمليات معلّقة',
+    offline_confirm_send: 'تأكيد الإرسال',
+    offline_discard: 'تجاهل',
+    offline_discarded: 'تم تجاهل العملية',
+    offline_sync_success: 'تمت المزامنة بنجاح',
+    offline_sync_failed: 'فشلت المزامنة',
+    offline_retry_safe: 'إعادة محاولة الحفظ الآمن',
+    offline_close: 'إغلاق',
+    offline_draft_found: 'وُجدت مسودة محلية غير مرسلة',
+    offline_draft_restore: 'استكمال',
+    offline_draft_discard: 'تجاهل',
+    offline_queued_toast: 'حُفظت العملية للطابور — تُرسل عند عودة الشبكة',
+    offline_queued_confirm_toast: 'العملية بانتظار تأكيدك بعد عودة الشبكة',
     login_mode_google: 'Google',
     login_email_placeholder: 'البريد الإلكتروني',
     login_password_placeholder: 'كلمة المرور',
@@ -2334,6 +2356,25 @@ const translations: Record<Language, Record<string, string>> = {
     manual_tools_calculator_step_4_title: 'نسخ ولصق',
     manual_tools_calculator_step_4_body:
       'Ctrl+C ينسخ النتيجة · Ctrl+V يلصق رقماً من الحافظة عند عدم تحديد نص.',
+    manual_tools_offline_title: 'العمل دون اتصال والمزامنة',
+    manual_tools_offline_summary:
+      'مسودات محلية تلقائية + طابور إرسال عند انقطاع الشبكة. الحفظ الآمن يُزامَن تلقائياً؛ الترحيل والاعتماد يحتاجان تأكيدك.',
+    manual_tools_offline_before:
+      'يتطلب الوضع المحلي/ريلواي. شريط الحالة يظهر أسفل الشاشة عند الانقطاع أو وجود عمليات معلّقة.',
+    manual_tools_offline_mistakes:
+      'افتراض أن الترحيل تم دون تأكيد · إغلاق المتصفح قبل استعادة المسودة · توقع عمل الطابور في وضع فايرستور السحابي القديم.',
+    manual_tools_offline_step_1_title: 'مسودة أثناء الكتابة',
+    manual_tools_offline_step_1_body:
+      'أثناء تعبئة النماذج (أمر شراء، صرف، إرجاع، قيد…) تُحفظ مسودة محلياً. عند إعادة الفتح اختر استكمال أو تجاهل.',
+    manual_tools_offline_step_2_title: 'حفظ آمن عند انقطاع الشبكة',
+    manual_tools_offline_step_2_body:
+      'إن فشل الحفظ بسبب الشبكة تُصفّ العملية وتُرسل تلقائياً عند عودة الاتصال (مسودات المستخلصات وأوامر الشراء والبنوك…).',
+    manual_tools_offline_step_3_title: 'ترحيل واعتماد بانتظار التأكيد',
+    manual_tools_offline_step_3_body:
+      'الصرف المؤكد، الاعتماد، القيود، تحصيل الشيكات لا تُنفَّذ صامتة. بعد عودة الشبكة اضغط «مراجعة» في الشريط ثم أكّد كل عملية.',
+    manual_tools_offline_step_4_title: 'الجلسة والخمول',
+    manual_tools_offline_step_4_body:
+      'أثناء الانقطاع أو وجود مسودة/طابور لا يُسجَّل الخروج بسبب الخمول. بعد انتهاء الجلسة تبقى العناصر المعلّقة حتى إعادة الدخول.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -2898,6 +2939,28 @@ const translations: Record<Language, Record<string, string>> = {
     login_subtitle: 'Sign in to continue',
     login_mode_password: 'Password',
     session_idle_logout: 'Logged out due to inactivity',
+    offline_status_offline: 'Offline — drafts saved locally',
+    offline_status_online: 'Online',
+    offline_status_syncing: 'Syncing queued operations…',
+    offline_status_pending_confirm: 'Operations awaiting confirmation',
+    offline_status_failed: 'Some sync operations failed',
+    offline_status_auth_paused: 'Sync paused — sign in again',
+    offline_review_pending: 'Review',
+    offline_pending_title: 'Pending sync operations',
+    offline_pending_hint: 'Posting and approvals send only after you confirm. Safe saves sync automatically.',
+    offline_pending_empty: 'No pending operations',
+    offline_confirm_send: 'Confirm send',
+    offline_discard: 'Discard',
+    offline_discarded: 'Operation discarded',
+    offline_sync_success: 'Synced successfully',
+    offline_sync_failed: 'Sync failed',
+    offline_retry_safe: 'Retry safe saves',
+    offline_close: 'Close',
+    offline_draft_found: 'A local unsaved draft was found',
+    offline_draft_restore: 'Continue',
+    offline_draft_discard: 'Discard',
+    offline_queued_toast: 'Queued — will send when back online',
+    offline_queued_confirm_toast: 'Queued for your confirmation when back online',
     login_mode_google: 'Google',
     login_email_placeholder: 'Email address',
     login_password_placeholder: 'Password',
@@ -4645,6 +4708,25 @@ const translations: Record<Language, Record<string, string>> = {
     manual_tools_calculator_step_4_title: 'Copy & paste',
     manual_tools_calculator_step_4_body:
       'Ctrl+C copies result · Ctrl+V pastes numeric value from clipboard when no text selected.',
+    manual_tools_offline_title: 'Offline work & sync',
+    manual_tools_offline_summary:
+      'Local form drafts plus a sync queue when the network drops. Safe saves flush automatically; posting and approvals need your confirmation.',
+    manual_tools_offline_before:
+      'Requires local/Railway mode. A status bar appears when offline or when operations are pending.',
+    manual_tools_offline_mistakes:
+      'Assuming a post completed without confirmation · closing the browser before restoring a draft · expecting the queue in legacy Firestore-only mode.',
+    manual_tools_offline_step_1_title: 'Draft while typing',
+    manual_tools_offline_step_1_body:
+      'While filling forms (purchase request, consumption, return, journal…) a local draft is saved. On reopen choose Continue or Discard.',
+    manual_tools_offline_step_2_title: 'Safe save when offline',
+    manual_tools_offline_step_2_body:
+      'If a save fails due to network, it is queued and sent automatically when back online (IPC drafts, purchase requests, bank drafts…).',
+    manual_tools_offline_step_3_title: 'Posts awaiting confirmation',
+    manual_tools_offline_step_3_body:
+      'Confirmed issues, approvals, journals, and cheque clearing are never silent. When online again tap Review on the status bar and confirm each item.',
+    manual_tools_offline_step_4_title: 'Session & idle logout',
+    manual_tools_offline_step_4_body:
+      'Idle logout pauses while offline or when drafts/queue exist. After session expiry, pending items remain until you sign in again.',
   }
 };
 

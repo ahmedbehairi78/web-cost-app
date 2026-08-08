@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requireAnyPermission } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -23,6 +24,7 @@ import {
 
 export const returnOrdersRouter = Router();
 returnOrdersRouter.use(requireAuth);
+returnOrdersRouter.use(withIdempotency());
 const inventoryUsePerm = requireAnyPermission('inventory', 'costs', 'transfers');
 
 async function generateReturnNumber(tx: Prisma.TransactionClient): Promise<string> {

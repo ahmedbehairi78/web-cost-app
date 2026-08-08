@@ -72,6 +72,9 @@ import {
 } from './lib/sessionLogout';
 import { API_UNAUTHORIZED_EVENT, isApiUnauthorizedLogoutSuppressed } from './lib/apiSession';
 import { useIdleLogout } from './hooks/useIdleLogout';
+import { OfflineStatusBar } from './components/offline/OfflineStatusBar';
+import { PendingSyncPanel, usePendingSyncPanelState } from './components/offline/PendingSyncPanel';
+import { startOfflineSyncController } from './lib/offline';
 import toast from 'react-hot-toast';
 
 const LOGIN_ERROR_KEY = 'web_cost_login_error';
@@ -862,11 +865,19 @@ export default function App() {
   const isAuthenticated = !!user || !!passwordSession;
   const sessionEmail = user?.email ?? passwordSession?.email ?? '';
   const sessionDisplayName = user?.displayName ?? passwordSession?.displayName ?? null;
+  const offlineUserId = passwordSession?.id ?? user?.uid ?? (sessionEmail ? `email:${sessionEmail}` : null);
 
   useIdleLogout(isAuthenticated, () => {
     toast(t('session_idle_logout'), { id: 'idle-logout' });
     void handleLogout();
-  });
+  }, undefined, offlineUserId);
+
+  const { open: pendingSyncOpen, setOpen: setPendingSyncOpen } = usePendingSyncPanelState(offlineUserId);
+
+  useEffect(() => {
+    if (!isLocalBackend || !isAuthenticated || !offlineUserId) return;
+    return startOfflineSyncController(offlineUserId);
+  }, [isAuthenticated, offlineUserId]);
 
   // Electron: maximize the native window once after a successful login.
   useEffect(() => {
@@ -1096,6 +1107,16 @@ export default function App() {
           show={enteringApp}
           onDismiss={() => setHasOpenedDefault(true)}
         />
+        {isLocalBackend && isAuthenticated && (
+          <>
+            <OfflineStatusBar userId={offlineUserId} />
+            <PendingSyncPanel
+              userId={offlineUserId}
+              open={pendingSyncOpen}
+              onClose={() => setPendingSyncOpen(false)}
+            />
+          </>
+        )}
       </ErpWorkspaceProvider>
     </>
   );

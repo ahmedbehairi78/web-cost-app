@@ -3,7 +3,11 @@ import { ManualHelpButton } from '../help/ManualHelpButton';
 import { Loader2 } from 'lucide-react';
 import { cn, listKey } from '../../lib/utils';
 import { useLanguage } from '../../context/LanguageContext';
-import { returnOrdersApi } from '../../services/local/modulesApi';
+import { returnOrdersApi, NetworkQueuedError } from '../../services/local/modulesApi';
+import { useFormDraftAutosave } from '../../hooks/useFormDraftAutosave';
+import { useOfflineUserId } from '../../hooks/useOfflineUserId';
+import { FormDraftRestoreBanner } from '../offline/FormDraftRestoreBanner';
+import { clearFormDraft, FORM_DRAFT_KEYS } from '../../lib/offline';
 import { formatMoney as formatMoneyLib } from '../../lib/money';
 import { formatQuantity } from '../../lib/formatQuantity';
 import toast from 'react-hot-toast';
@@ -80,6 +84,27 @@ export function ReturnOrderModal({
   const [returnDate, setReturnDate] = useState(today());
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
+
+  const offlineUserId = useOfflineUserId();
+  const returnDraftKey = FORM_DRAFT_KEYS.returnOrder(projectId, contractId);
+  const returnDraftValue = useMemo(
+    () => ({ lineState, reason, returnDate, notes }),
+    [lineState, reason, returnDate, notes],
+  );
+  const {
+    restorePrompt: returnRestore,
+    acceptRestore: acceptReturnRestore,
+    dismissRestore: dismissReturnRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: returnDraftKey,
+    value: returnDraftValue,
+    enabled: true,
+    isEmpty: (v) =>
+      !String(v.notes || '').trim()
+      && !String(v.reason || '').trim()
+      && !Object.values(v.lineState || {}).some((s) => s.selected || String(s.quantity || '').trim()),
+  });
 
   useEffect(() => {
     const seed = new Set(seedLineIds ?? []);
@@ -197,9 +222,11 @@ export function ReturnOrderModal({
 
       await returnOrdersApi.confirm(returnOrderId);
       toast.success(ar ? 'تم تأكيد الإرجاع وتحديث المخزن وBOQ' : 'Return confirmed — inventory and BOQ updated');
+      if (offlineUserId) await clearFormDraft(offlineUserId, returnDraftKey);
       onSaved();
       onClose();
     } catch (err: unknown) {
+      if (err instanceof NetworkQueuedError) return;
       toast.error(err instanceof Error ? err.message : ar ? 'حدث خطأ' : 'An error occurred');
     } finally {
       setSaving(false);
@@ -220,6 +247,22 @@ export function ReturnOrderModal({
           <h3 className="text-lg font-bold">{t('return_order_multi_title')}</h3>
           <ManualHelpButton topicId="inventory.return" size={16} />
         </div>
+        <FormDraftRestoreBanner
+          show={!!returnRestore}
+          updatedAt={returnRestore?.updatedAt}
+          onRestore={() => {
+            if (!returnRestore) return;
+            const p = returnRestore.payload;
+            if (p.lineState) setLineState(p.lineState);
+            if (typeof p.reason === 'string') setReason(p.reason);
+            if (p.returnDate) setReturnDate(p.returnDate);
+            if (typeof p.notes === 'string') setNotes(p.notes);
+            acceptReturnRestore();
+          }}
+          onDiscard={() => {
+            void dismissReturnRestore();
+          }}
+        />
         <p className={cn('text-xs mb-4', theme === 'dark' ? 'text-gray-500' : 'text-gray-500')}>
           {t('return_order_multi_hint')}
         </p>

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requireAnyPermission } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -26,6 +27,7 @@ import {
 
 export const projectInventoryTransfersRouter = Router();
 projectInventoryTransfersRouter.use(requireAuth);
+projectInventoryTransfersRouter.use(withIdempotency());
 
 const inventoryPerm = requireAnyPermission('inventory', 'transfers', 'costs');
 const projectsPerm = requireAnyPermission('projects', 'inventory', 'transfers');

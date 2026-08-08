@@ -213,10 +213,11 @@
 - [x] **نوافذ متعددة بنفس الجلسة (2026-07-25)** — `createAppWindow` + `persist:webcost` · Ctrl+N (`input.code`) · IPC `open-new-window` / `query-reuse-session` / `window-reveal` · `?webCostReuseSession=1` · زر Sidebar/TopNav · يلزم Setup **≥ 1.0.7** (القشرة؛ SPA وحدها لا تكفي)
 - **Done:** `electron:dev` + Setup.exe يفتح التطبيق ضد Railway ويسجّل الدخول.
 
-### المرحلة 9 — حماية الكود
-- [ ] `app.asar` + عدم تضمين أسرار (مفاتيح Firebase العامة فقط).
-- [ ] تعتيم حزمة الواجهة (Vite minify + obfuscator اختياري).
-- **Done:** فحص الحزمة لا يكشف كوداً مقروءاً بسهولة ولا أسراراً.
+### المرحلة 9 — حماية الكود + مزامنة دون اتصال
+- [x] `app.asar` + عدم تضمين أسرار (مفاتيح Firebase العامة فقط).
+- [x] **Offline sync (2026-08-08):** مسودات IndexedDB + طابور `safe_save` / `confirm_required` + `Idempotency-Key` + شريط حالة + لوحة تأكيد — `src/lib/offline/*`
+- [ ] تعتيم حزمة الواجهة (obfuscator اختياري فوق minify).
+- **Done:** فحص الحزمة لا يكشف أسراراً؛ المنطق المالي يبقى على الخادم؛ المسودات/الطابور تمنع ضياع التعبئة عند انقطاع الشبكة.
 
 ### المرحلة 10 — مُثبّت `Setup.exe`
 - [x] `electron-builder` NSIS — `npm run electron:pack` → `release/Web Cost App Setup 0.0.0.exe`
@@ -398,7 +399,7 @@
 | 6 — نشر Railway | ✅ | `web-cost-app-production.up.railway.app` |
 | 7 — نشر الواجهة | ✅ | SPA + golden paths UI |
 | 8 — Electron | ✅ | popup OAuth · `electronShell.ts` · login يعمل |
-| 9 — حماية الكود | 🟡 | `app.asar` ✅ · توقيع Setup.exe ⬜ (شهادة EV/OV) |
+| 9 — حماية الكود | 🟡 | أسرار غير مضمّنة ✅ · Offline sync ✅ · obfuscator ⬜ · توقيع Setup.exe ⬜ |
 | 10 — Setup.exe | ✅ | **1.0.3** · GitHub Release **v1.0.3** ✅ |
 | 11 — التحديث | ✅ | المحتوى Railway · **electron-updater** GitHub Releases |
 | 12 — اختبار وإطلاق | ✅ | golden paths ✅ · Electron login ✅ · PTRF ✅ · ERP mode ✅ |

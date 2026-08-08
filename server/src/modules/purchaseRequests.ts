@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { requireAuth } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -95,6 +96,7 @@ function materialLabel(row: {
 
 export const purchaseRequestsRouter = Router();
 purchaseRequestsRouter.use(requireAuth);
+purchaseRequestsRouter.use(withIdempotency());
 
 purchaseRequestsRouter.get(
   '/meta',

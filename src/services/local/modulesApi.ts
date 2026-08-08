@@ -1,6 +1,9 @@
 import type { AppUser, BillingRecord, BOQItem, MosCertificate, MosExtract, Project, Supplier, Transaction, VariationOrder } from '../../types';
 import { apiClient } from '../../lib/apiClient';
 import { createCrudApi } from './crudApi';
+import { offlinePost, offlinePatch, offlinePut, NetworkQueuedError } from '../../lib/offline/offlineWrite';
+
+export { NetworkQueuedError };
 
 function buildQuery(params: Record<string, string | undefined>): string {
   const search = new URLSearchParams();
@@ -36,25 +39,72 @@ export const chartOfAccountsApi = {
 };
 export const purchaseTransactionsApi = {
   ...createCrudApi('/purchase-transactions'),
+  create: (data: unknown) =>
+    offlinePost<Record<string, unknown>>('/purchase-transactions', data, {
+      opType: 'purchase_tx.create',
+      opClass: 'safe_save',
+      summary: 'Purchase / IPC draft',
+    }),
+  update: (id: string, data: unknown) =>
+    offlinePut<Record<string, unknown>>(`/purchase-transactions/${encodeURIComponent(id)}`, data, {
+      opType: 'purchase_tx.update',
+      opClass: 'safe_save',
+      summary: `Update purchase ${id}`,
+    }),
   approve: (id: string) =>
-    apiClient.post<Record<string, unknown>>(`/purchase-transactions/${encodeURIComponent(id)}/approve`, {}),
+    offlinePost<Record<string, unknown>>(`/purchase-transactions/${encodeURIComponent(id)}/approve`, {}, {
+      opType: 'purchase_tx.approve',
+      opClass: 'confirm_required',
+      summary: `Approve IPC ${id}`,
+    }),
 };
 
 export const custodySettlementsApi = {
   ...createCrudApi('/custody-settlements'),
+  create: (data: unknown) =>
+    offlinePost<Record<string, unknown>>('/custody-settlements', data, {
+      opType: 'custody.create',
+      opClass: 'safe_save',
+      summary: 'Custody settlement draft',
+    }),
+  update: (id: string, data: unknown) =>
+    offlinePut<Record<string, unknown>>(`/custody-settlements/${encodeURIComponent(id)}`, data, {
+      opType: 'custody.update',
+      opClass: 'safe_save',
+      summary: `Update custody ${id}`,
+    }),
   approve: (id: string) =>
-    apiClient.post<Record<string, unknown>>(`/custody-settlements/${encodeURIComponent(id)}/approve`, {}),
+    offlinePost<Record<string, unknown>>(`/custody-settlements/${encodeURIComponent(id)}/approve`, {}, {
+      opType: 'custody.approve',
+      opClass: 'confirm_required',
+      summary: `Approve custody ${id}`,
+    }),
 };
 
 export const billingApi = {
   list: (contractId?: string) => apiClient.get<BillingRecord[]>(`/billing${contractId ? `?contractId=${contractId}` : ''}`),
-  create: (data: unknown) => apiClient.post<BillingSaveResponse>('/billing', data),
-  update: (id: string, data: unknown) => apiClient.put<BillingSaveResponse>(`/billing/${encodeURIComponent(id)}`, data),
+  create: (data: unknown) =>
+    offlinePost<BillingSaveResponse>('/billing', data, {
+      opType: 'billing.create',
+      opClass: 'safe_save',
+      summary: 'Client IPC save',
+    }),
+  update: (id: string, data: unknown) =>
+    offlinePut<BillingSaveResponse>(`/billing/${encodeURIComponent(id)}`, data, {
+      opType: 'billing.update',
+      opClass: 'safe_save',
+      summary: `Update IPC ${id}`,
+    }),
   remove: (id: string) => apiClient.delete(`/billing/${encodeURIComponent(id)}`),
   patchStatus: (id: string, status: string) =>
     apiClient.patch<BillingRecord>(`/billing/${encodeURIComponent(id)}/status`, { status }),
   revertToDraft: (id: string) => apiClient.post(`/billing/${id}/revert-to-draft`),
-  approve: (id: string) => apiClient.post<BillingRecord>(`/billing/${encodeURIComponent(id)}/approve`, {}),
+  approve: (id: string) =>
+    offlinePost<BillingRecord>(`/billing/${encodeURIComponent(id)}/approve`, {}, {
+      opType: 'billing.approve',
+      opClass: 'confirm_required',
+      summary: `Approve client IPC ${id}`,
+    }),
   journalPreview: (id: string) =>
     apiClient.get<{
       entries: Array<{ accountCode: string; accountName?: string; debit: number; credit: number }>;
@@ -210,7 +260,12 @@ export const glApi = {
     apiClient.get<{ exists: boolean }>(
       `/gl/transactions/has-reversal?reversesReference=${encodeURIComponent(reversesReference)}`,
     ),
-  createTransaction: (data: unknown) => apiClient.post<Transaction>('/gl/transactions', data),
+  createTransaction: (data: unknown) =>
+    offlinePost<Transaction>('/gl/transactions', data, {
+      opType: 'gl.create_transaction',
+      opClass: 'confirm_required',
+      summary: 'GL journal post',
+    }),
   deleteTransaction: (id: string) => apiClient.delete(`/gl/transactions/${id}`),
   /** Server business calendar today (Africa/Cairo) — ignore device date when posting. */
   businessToday: () =>
@@ -313,9 +368,19 @@ export const mosCertificatesApi = {
       onSitePercentage: number;
       unitPrice: number;
     }[];
-  }) => apiClient.post<MosCertificate>('/mos-certificates', data),
+  }) =>
+    offlinePost<MosCertificate>('/mos-certificates', data, {
+      opType: 'mos.create',
+      opClass: 'safe_save',
+      summary: 'MOS certificate draft',
+    }),
 
-  approve: (id: string) => apiClient.post<MosCertificate>(`/mos-certificates/${id}/approve`, {}),
+  approve: (id: string) =>
+    offlinePost<MosCertificate>(`/mos-certificates/${id}/approve`, {}, {
+      opType: 'mos.approve',
+      opClass: 'confirm_required',
+      summary: `Approve MOS ${id}`,
+    }),
 };
 
 export const variationOrdersApi = {
@@ -492,9 +557,14 @@ export const consumptionOrdersApi = {
       expenseAccountCode?: string;
       expenseAccountName?: string;
     }>;
-  }) => apiClient.post('/consumption-orders', data),
+  }) =>
+    offlinePost('/consumption-orders', data, {
+      opType: 'consumption.create',
+      opClass: 'safe_save',
+      summary: 'Consumption order draft',
+    }),
   confirm: (id: number) =>
-    apiClient.post<{
+    offlinePost<{
       ok: boolean;
       order: {
         id: number;
@@ -507,9 +577,13 @@ export const consumptionOrdersApi = {
         expenseAccountName?: string | null;
         lines?: Array<{ totalCost: number }>;
       };
-    }>(`/consumption-orders/${id}/confirm`, {}),
+    }>(`/consumption-orders/${id}/confirm`, {}, {
+      opType: 'consumption.confirm',
+      opClass: 'confirm_required',
+      summary: `Confirm consumption #${id}`,
+    }),
   approveCost: (id: number) =>
-    apiClient.post<{
+    offlinePost<{
       ok: boolean;
       order: {
         id: number;
@@ -519,7 +593,11 @@ export const consumptionOrdersApi = {
         orderDate: string;
         totalCost: number;
       };
-    }>(`/consumption-orders/${id}/approve-cost`, {}),
+    }>(`/consumption-orders/${id}/approve-cost`, {}, {
+      opType: 'consumption.confirm',
+      opClass: 'confirm_required',
+      summary: `Approve consumption cost #${id}`,
+    }),
 };
 
 export const warehouseReceiptsApi = {
@@ -538,8 +616,18 @@ export const warehouseReceiptsApi = {
     notes?: string;
     submit?: boolean;
     lines: Array<{ materialCategoryId: number; quantity: number }>;
-  }) => apiClient.post('/warehouse-receipts', data),
-  submit: (id: string) => apiClient.post(`/warehouse-receipts/${id}/submit`, {}),
+  }) =>
+    offlinePost('/warehouse-receipts', data, {
+      opType: 'warehouse_receipt.create',
+      opClass: 'safe_save',
+      summary: 'Warehouse receipt',
+    }),
+  submit: (id: string) =>
+    offlinePost(`/warehouse-receipts/${id}/submit`, {}, {
+      opType: 'warehouse_receipt.submit',
+      opClass: 'safe_save',
+      summary: `Submit warehouse receipt ${id}`,
+    }),
   approve: (
     id: string,
     data: {
@@ -547,7 +635,12 @@ export const warehouseReceiptsApi = {
       supplierAccountName?: string;
       lines: Array<{ id: number; unitCost: number }>;
     },
-  ) => apiClient.post(`/warehouse-receipts/${id}/approve`, data),
+  ) =>
+    offlinePost(`/warehouse-receipts/${id}/approve`, data, {
+      opType: 'warehouse_receipt.approve',
+      opClass: 'confirm_required',
+      summary: `Approve warehouse receipt ${id}`,
+    }),
   reject: (id: string) => apiClient.post(`/warehouse-receipts/${id}/reject`, {}),
 };
 
@@ -616,9 +709,14 @@ export const returnOrdersApi = {
     returnDate: string;
     notes?: string;
     lines: Array<{ consumptionOrderLineId: number; quantity: number; reason?: string }>;
-  }) => apiClient.post('/return-orders', data),
+  }) =>
+    offlinePost('/return-orders', data, {
+      opType: 'return.create',
+      opClass: 'safe_save',
+      summary: 'Return order draft',
+    }),
   confirm: (id: number) =>
-    apiClient.post<{
+    offlinePost<{
       ok: boolean;
       order: {
         id: number;
@@ -631,7 +729,11 @@ export const returnOrdersApi = {
         expenseAccountName?: string | null;
         consumptionOrderNumber?: string | null;
       };
-    }>(`/return-orders/${id}/confirm`, {}),
+    }>(`/return-orders/${id}/confirm`, {}, {
+      opType: 'return.confirm',
+      opClass: 'confirm_required',
+      summary: `Confirm return #${id}`,
+    }),
 };
 
 export type CostCenterRow = {
@@ -1046,8 +1148,18 @@ export const projectInventoryTransfersApi = {
     fromProjectName?: string;
     toProjectCode?: string;
     toProjectName?: string;
-  }) => apiClient.post(PROJECT_TRANSFERS_BASE, data),
-  approveB: (id: number) => apiClient.post(`${PROJECT_TRANSFERS_BASE}/${id}/approve-b`, {}),
+  }) =>
+    offlinePost(PROJECT_TRANSFERS_BASE, data, {
+      opType: 'project_transfer.create',
+      opClass: 'safe_save',
+      summary: 'Project warehouse transfer',
+    }),
+  approveB: (id: number) =>
+    offlinePost(`${PROJECT_TRANSFERS_BASE}/${id}/approve-b`, {}, {
+      opType: 'project_transfer.approve_b',
+      opClass: 'confirm_required',
+      summary: `Transfer approve-B #${id}`,
+    }),
   rejectB: (id: number, reason?: string) =>
     apiClient.post(`${PROJECT_TRANSFERS_BASE}/${id}/reject-b`, { reason }),
   approveProjects: (
@@ -1058,7 +1170,12 @@ export const projectInventoryTransfersApi = {
       toWarehouseAccountCode?: string;
       toWarehouseAccountName?: string;
     },
-  ) => apiClient.post(`${PROJECT_TRANSFERS_BASE}/${id}/approve-projects`, data ?? {}),
+  ) =>
+    offlinePost(`${PROJECT_TRANSFERS_BASE}/${id}/approve-projects`, data ?? {}, {
+      opType: 'project_transfer.approve_projects',
+      opClass: 'confirm_required',
+      summary: `Transfer approve-projects #${id}`,
+    }),
   rejectProjects: (id: number, reason?: string) =>
     apiClient.post(`${PROJECT_TRANSFERS_BASE}/${id}/reject-projects`, { reason }),
   cancel: (id: number) => apiClient.post(`${PROJECT_TRANSFERS_BASE}/${id}/cancel`, {}),
@@ -1229,8 +1346,36 @@ export const settingsApi = {
 
 export const banksApi = {
   accounts: createCrudApi('/bank-accounts'),
-  movements: createCrudApi('/bank-movements'),
-  cheques: createCrudApi('/bank-cheques'),
+  movements: {
+    ...createCrudApi('/bank-movements'),
+    create: (data: unknown) =>
+      offlinePost('/bank-movements', data, {
+        opType: 'bank_movement.create',
+        opClass: 'safe_save',
+        summary: 'Bank movement draft',
+      }),
+    update: (id: string, data: unknown) =>
+      offlinePut(`/bank-movements/${encodeURIComponent(id)}`, data, {
+        opType: 'bank_movement.update',
+        opClass: 'safe_save',
+        summary: `Update bank movement ${id}`,
+      }),
+  },
+  cheques: {
+    ...createCrudApi('/bank-cheques'),
+    create: (data: unknown) =>
+      offlinePost('/bank-cheques', data, {
+        opType: 'bank_cheque.create',
+        opClass: 'safe_save',
+        summary: 'Bank cheque draft',
+      }),
+    update: (id: string, data: unknown) =>
+      offlinePut(`/bank-cheques/${encodeURIComponent(id)}`, data, {
+        opType: 'bank_cheque.update',
+        opClass: 'safe_save',
+        summary: `Update bank cheque ${id}`,
+      }),
+  },
   statements: createCrudApi('/bank-statements'),
   statementLines: createCrudApi('/bank-statement-lines'),
 };
@@ -1342,11 +1487,19 @@ export const purchaseRequestsApi = {
   list: (scope: 'open' | 'executed' | 'all' = 'open') =>
     apiClient.get<PurchaseRequestRow[]>(`/purchase-requests?scope=${scope}`),
   create: (body: Record<string, unknown>) =>
-    apiClient.post<PurchaseRequestRow>('/purchase-requests', body),
+    offlinePost<PurchaseRequestRow>('/purchase-requests', body, {
+      opType: 'purchase_request.create',
+      opClass: 'safe_save',
+      summary: 'Purchase request',
+    }),
   updateStatus: (id: string, status: PurchaseRequestStatus, note?: string) =>
-    apiClient.patch<PurchaseRequestRow>(`/purchase-requests/${encodeURIComponent(id)}/status`, {
+    offlinePatch<PurchaseRequestRow>(`/purchase-requests/${encodeURIComponent(id)}/status`, {
       status,
       ...(note != null ? { note } : {}),
+    }, {
+      opType: 'purchase_request.update_status',
+      opClass: 'safe_save',
+      summary: `PR status ${status}`,
     }),
   notifyWhatsApp: (id: string) =>
     apiClient.post<{ ok: boolean }>(`/purchase-requests/${encodeURIComponent(id)}/notify-whatsapp`, {}),

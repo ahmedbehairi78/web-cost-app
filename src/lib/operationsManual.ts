@@ -70,7 +70,8 @@ export type ManualTopicId =
   | 'settings.users.manage'
   | 'settings.coa.tree'
   | 'settings.cost_centers.indirect'
-  | 'tools.calculator.use';
+  | 'tools.calculator.use'
+  | 'tools.offline.sync';
 
 export interface ManualTopicStep {
   titleKey: string;
@@ -1304,6 +1305,21 @@ export const MANUAL_TOPICS: ManualTopic[] = [
       { titleKey: 'manual_tools_calculator_step_4_title', bodyKey: 'manual_tools_calculator_step_4_body' },
     ],
     tags: ['calculator', 'tools', 'keyboard', 'history'],
+  },
+  {
+    id: 'tools.offline.sync',
+    moduleId: 'general',
+    labelKey: 'manual_tools_offline_title',
+    summaryKey: 'manual_tools_offline_summary',
+    beforeYouStartKey: 'manual_tools_offline_before',
+    commonMistakesKey: 'manual_tools_offline_mistakes',
+    steps: [
+      { titleKey: 'manual_tools_offline_step_1_title', bodyKey: 'manual_tools_offline_step_1_body' },
+      { titleKey: 'manual_tools_offline_step_2_title', bodyKey: 'manual_tools_offline_step_2_body' },
+      { titleKey: 'manual_tools_offline_step_3_title', bodyKey: 'manual_tools_offline_step_3_body' },
+      { titleKey: 'manual_tools_offline_step_4_title', bodyKey: 'manual_tools_offline_step_4_body' },
+    ],
+    tags: ['offline', 'sync', 'draft', 'queue', 'network'],
   },
 ];
 

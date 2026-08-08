@@ -10,7 +10,11 @@ import { ApiError } from '../../lib/apiClient';
 import { isLocalBackend } from '../../lib/dataBackend';
 import { motion, AnimatePresence } from 'motion/react';
 import { accountingService, Account } from '../../services/accountingService';
-import { contractsApi, projectsApi, costCentersApi, settingsApi, glApi } from '../../services/local/modulesApi';
+import { contractsApi, projectsApi, costCentersApi, settingsApi, glApi, NetworkQueuedError } from '../../services/local/modulesApi';
+import { useFormDraftAutosave } from '../../hooks/useFormDraftAutosave';
+import { useOfflineUserId } from '../../hooks/useOfflineUserId';
+import { FormDraftRestoreBanner } from '../offline/FormDraftRestoreBanner';
+import { clearFormDraft, FORM_DRAFT_KEYS } from '../../lib/offline';
 import { businessTodayYmd } from '../../lib/businessCalendar';
 import { useReportDocumentPreview } from '../../hooks/useReportDocumentPreview';
 import type { CompanyPrintInfo } from '../../lib/ipcPrintData';
@@ -143,6 +147,21 @@ export function GLJournalEntries({
   const [entryForm, setEntryForm] = useState(emptyEntryForm);
   const [businessTimeZone, setBusinessTimeZone] = useState('Africa/Cairo');
 
+  const offlineUserId = useOfflineUserId();
+  const {
+    restorePrompt: glRestore,
+    acceptRestore: acceptGlRestore,
+    dismissRestore: dismissGlRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: FORM_DRAFT_KEYS.glJournalNew,
+    value: entryForm,
+    enabled: isEntryModalOpen,
+    isEmpty: (v) =>
+      !String(v.description || '').trim()
+      && !(v.entries || []).some((e) => e.accountCode || e.debit || e.credit),
+  });
+
   const refreshBusinessPostingDate = React.useCallback(async () => {
     let date = businessTodayYmd();
     let timeZone = 'Africa/Cairo';
@@ -249,10 +268,12 @@ export function GLJournalEntries({
         }),
       });
       toast.success(language === 'ar' ? 'تم حفظ القيد' : 'Journal entry saved');
+      if (offlineUserId) await clearFormDraft(offlineUserId, FORM_DRAFT_KEYS.glJournalNew);
       onJournalChanged?.();
       setIsEntryModalOpen(false);
       setEntryForm(emptyEntryForm());
     } catch (error) {
+      if (error instanceof NetworkQueuedError) return;
       handleFirestoreError(error, OperationType.CREATE, 'transactions');
     } finally {
       setIsSubmitting(false);
@@ -654,6 +675,17 @@ export function GLJournalEntries({
                 <button type="button" title={language === 'ar' ? 'إغلاق' : 'Close'} aria-label={language === 'ar' ? 'إغلاق' : 'Close'} onClick={() => setIsEntryModalOpen(false)} className="text-gray-500 hover:text-white transition-colors"><X size={20} /></button>
               </div>
               <form onSubmit={handleSaveEntry} className="p-6 space-y-6">
+                <FormDraftRestoreBanner
+                  show={!!glRestore}
+                  updatedAt={glRestore?.updatedAt}
+                  onRestore={() => {
+                    if (glRestore?.payload) setEntryForm(glRestore.payload as typeof entryForm);
+                    acceptGlRestore();
+                  }}
+                  onDiscard={() => {
+                    void dismissGlRestore();
+                  }}
+                />
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{language === 'ar' ? 'التاريخ' : 'Date'}</label>

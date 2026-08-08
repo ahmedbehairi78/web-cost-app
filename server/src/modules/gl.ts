@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
   createTransaction,
@@ -25,6 +26,7 @@ const glWritePerm = requireModuleWrite('ledger', 'costs', 'billing', 'inventory'
 export const glRouter = Router();
 
 glRouter.use(requireAuth);
+glRouter.use(withIdempotency());
 
 /** Trusted calendar “today” for journal posting (business TZ — not the client device). */
 glRouter.get(

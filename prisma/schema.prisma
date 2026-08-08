@@ -1817,3 +1817,19 @@ model PurchaseRequest {
   @@index([requestedAt])
   @@map("purchase_requests")
 }
+
+// ─── Idempotency (offline sync / client retries) ─────────────────────────────
+
+model IdempotencyKey {
+  id             String   @id @default(uuid())
+  key            String
+  userId         String   @map("user_id")
+  route          String
+  responseStatus Int      @map("response_status")
+  responseBody   Json     @map("response_body")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, key])
+  @@index([createdAt])
+  @@map("idempotency_keys")
+}

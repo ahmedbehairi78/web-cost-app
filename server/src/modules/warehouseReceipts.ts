@@ -3,6 +3,7 @@ import { Router } from 'express';
 import type { Request, Response, NextFunction } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requireAnyPermission } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -25,6 +26,7 @@ import {
 
 export const warehouseReceiptsRouter = Router();
 warehouseReceiptsRouter.use(requireAuth);
+warehouseReceiptsRouter.use(withIdempotency());
 
 const inventoryUsePerm = requireAnyPermission('inventory', 'costs', 'transfers');
 

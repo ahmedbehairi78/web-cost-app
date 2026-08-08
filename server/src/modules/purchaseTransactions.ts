@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { requireAuth, requireModuleWrite, requireReferenceRead, requireRole } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -106,6 +107,7 @@ const writeMw = requireModuleWrite('costs');
 export const purchaseTransactionsRouter = Router();
 
 purchaseTransactionsRouter.use(requireAuth);
+purchaseTransactionsRouter.use(withIdempotency());
 
 purchaseTransactionsRouter.use((req, res, next) => {
   if (req.method === 'GET') return readMw(req, res, next);

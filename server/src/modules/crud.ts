@@ -3,6 +3,7 @@ import { ensureDirectCostCenterForContract } from '../lib/costCenterHelpers.js';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -85,6 +86,7 @@ export function createCrudRouter(
   const writeMw = requireModuleWrite(...writePerms);
 
   router.use(requireAuth);
+  router.use(withIdempotency());
 
   router.use((req, res, next) => {
     if (req.method === 'GET') return readMw(req, res, next);

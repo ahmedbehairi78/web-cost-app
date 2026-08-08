@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { NextFunction, Request, Response } from 'express';
 import { requireAuth, requireModuleWrite, requireReferenceRead } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -115,6 +116,7 @@ const writeMw = requireModuleWrite('costs');
 export const custodySettlementsRouter = Router();
 
 custodySettlementsRouter.use(requireAuth);
+custodySettlementsRouter.use(withIdempotency());
 
 custodySettlementsRouter.use((req, res, next) => {
   if (req.method === 'GET') return readMw(req, res, next);

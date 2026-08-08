@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
 import { requireAuth, requireAnyPermission } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -30,6 +31,7 @@ import {
 import type { Request, Response, NextFunction } from 'express';
 export const consumptionOrdersRouter = Router();
 consumptionOrdersRouter.use(requireAuth);
+consumptionOrdersRouter.use(withIdempotency());
 const inventoryUsePerm = requireAnyPermission('inventory', 'costs', 'transfers');
 
 function canApproveCost(user: NonNullable<Request['user']>): boolean {

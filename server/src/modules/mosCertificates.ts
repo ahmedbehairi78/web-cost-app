@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
 import { requireAuth, requirePermission, requireAnyPermission, requireRole } from '../middleware/auth.js';
+import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -13,6 +14,7 @@ import { buildMosPriorMaps } from '../lib/mosPriorMaps.js';
 
 export const mosCertificatesRouter = Router();
 mosCertificatesRouter.use(requireAuth);
+mosCertificatesRouter.use(withIdempotency());
 
 const readPerm = requireAnyPermission('billing', 'costs');
 const writePerm = requirePermission('billing');

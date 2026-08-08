@@ -715,5 +715,30 @@ npm run dev:local
 | `src/lib/permissions.ts` · `src/types.ts` | الصلاحيات والأدوار |
 | `src/lib/money.ts` · `src/lib/formatQuantity.ts` | عرض المال والكميات |
 | `src/services/accountingService.ts` | قيود GL + `AccountCodes` |
+| `src/lib/offline/` | مسودات محلية + طابور مزامنة (انظر §6.6) |
 | `server/src/app.ts` | تسجيل كل الراوترات + CORS |
 | `prisma/schema.prisma` | مخطط قاعدة البيانات |
+
+---
+
+## 6.6 Offline Sync (مسودات + طابور مزامنة) — 2026-08-08
+
+**النطاق:** `isLocalBackend` فقط (محلي / Railway / Electron).
+
+| طبقة | مسار |
+|------|------|
+| مسودات النماذج | `src/lib/offline/formDraftStore.ts` + `useFormDraftAutosave` |
+| طابور | `syncOutbox.ts` · `enqueueOrExecute` · `offlineWrite.ts` |
+| واجهة | `OfflineStatusBar` · `PendingSyncPanel` · `FormDraftRestoreBanner` |
+| منع التكرار | ترويسة `Idempotency-Key` + جدول `idempotency_keys` + `withIdempotency()` |
+| مفاتيح المسودات | `FORM_DRAFT_KEYS` في `formDraftKeys.ts` |
+
+**تصنيف العمليات:**
+- `safe_save` — مسودات (أوامر شراء، مستخلصات، بنوك…) تُفرَّغ تلقائياً عند `online`
+- `confirm_required` — ترحيل/اعتماد/صرف/إرجاع — تظهر في لوحة التأكيد فقط
+
+**خمول الجلسة:** `useIdleLogout` يتوقف أثناء الانقطاع أو وجود مسودة/طابور (`idleGate.ts`).
+
+**اختبارات:** `npm run test -- src/lib/offline/offline.test.ts`
+
+**لا تراجع:** لا ترحيل GL صامت من الطابور؛ اربط النماذج الجديدة عبر `useFormDraftAutosave` + `offlinePost`/`offlineWrite` حسب التصنيف.

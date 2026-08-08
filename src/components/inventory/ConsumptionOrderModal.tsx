@@ -11,7 +11,11 @@ import {
   inventoryApi,
   boqApi,
   settingsApi,
+  NetworkQueuedError,
 } from '../../services/local/modulesApi';
+import { useFormDraftAutosave } from '../../hooks/useFormDraftAutosave';
+import { useOfflineUserId } from '../../hooks/useOfflineUserId';
+import { FormDraftRestoreBanner } from '../offline/FormDraftRestoreBanner';
 import { AccountCodes } from '../../services/accountingService';
 import { ApiError } from '../../lib/apiClient';
 import { formatQuantity } from '../../lib/formatQuantity';
@@ -32,6 +36,7 @@ import { QuickLinkMaterialModal } from './QuickLinkMaterialModal';
 import toast from 'react-hot-toast';
 import { useUserAccessScope } from '../../hooks/useUserAccessScope';
 import type { AppTheme } from '../../lib/shellTheme';
+import { clearFormDraft } from '../../lib/offline';
 
 export type ProjectInventoryItemForConsume = {
   id: number;
@@ -259,6 +264,24 @@ export function ConsumptionOrderModal({
   );
   const [confirmedOrder, setConfirmedOrder] = useState<ConfirmedOrderForPrint | null>(null);
   const [printNames, setPrintNames] = useState({ requester: '', receiver: '', storekeeper: '' });
+
+  const offlineUserId = useOfflineUserId();
+  const consumeDraftKey = `consumption:${projectId}:${contractId}:new`;
+  const consumeDraftValue = useMemo(
+    () => ({ cart, orderDate, notes }),
+    [cart, orderDate, notes],
+  );
+  const {
+    restorePrompt: consumeRestore,
+    acceptRestore: acceptConsumeRestore,
+    dismissRestore: dismissConsumeRestore,
+  } = useFormDraftAutosave({
+    userId: offlineUserId,
+    draftKey: consumeDraftKey,
+    value: consumeDraftValue,
+    enabled: true,
+    isEmpty: (v) => !v.cart?.length && !String(v.notes || '').trim(),
+  });
 
   const { accounts } = useChartOfAccountsRef({ leafOnly: true });
 
@@ -538,6 +561,7 @@ export function ConsumptionOrderModal({
 
       if (created.order?.status === 'pending_cost' || created.order?.requiresCostApproval) {
         toast.success(t('consume_pending_cost_created'));
+        if (offlineUserId) await clearFormDraft(offlineUserId, consumeDraftKey);
         onSaved();
         onClose();
         return;
@@ -548,6 +572,7 @@ export function ConsumptionOrderModal({
         order?: ConfirmedOrderForPrint;
       };
       toast.success(t('toast_consume_confirmed'));
+      if (offlineUserId) await clearFormDraft(offlineUserId, consumeDraftKey);
       onSaved();
       if (confirmed?.order?.orderNumber) {
         setConfirmedOrder({
@@ -560,6 +585,9 @@ export function ConsumptionOrderModal({
         onClose();
       }
     } catch (e: unknown) {
+      if (e instanceof NetworkQueuedError) {
+        return;
+      }
       const rawMessage = e instanceof Error ? e.message : '';
       if (/insufficient project warehouse balance/i.test(rawMessage)) {
         const availableMatch = rawMessage.match(/available:\s*([0-9.]+)/i);
@@ -665,6 +693,21 @@ export function ConsumptionOrderModal({
             <h3 className="text-lg font-bold">{t('consume_order_title')}</h3>
             <ManualHelpButton topicId="inventory.consumption.issue" size={16} />
           </div>
+          <FormDraftRestoreBanner
+            show={!!consumeRestore}
+            updatedAt={consumeRestore?.updatedAt}
+            onRestore={() => {
+              if (!consumeRestore) return;
+              const p = consumeRestore.payload;
+              if (Array.isArray(p.cart)) setCart(p.cart as CartMaterialLine[]);
+              if (p.orderDate) setOrderDate(p.orderDate);
+              if (typeof p.notes === 'string') setNotes(p.notes);
+              acceptConsumeRestore();
+            }}
+            onDiscard={() => {
+              void dismissConsumeRestore();
+            }}
+          />
           {(projectLabel || contractLabel) && (
             <p className={cn('text-xs mb-4', theme === 'dark' ? 'text-gray-500' : 'text-gray-500')}>
               {[projectLabel, contractLabel].filter(Boolean).join(' · ')}

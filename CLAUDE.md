@@ -94,13 +94,14 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/projectWarehouse.ts` | Shared **127…** warehouse resolution: `findWarehouseAccountRowForProject`, `findDisabledProjectWarehouseAccount`, `resolveWarehouseAccountForProject` — used by Inventory, ActualCosts, consumption/return modals |
 | `src/lib/devOriginGuard.ts` | Dev-only: redirect `127.0.0.1` → `localhost` so session cookies match Vite proxy |
 | `src/lib/dataBackend.ts` | `isLocalBackend` — `VITE_DATA_BACKEND=local` **or** prod + `VITE_API_BASE_URL=/api` (Railway full-stack). Gates Postgres API vs Firestore legacy. |
+| `src/lib/offline/` | **Offline sync** — form drafts (IndexedDB) · outbox `safe_save` / `confirm_required` · `Idempotency-Key` · `OfflineStatusBar` / `PendingSyncPanel`. Local/Railway only. Tests: `offline.test.ts`. |
 | `src/lib/liquidityMetrics.ts` | **Shared liquidity KPIs** — `computeLiquidityContractRow`, `computePortfolioPendingBilling`, `cashAndBankBalanceFromGlTxs`, `dashboardCollectionAmountForTx`, `dashboardIpcCollectionAmountForTx`, `receivablesBalanceFromGlTxs`, `hasCustomerReceivableGlActivity`, cheque ISS/CLR pairing; used by **`Dashboard.tsx`**, **`LiquidityReport.tsx`**, **`Projects.tsx`**. Tests: **`17`** cases in `src/lib/liquidityMetrics.test.ts`. |
 | `src/lib/dashboardMetrics.ts` | **Dashboard filters/compare/timeline** — `filterDashboardTransactions`, `computeDashboardPeriodStats`, `buildProjectCompareRows` (سيولة), `buildMonthlySeries` (أعمدة شهرية) · **`buildCashFlowSeries`** (تحليل التدفق النقدي — **شهري غير تراكمي**؛ نقطة أصل `__start__` = صفر ثم إجمالي كل شهر؛ الأشهر بلا حركة **`null`** ⇒ `connectNulls` يمدّ الخط؛ رسم Area خطي); UI: `DashboardFilterBar` · `ProjectCompareTable`. Tests: `dashboardMetrics.test.ts`. |
 | `src/lib/reportDocument/` | **منصة مستندات التقارير** — بيانات → HTML نظيف / PDF / طباعة؛ ورقة: هيدر مضغوط + جسم + **فوتر سطر واحد** (شركة عند start · نص/ملاحظة وسط · رقم صفحة عند end — يتبع `dir` اللغة) |
 | `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` (جداول أو أقسام شهادات عبر `buildCertificateDocs.ts`) وفتح حوار معاينة موحّد (تنسيق + طباعة + PDF + حفظ التصميم عبر `reportPrintProfilesPersistence.ts`) — المسار القديم `printReport.ts` حُذف |
 | `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer), `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in Reports format toolbar** (`ReportFormatToolbar`); General Settings **Print** keeps company name/address/tax/logo/footer text only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
-| `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (60 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
+| `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (61 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
 | `src/components/OperationsManual.tsx` | Full manual window (`module id: manual`) — search, module filter, topic list + `ManualTopicContent` |
 | `src/components/help/ManualHelpButton.tsx` | Contextual `?` — dropdown preview + «فتح الشرح الكامل»; hidden when topic not allowed for user |
 | `src/components/help/ManualTopicContent.tsx` | Shared topic body: summary · before · steps · common mistakes |
@@ -516,7 +517,8 @@ feature branch → PR → /review → merge to main
 
 - Always run `npm run lint` (and **`npm run test`** when touching `accountingService` or regressions).
 - Golden paths after changes: create IPC, **purchase invoice via Actual Costs** (GL + SQLite stock + **row click preview**), **subcontractor IPC draft → submit → PM approve** (GL on approve), **custody settlement draft → submit → accounting approve** (GL on approve), **consumption order** (BOQ + expense account + GL `CON-…`), **return** (same expense as `CON-…`, GL `RET-…` without double prefix; visible in **Issues & Returns** tab), GL journal, **received cheque ISS+CLR**, Dashboard + Liquidity totals, capped reports if relevant, **OHA close preview** (pool = allocated per account).
-- When touching **operations manual** topics or `manual_*` i18n keys, run **`npm run test -- src/lib/operationsManual.test.ts`** (60 topics · ar/en key coverage · permission gates).
+- When touching **operations manual** topics or `manual_*` i18n keys, run **`npm run test -- src/lib/operationsManual.test.ts`** (61 topics · ar/en key coverage · permission gates).
+- When touching **offline sync** (`src/lib/offline/*`, idle gate, Idempotency), run **`npm run test -- src/lib/offline/offline.test.ts src/lib/operationsManual.test.ts`**.
 - When touching **shell / window navigation** (`App.tsx`, `Sidebar`, `TopNavBar`, `shellWindowPolicy.ts`), run **`npm run test -- src/lib/shellWindowPolicy.test.ts`** and golden-path **general settings → main module** in dark + ERP.
 - When touching **user preferences / default module / GeneralSettings**, run **`npm run test -- src/lib/shellNavigation.test.ts`** and verify theme + `none` persist after reload.
 - When touching **Settings admin sections** or ERP settings sub-menus, run **`npm run test -- src/lib/moduleViewPermissions.test.ts`**.
@@ -915,7 +917,7 @@ In-app **step-by-step guide** for operational workflows — Arabic/English via *
 - **`ManualHelpButton`**: returns **`null`** when topic missing or not allowed — same rules as the manual list.
 - Shell utilities **`display`**, **`calculator`**, **`manual`**: visible to all signed-in users (`SHELL_UTILITY_MODULE_IDS`). **`manual`** follows the same **single-module** close policy as other primaries when opened from the sidebar; in **ERP** it uses the workspace slot (replacing the current main module).
 
-### Topic inventory (**60** topics)
+### Topic inventory (**61** topics)
 
 | Module / phase | Topic prefix / count |
 |----------------|----------------------|
@@ -927,7 +929,7 @@ In-app **step-by-step guide** for operational workflows — Arabic/English via *
 | Fixed assets | `assets.*` (3) |
 | Payroll | `payroll.*` (11) |
 | Reports | `reports.*` (8) — shared print/filters + 7 tabs |
-| Settings / tools | `settings.*` (8) + `tools.calculator.use` |
+| Settings / tools | `settings.*` (8) + `tools.calculator.use` + `tools.offline.sync` |
 
 ### UI wiring
 
@@ -1270,7 +1272,7 @@ Golden path: قفل Q2-2026 → قيد/فاتورة بتاريخ داخل الر
 | **اختصار** | **`input.code === 'KeyN'`** (+ `preventDefault`) — لوحة عربية | `electron/main.ts` `before-input-event` |
 | **جلسة** | النافذة الثانوية مخفية حتى `sessionProbe` + جاهزية الواجهة، ثم `window-reveal` — **لا** Login ولا شعار | `App.tsx` · `electronShell.ts` · `main.ts` |
 | **UI** | زر Electron-only في Sidebar + TopNav بجانب Palette (ليس داخل General Settings) | `Sidebar.tsx` · `TopNavBar.tsx` |
-| **نشاط** | لا toast موقع جغرافي عند الدخول (أي نافذة) · `IDLE_LOGOUT_MS` = **3 دقائق** | `useActivitySession.ts` · `sessionLogout.ts` |
+| **نشاط** | لا toast موقع جغرافي عند الدخول (أي نافذة) · `IDLE_LOGOUT_MS` = **3 دقائق** (يُيقاف مع offline drafts/outbox) | `useActivitySession.ts` · `sessionLogout.ts` · `idleGate.ts` |
 
 ### لا تراجع
 
@@ -1928,7 +1930,7 @@ Golden path: Palette → غيّر ثيم/لغة/«دون» → أغلق → أع
 ### تحقق
 
 ```powershell
-npm run test -- src/lib/operationsManual.test.ts   # 9 tests · 60 topics · ar/en keys
+npm run test -- src/lib/operationsManual.test.ts   # 61 topics · ar/en keys
 ```
 
 ### golden path
