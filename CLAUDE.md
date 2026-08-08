@@ -990,12 +990,14 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 - لا ترحّل قيد `WR-…` من اعتماد المخزن.
 - لا تستدعِ `applyConfirmedProjectWarehouseInvoice` لاستلام مربوط.
 - الفاتورة فقط عبر `post-invoice` مع VAT/WHT.
+- مرجع قيد الاستلام المربوط = **`INV-{receiptNumber}`** (فريد) — لا تعِد استخدام `INV-{رقم المورد}` حتى لا يُرجع قيد قديم صامتاً بدون إنشاء قيد جديد.
 
 ### تحقق
 
 ```powershell
 npm run test -- server/src/modules/warehouseReceiptInvoiceLink.test.ts src/lib/notificationNavigation.test.ts
-# مخزن → إرسال استلام → تكاليف → فاتورة → اختر الاستلام → أسعار + ضريبة → حفظ
+# أعد تشغيل API · مخزن → إرسال → فاتورة + استلام → أسعار → حفظ
+# اليومية: مرجع INV-{رقم الاستلام} · مدين 127 · دائن مورد (+ WHT إن وُجد)
 ```
 
 ---

@@ -1704,6 +1704,20 @@ export function ActualCosts() {
           ) ?? '',
         );
       }
+      // Linked WR: never drop project id — required to post warehouseReceiptId + price unpriced stock.
+      if (!inventoryProjectId && linkedWarehouseReceiptId) {
+        const wr = pendingWarehouseReceipts.find((r) => r.id === linkedWarehouseReceiptId);
+        inventoryProjectId = nullIfEmpty(wr?.projectId || '');
+      }
+      if (linkedWarehouseReceiptId && !inventoryProjectId) {
+        toast.error(
+          language === 'ar'
+            ? 'تعذر تحديد مشروع الاستلام المخزني — اختر حساب المخزن المرتبط بالمشروع.'
+            : 'Cannot resolve warehouse receipt project — pick the project warehouse account.',
+        );
+        setIsSubmitting(false);
+        return;
+      }
       if (isProjectAccountant && inventoryProjectId && !scopedProjectSet.has(inventoryProjectId)) {
         toast.error(
           language === 'ar' ? 'غير مسموح التسجيل على مخزن هذا المشروع' : 'You cannot post to this project warehouse'
@@ -1858,14 +1872,23 @@ export function ActualCosts() {
 
       // Local invoices: one API call (GL + purchase row + optional stock) so offline sync cannot orphan the journal.
       if (isLocalBackend && activeTab === 'invoice') {
-        const invoiceRef = formData.referenceNumber.trim()
-          ? `INV-${formData.referenceNumber.trim()}`
+        const linkedReceipt = linkedWarehouseReceiptId
+          ? pendingWarehouseReceipts.find((r) => r.id === linkedWarehouseReceiptId)
           : undefined;
+        /** WR-linked: unique journal ref by receipt number (avoids reusing INV-{supplierRef} → silent old GL). */
+        const invoiceRef = linkedReceipt?.receiptNumber
+          ? `INV-${linkedReceipt.receiptNumber}`
+          : formData.referenceNumber.trim()
+            ? `INV-${formData.referenceNumber.trim()}`
+            : undefined;
         const journalDescription =
           isFixedAsset && fixedAssetAccountCode.trim()
             ? formData.description ||
               `${t('invoice_entry')} - ${resolvedSupplierName} - ${fixedAssetName.trim() || fixedAssetAccountCode.trim()}`
-            : formData.description || `${t('invoice_entry')} - ${resolvedSupplierName}`;
+            : linkedReceipt
+              ? formData.description ||
+                `${t('invoice_entry')} - ${resolvedSupplierName} - ${linkedReceipt.receiptNumber}`
+              : formData.description || `${t('invoice_entry')} - ${resolvedSupplierName}`;
 
         let journalEntries: ReturnType<typeof buildPurchaseWithholdingJournalLines>;
         let journalProjectId: string | undefined;
@@ -1911,6 +1934,17 @@ export function ActualCosts() {
               ? 'تعذر بناء قيد الفاتورة — تحقق من المخزن أو الأصل أو مركز التكلفة.'
               : 'Cannot build invoice journal — check warehouse, asset, or cost center.',
           );
+          setIsSubmitting(false);
+          return;
+        }
+
+        if (linkedWarehouseReceiptId && worksValue <= 0) {
+          toast.error(
+            language === 'ar'
+              ? 'أدخل أسعار الوحدات قبل حفظ فاتورة مرتبطة باستلام مخزني.'
+              : 'Enter unit costs before posting an invoice linked to a warehouse receipt.',
+          );
+          setIsSubmitting(false);
           return;
         }
 
@@ -1933,7 +1967,10 @@ export function ActualCosts() {
           supplierAccountId: nullIfEmpty(supplierCoaAccount.id),
           supplierName: resolvedSupplierName,
           paymentType: invoicePaymentType,
-          projectId: projectIdForSave,
+          projectId:
+            linkedWarehouseReceiptId && inventoryProjectId
+              ? inventoryProjectId
+              : projectIdForSave,
           contractId: contractIdForSave,
           expenseAccountId: isIndirectInvoice ? nullIfEmpty(expenseCoaAccount?.id) : null,
           expenseAccountName: isIndirectInvoice ? expenseCoaAccount?.accountName || '' : '',
@@ -1982,6 +2019,21 @@ export function ActualCosts() {
 
         const purchaseId = String(posted.id);
         transactionId = String(posted.transactionId || '');
+        const postedJournalRef =
+          typeof (posted as { journalReference?: unknown }).journalReference === 'string'
+            ? String((posted as { journalReference?: string }).journalReference)
+            : invoiceRef || '';
+
+        if (!transactionId) {
+          toast.error(
+            language === 'ar'
+              ? 'حُفظت الفاتورة لكن لم يُرجع معرّف القيد — راجع دفتر اليومية أو أعد المحاولة.'
+              : 'Invoice saved but no journal id was returned — check the ledger or retry.',
+          );
+          setPurchaseRefreshKey((k) => k + 1);
+          setIsSubmitting(false);
+          return;
+        }
 
         if (isFixedAsset && fixedAssetAccountCode.trim()) {
           try {
@@ -2037,8 +2089,12 @@ export function ActualCosts() {
 
         toast.success(
           language === 'ar'
-            ? 'تم حفظ الفاتورة وإنشاء القيد بنجاح.'
-            : 'Invoice saved and journal entry created successfully.',
+            ? postedJournalRef
+              ? `تم حفظ الفاتورة وإنشاء القيد بنجاح (${postedJournalRef}).`
+              : 'تم حفظ الفاتورة وإنشاء القيد بنجاح.'
+            : postedJournalRef
+              ? `Invoice saved and journal created (${postedJournalRef}).`
+              : 'Invoice saved and journal entry created successfully.',
         );
         setPurchaseRefreshKey((k) => k + 1);
         setShowModal(false);

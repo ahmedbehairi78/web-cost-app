@@ -291,6 +291,29 @@ purchaseTransactionsRouter.post(
         ? String(body.warehouseReceiptId).trim()
         : '';
 
+    /** WR-linked invoices must use a unique journal reference (receipt number) — never reuse INV-{supplierRef}. */
+    let journalReference =
+      journal.reference != null && String(journal.reference).trim()
+        ? String(journal.reference).trim()
+        : '';
+    if (warehouseReceiptId) {
+      const receiptForRef = await prisma.warehouseReceipt.findUnique({
+        where: { id: warehouseReceiptId },
+        select: { receiptNumber: true, status: true, purchaseTransactionId: true },
+      });
+      if (!receiptForRef) {
+        res.status(404).json({ error: 'استلام المخزن غير موجود' });
+        return;
+      }
+      if (receiptForRef.status !== 'pending_approval' && !receiptForRef.purchaseTransactionId) {
+        res.status(400).json({
+          error: `لا يمكن اعتماد استلام بحالة: ${receiptForRef.status}`,
+        });
+        return;
+      }
+      journalReference = `INV-${receiptForRef.receiptNumber}`;
+    }
+
     const { applyConfirmedProjectWarehouseInvoice } = await import('./sqliteCore.js');
 
     const result = await prisma.$transaction(async (tx) => {
@@ -298,7 +321,7 @@ purchaseTransactionsRouter.post(
         {
           date: String(journal.date || purchaseBody.date || ''),
           description: String(journal.description || purchaseBody.description || 'فاتورة مشتريات'),
-          ...(journal.reference ? { reference: String(journal.reference) } : {}),
+          ...(journalReference ? { reference: journalReference } : {}),
           ...(journal.projectId ? { projectId: String(journal.projectId) } : {}),
           ...(journal.costCenterId ? { costCenterId: String(journal.costCenterId) } : {}),
           entries: entries.map((e) => ({
@@ -319,6 +342,21 @@ purchaseTransactionsRouter.post(
         include: { items: true },
       });
       if (existingLinked) {
+        if (warehouseReceiptId) {
+          const alreadyLinkedReceipt = await tx.warehouseReceipt.findFirst({
+            where: {
+              id: warehouseReceiptId,
+              purchaseTransactionId: existingLinked.id,
+            },
+            select: { id: true },
+          });
+          if (alreadyLinkedReceipt) {
+            return { purchase: existingLinked, transactionId: glTx.id, reused: true as const };
+          }
+          throw new Error(
+            `مرجع القيد «${journalReference || glTx.id}» مرتبط بفاتورة أخرى. أعد المحاولة أو راجع دفتر اليومية.`,
+          );
+        }
         return { purchase: existingLinked, transactionId: glTx.id, reused: true as const };
       }
 
@@ -336,6 +374,10 @@ purchaseTransactionsRouter.post(
       data.transactionId = glTx.id;
       data.status = String(purchaseBody.status || 'pending');
       data.isDeleted = false;
+      // Ensure WR-linked invoices store the project for filters / audit.
+      if (warehouseReceiptId && body.inventory?.projectId && !data.projectId) {
+        data.projectId = String(body.inventory.projectId);
+      }
 
       const created = await tx.purchaseTransaction.create({ data: data as never });
       await upsertLinePayload(String(created.id), purchaseBody, tx);
@@ -410,6 +452,7 @@ purchaseTransactionsRouter.post(
       ...serializePurchaseRow(result.purchase),
       transactionId: result.transactionId,
       reusedExisting: result.reused,
+      ...(journalReference ? { journalReference } : {}),
     });
   }),
 );
