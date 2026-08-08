@@ -27,7 +27,7 @@
 
 **Offline sync (محلي/ريلواي):** مسودات نماذج في IndexedDB + طابور إرسال (`safe_save` تلقائي · `confirm_required` بمراجعة يدوية) — شريط حالة + `PendingSyncPanel`. يشمل المشتريات/التكاليف/البنوك/المخزون/الرواتب/الأصول/**BOQ·VO**/GL. مفاتيح: `src/lib/offline/`. دليل: موضوع `tools.offline.sync`.
 
-**إدخال شبيه بإكسل (2026-08-08):** عند التركيز على حقل نص/رقم يُحدَّد المحتوى بالكامل (الكتابة تستبدل القيمة). الأسهم ←→↑↓ تنتقل بين الحقول (جداول + أقرب حقل مكانياً في النماذج)؛ **لا** تغيّر قيمة `type=number`. التثبيت من `main.tsx` عبر `installExcelLikeInputBehavior()` (`src/lib/excelLikeInputs.ts`). استثناء: `data-excel-nav="off"`.
+**إدخال شبيه بإكسل (2026-08-08):** عند التركيز على حقل نص/رقم يُحدَّد المحتوى بالكامل (الكتابة تستبدل القيمة). الأسهم ←→↑↓ تنتقل بين الحقول (جداول + أقرب حقل مكانياً داخل dialog/`fixed inset-0` فقط — بدون مسح `#root`)؛ **لا** تغيّر قيمة `type=number`. التثبيت من `main.tsx` عبر `installExcelLikeInputBehavior()` (`src/lib/excelLikeInputs.ts`). استثناء: `data-excel-nav="off"`.
 
 ---
 

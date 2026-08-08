@@ -233,29 +233,59 @@ export function resolveSpatialNeighbor<T>(
   return best?.id ?? null;
 }
 
-export function resolveNavScope(el: Element): Element {
+/** Prefer a fixed/fullscreen overlay (typical app modal) over scanning `#root`. */
+export function closestFixedOverlay(el: Element): Element | null {
+  let node: HTMLElement | null = el instanceof HTMLElement ? el : el.parentElement;
+  while (node && node !== document.body && node !== document.documentElement) {
+    const cls = node.classList;
+    if (cls?.contains('fixed') && (cls.contains('inset-0') || cls.contains('inset-x-0'))) {
+      return node;
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+/**
+ * Narrow navigation scope. Returns `null` when only the full app root is available —
+ * callers must skip expensive spatial scans (was a major input lag source).
+ */
+export function resolveNavScope(el: Element): Element | null {
   return (
     el.closest('[data-excel-nav-scope]') ||
     el.closest('[role="dialog"]') ||
     el.closest('[aria-modal="true"]') ||
+    closestFixedOverlay(el) ||
     el.closest('form') ||
     el.closest('[data-radix-portal]') ||
-    document.getElementById('root') ||
-    document.body
+    el.closest('table') ||
+    el.closest('section') ||
+    null
   );
 }
 
 function isFieldVisible(el: ExcelNavField): boolean {
-  if (el.getClientRects().length === 0) return false;
-  const style = window.getComputedStyle(el);
-  if (style.visibility === 'hidden' || style.display === 'none') return false;
-  return true;
+  if (typeof el.checkVisibility === 'function') {
+    try {
+      return el.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true });
+    } catch {
+      /* older engines */
+    }
+  }
+  return el.getClientRects().length > 0;
 }
 
+/** Soft cap — beyond this, spatial nav would jank on large screens. */
+export const EXCEL_SPATIAL_MAX_CANDIDATES = 80;
+
 function listScopeNavFields(scope: Element, except: ExcelNavField): ExcelNavField[] {
-  return [...scope.querySelectorAll(EXCEL_NAV_FIELD_SELECTOR)]
-    .filter(isExcelNavField)
-    .filter((f) => f !== except && isFieldVisible(f));
+  const found: ExcelNavField[] = [];
+  for (const node of scope.querySelectorAll(EXCEL_NAV_FIELD_SELECTOR)) {
+    if (!isExcelNavField(node) || node === except || !isFieldVisible(node)) continue;
+    found.push(node);
+    if (found.length >= EXCEL_SPATIAL_MAX_CANDIDATES) break;
+  }
+  return found;
 }
 
 function focusAndSelect(el: ExcelNavField): void {
@@ -297,6 +327,8 @@ function trySpatialNavigation(e: KeyboardEvent, el: ExcelNavField): boolean {
   if (!ARROW_KEYS.has(e.key)) return false;
   const key = e.key as 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight';
   const scope = resolveNavScope(el);
+  // No narrow scope → skip (avoids scanning the entire SPA on every arrow key)
+  if (!scope) return false;
   const others = listScopeNavFields(scope, el);
   if (others.length === 0) return false;
 
