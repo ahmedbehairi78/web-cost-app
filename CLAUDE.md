@@ -971,6 +971,25 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — اعتماد مستخلص عميل 400 (قيد غير متوازن) ✅ (2026-08-08)
+
+> **سبب:** تقريب مستقل لكل بند من بنود قيد IPC إلى منزلتين → فرق **0.01** جنيه (مدين 74332.68 / دائن 74332.67) يفشل `assertBalanced` → HTTP 400 على `POST /billing/:id/approve`.
+
+### ما تم
+- `buildIpcEntries` (خادم + عميل): حساب المستحقات (122…) كـ **باقي** بعد تقريب باقي الأرجل
+- نفس قاعدة الباقي لمستخلص الباطن (`buildSubcontractorIpcEntries`)
+- اختبار انحدار على أرقام IPC-1 الفعلية · رسائل toast أوضح
+
+### لا تراجع
+- لا تقرّب كل بند مستقل ثم تعتمد `netPayable` المخزّن كما هو في القيد — استخدم الباقي للمحاسبة.
+
+```powershell
+npm run test -- server/src/accounting/journalShared.test.ts
+# أعد تشغيل API / انشر Railway ثم اعتماد المستخلص مرة أخرى
+```
+
+---
+
 ## 🔴 HANDOFF — تخفيف lag Electron / استجابة الأوامر ✅ (2026-08-08)
 
 > **جلسة 2026-08-08:** تقليل حمل الـ main thread الذي كان يظهر كتأخر استجابة في Electron (والويب).

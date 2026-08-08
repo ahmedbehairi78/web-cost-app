@@ -222,20 +222,39 @@ export interface IpcEntryParams {
 
 /** Build the balanced journal lines for a client IPC (revenue side). Pure — used for preview + posting. */
 export function buildIpcEntries(params: IpcEntryParams): JournalEntry[] {
+  const worksValue = roundMoney(params.worksValue);
+  const vatAmount = roundMoney(params.vatAmount);
+  const execGuarantee = roundMoney(params.execGuarantee);
+  const whtAmount = roundMoney(params.whtAmount);
+  const labourInsurance = roundMoney(params.labourInsurance);
+  const manpowerLevy = roundMoney(params.manpowerLevy);
+  const advancePaymentRecovery = roundMoney(params.advancePaymentRecovery);
+
+  // Receivables absorbs 2dp rounding so Dr === Cr (same rule as server journalShared).
+  const creditTotal = roundMoney(worksValue + vatAmount);
+  const otherDebits = roundMoney(
+    execGuarantee + whtAmount + labourInsurance + manpowerLevy + advancePaymentRecovery,
+  );
+  const netPayable = roundMoney(creditTotal - otherDebits);
+
   const entries: JournalEntry[] = [
-    // Debits — حقوق مستحقة للشركة من العميل
-    { accountCode: AccountCodes.RECEIVABLES,             accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: params.netPayable,     credit: 0 },
-    { accountCode: AccountCodes.RETENTION_GUARANTEE,     accountName: 'ح/ محتجز ضمان الأعمال',                           debit: params.execGuarantee,  credit: 0 },
-    { accountCode: AccountCodes.WHT_RECEIVABLE,          accountName: 'ح/ مصلحة الضرائب – خصم وإضافة (مدين)',           debit: params.whtAmount,      credit: 0 },
-    { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية – عمالة غير منتظمة', debit: params.labourInsurance, credit: 0 },
-    { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE, accountName: 'ح/ القوى العاملة (مدين)',                        debit: params.manpowerLevy,   credit: 0 },
+    { accountCode: AccountCodes.RECEIVABLES, accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: netPayable, credit: 0 },
+    { accountCode: AccountCodes.RETENTION_GUARANTEE, accountName: 'ح/ محتجز ضمان الأعمال', debit: execGuarantee, credit: 0 },
+    { accountCode: AccountCodes.WHT_RECEIVABLE, accountName: 'ح/ مصلحة الضرائب – خصم وإضافة (مدين)', debit: whtAmount, credit: 0 },
+    { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية – عمالة غير منتظمة', debit: labourInsurance, credit: 0 },
+    { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE, accountName: 'ح/ القوى العاملة (مدين)', debit: manpowerLevy, credit: 0 },
   ];
-  if (params.advancePaymentRecovery > 0) {
-    entries.push({ accountCode: AccountCodes.ADVANCE_PAYMENT, accountName: 'ح/ العملاء - دفعة مقدمة (استرداد)', debit: params.advancePaymentRecovery, credit: 0 });
+  if (advancePaymentRecovery > 0) {
+    entries.push({
+      accountCode: AccountCodes.ADVANCE_PAYMENT,
+      accountName: 'ح/ العملاء - دفعة مقدمة (استرداد)',
+      debit: advancePaymentRecovery,
+      credit: 0,
+    });
   }
   entries.push(
-    { accountCode: AccountCodes.REVENUE,     accountName: `ح/ إيرادات عقود المقاولات - ${params.contractName}`, debit: 0, credit: params.worksValue },
-    { accountCode: AccountCodes.VAT_OUTPUT,  accountName: 'ح/ ضريبة القيمة المضافة – مخرجات',                  debit: 0, credit: params.vatAmount },
+    { accountCode: AccountCodes.REVENUE, accountName: `ح/ إيرادات عقود المقاولات - ${params.contractName}`, debit: 0, credit: worksValue },
+    { accountCode: AccountCodes.VAT_OUTPUT, accountName: 'ح/ ضريبة القيمة المضافة – مخرجات', debit: 0, credit: vatAmount },
   );
   return entries.filter((e) => e.debit > 0 || e.credit > 0);
 }
@@ -256,18 +275,35 @@ export interface SubcontractorIpcEntryParams {
 /** Build the balanced journal lines for a subcontractor IPC (expense side). Pure — used for preview + posting. */
 export function buildSubcontractorIpcEntries(params: SubcontractorIpcEntryParams): JournalEntry[] {
   const subcontractorCode = params.supplierAccountCode || AccountCodes.SUBCONTRACTORS;
-  const subcontractorExpenseInclVat = params.worksValue + params.vatAmount;
+  const worksValue = roundMoney(params.worksValue);
+  const vatAmount = roundMoney(params.vatAmount);
+  const execGuarantee = roundMoney(params.execGuarantee);
+  const whtAmount = roundMoney(params.whtAmount);
+  const labourInsurance = roundMoney(params.labourInsurance);
+  const manpowerLevy = roundMoney(params.manpowerLevy);
+  const advancePaymentRecovery = roundMoney(params.advancePaymentRecovery);
+
+  const expenseInclVat = roundMoney(worksValue + vatAmount);
+  const otherCredits = roundMoney(
+    execGuarantee + whtAmount + labourInsurance + manpowerLevy + advancePaymentRecovery,
+  );
+  const netPayable = roundMoney(expenseInclVat - otherCredits);
+
   const entries: JournalEntry[] = [
-    { accountCode: AccountCodes.EXPENSE_SUBCONTRACTOR, accountName: `تكاليف مقاولو الباطن - ${params.supplierName}`, debit: subcontractorExpenseInclVat, credit: 0 },
-    // Credits — مستحقات مقاول الباطن والاستقطاعات
-    { accountCode: subcontractorCode,                        accountName: `مقاولو الباطن - ${params.supplierName}`,       debit: 0, credit: params.netPayable },
-    { accountCode: AccountCodes.RETENTION_PAYABLE,          accountName: 'محتجز ضمان الأعمال - مقاولون',                debit: 0, credit: params.execGuarantee },
-    { accountCode: AccountCodes.WHT_PAYABLE,                accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)',          debit: 0, credit: params.whtAmount },
-    { accountCode: AccountCodes.SOCIAL_INSURANCE_PAYABLE,   accountName: 'التأمينات الاجتماعية (دائن)',                 debit: 0, credit: params.labourInsurance },
-    { accountCode: AccountCodes.MANPOWER_LEVY_PAYABLE,      accountName: 'القوى العاملة (دائن)',                        debit: 0, credit: params.manpowerLevy },
+    { accountCode: AccountCodes.EXPENSE_SUBCONTRACTOR, accountName: `تكاليف مقاولو الباطن - ${params.supplierName}`, debit: expenseInclVat, credit: 0 },
+    { accountCode: subcontractorCode, accountName: `مقاولو الباطن - ${params.supplierName}`, debit: 0, credit: netPayable },
+    { accountCode: AccountCodes.RETENTION_PAYABLE, accountName: 'محتجز ضمان الأعمال - مقاولون', debit: 0, credit: execGuarantee },
+    { accountCode: AccountCodes.WHT_PAYABLE, accountName: 'مصلحة الضرائب - خصم وإضافة (دائن)', debit: 0, credit: whtAmount },
+    { accountCode: AccountCodes.SOCIAL_INSURANCE_PAYABLE, accountName: 'التأمينات الاجتماعية (دائن)', debit: 0, credit: labourInsurance },
+    { accountCode: AccountCodes.MANPOWER_LEVY_PAYABLE, accountName: 'القوى العاملة (دائن)', debit: 0, credit: manpowerLevy },
   ];
-  if (params.advancePaymentRecovery > 0) {
-    entries.push({ accountCode: AccountCodes.ADVANCE_PAYMENT, accountName: 'استرداد دفعة مقدمة', debit: 0, credit: params.advancePaymentRecovery });
+  if (advancePaymentRecovery > 0) {
+    entries.push({
+      accountCode: AccountCodes.ADVANCE_PAYMENT,
+      accountName: 'استرداد دفعة مقدمة',
+      debit: 0,
+      credit: advancePaymentRecovery,
+    });
   }
   return entries.filter((e) => e.debit > 0 || e.credit > 0);
 }

@@ -287,6 +287,8 @@ const translations: Record<Language, Record<string, string>> = {
     ipc_approve_previous_qty:
       'لا يمكن اعتماد المستخلص: الكمية السابقة أقل من مجموع MOS المعتمد + المستخلصات السابقة — أعد فتح المستخلص لتحديث previousQty',
     ipc_approve_line_mismatch: 'لا يمكن اعتماد المستخلص: previous + current ≠ total في أحد البنود',
+    ipc_approve_unbalanced_journal: 'لا يمكن اعتماد المستخلص: القيد غير متوازن بعد التقريب — أعد المحاولة بعد التحديث',
+    ipc_approve_bad_status: 'لا يمكن اعتماد المستخلص في حالته الحالية (يجب أن يكون مقدّماً أو قيد المراجعة)',
     doc_progress_title: 'تقدم التنفيذ (MOS + IPC)',
     doc_progress_summary: 'إجمالي التقدم: {pct}% · MOS: {mos} · IPC: {ipc} · تجاوز BOQ: {exceed} بند',
     doc_progress_col_item: 'البند',
@@ -2637,6 +2639,8 @@ const translations: Record<Language, Record<string, string>> = {
     ipc_approve_previous_qty:
       'Cannot approve IPC: previous qty is below approved MOS + prior IPCs — reopen the IPC to refresh previousQty',
     ipc_approve_line_mismatch: 'Cannot approve IPC: previous + current ≠ total on a line',
+    ipc_approve_unbalanced_journal: 'Cannot approve IPC: journal is unbalanced after rounding — retry after update',
+    ipc_approve_bad_status: 'Cannot approve IPC in its current status (must be submitted or under review)',
     doc_progress_title: 'Execution progress (MOS + IPC)',
     doc_progress_summary: 'Overall progress: {pct}% · MOS: {mos} · IPC: {ipc} · BOQ exceed: {exceed} item(s)',
     doc_progress_col_item: 'Item',

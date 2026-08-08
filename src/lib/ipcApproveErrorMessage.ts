@@ -18,5 +18,11 @@ export function ipcApproveErrorToastMessage(
   if (err.message === 'ipc_line_qty_mismatch') {
     return t('ipc_approve_line_mismatch');
   }
-  return t(fallbackKey);
+  if (err.message.startsWith('Unbalanced journal')) {
+    return t('ipc_approve_unbalanced_journal');
+  }
+  if (err.message.startsWith('Cannot approve IPC in status')) {
+    return t('ipc_approve_bad_status');
+  }
+  return err.message?.trim() ? err.message : t(fallbackKey);
 }

@@ -46,6 +46,11 @@ export function assertBalanced(entries: JournalEntryInput[]) {
   }
 }
 
+/**
+ * Client IPC journal — round each leg to 2dp, then set receivables (net) as residual
+ * so Dr === Cr (independent rounding of net/VAT/retention used to fail by 0.01 EGP).
+ * `params.netPayable` is advisory; GL uses the derived residual.
+ */
 export function buildIpcEntries(params: {
   worksValue: number;
   vatAmount: number;
@@ -57,19 +62,38 @@ export function buildIpcEntries(params: {
   advancePaymentRecovery: number;
   contractName: string;
 }): JournalEntryInput[] {
+  const worksValue = roundMoney(params.worksValue);
+  const vatAmount = roundMoney(params.vatAmount);
+  const execGuarantee = roundMoney(params.execGuarantee);
+  const whtAmount = roundMoney(params.whtAmount);
+  const labourInsurance = roundMoney(params.labourInsurance);
+  const manpowerLevy = roundMoney(params.manpowerLevy);
+  const advancePaymentRecovery = roundMoney(params.advancePaymentRecovery);
+
+  const creditTotal = roundMoney(worksValue + vatAmount);
+  const otherDebits = roundMoney(
+    execGuarantee + whtAmount + labourInsurance + manpowerLevy + advancePaymentRecovery,
+  );
+  const netPayable = roundMoney(creditTotal - otherDebits);
+
   const entries: JournalEntryInput[] = [
-    { accountCode: AccountCodes.RECEIVABLES,                 accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: params.netPayable,      credit: 0 },
-    { accountCode: AccountCodes.RETENTION_GUARANTEE,         accountName: 'ح/ محتجز ضمان الأعمال',                           debit: params.execGuarantee,   credit: 0 },
-    { accountCode: AccountCodes.WHT_RECEIVABLE,              accountName: 'ح/ مصلحة الضرائب - خصم وإضافة (مدين)',            debit: params.whtAmount,       credit: 0 },
-    { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية - مدين',                  debit: params.labourInsurance, credit: 0 },
-    { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE,    accountName: 'ح/ القوى العاملة (مدين)',                         debit: params.manpowerLevy,    credit: 0 },
+    { accountCode: AccountCodes.RECEIVABLES, accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: netPayable, credit: 0 },
+    { accountCode: AccountCodes.RETENTION_GUARANTEE, accountName: 'ح/ محتجز ضمان الأعمال', debit: execGuarantee, credit: 0 },
+    { accountCode: AccountCodes.WHT_RECEIVABLE, accountName: 'ح/ مصلحة الضرائب - خصم وإضافة (مدين)', debit: whtAmount, credit: 0 },
+    { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية - مدين', debit: labourInsurance, credit: 0 },
+    { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE, accountName: 'ح/ القوى العاملة (مدين)', debit: manpowerLevy, credit: 0 },
   ];
-  if (params.advancePaymentRecovery > 0) {
-    entries.push({ accountCode: AccountCodes.ADVANCE_PAYMENT, accountName: 'ح/ العملاء - دفعة مقدمة (استرداد)', debit: params.advancePaymentRecovery, credit: 0 });
+  if (advancePaymentRecovery > 0) {
+    entries.push({
+      accountCode: AccountCodes.ADVANCE_PAYMENT,
+      accountName: 'ح/ العملاء - دفعة مقدمة (استرداد)',
+      debit: advancePaymentRecovery,
+      credit: 0,
+    });
   }
   entries.push(
-    { accountCode: AccountCodes.REVENUE,    accountName: `ح/ إيرادات عقود المقاولات - ${params.contractName}`, debit: 0, credit: params.worksValue },
-    { accountCode: AccountCodes.VAT_OUTPUT, accountName: 'ح/ ضريبة القيمة المضافة - مخرجات',                   debit: 0, credit: params.vatAmount  },
+    { accountCode: AccountCodes.REVENUE, accountName: `ح/ إيرادات عقود المقاولات - ${params.contractName}`, debit: 0, credit: worksValue },
+    { accountCode: AccountCodes.VAT_OUTPUT, accountName: 'ح/ ضريبة القيمة المضافة - مخرجات', debit: 0, credit: vatAmount },
   );
-  return entries;
+  return entries.filter((e) => e.debit > 0 || e.credit > 0);
 }
