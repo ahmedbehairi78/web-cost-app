@@ -6,28 +6,24 @@ import { useBoqItemsWithRateOverlay } from '../hooks/useBoqItemsWithRateOverlay'
 import {
   Plus,
   FileText,
-  Edit2,
   Trash2,
-  AlertCircle,
-  CheckCircle2,
-  Clock,
   Briefcase,
   X,
   Download,
   Upload,
   Loader2,
-  ScrollText,
-  Package
 } from 'lucide-react';
 import { BoqMaterialsModal } from './BoqMaterialsModal';
-import { BOQItemFormModal } from './boq/BOQItemFormModal';
-import { ContractFormModal } from './boq/ContractFormModal';
+import { BOQItemFormModal, EMPTY_BOQ_FORM, type BoqItemFormData } from './boq/BOQItemFormModal';
+import { ContractFormModal, type ContractFormFields } from './boq/ContractFormModal';
 import { VoOrdersPanel } from './boq/VoOrdersPanel';
 import { VoOrderModal } from './boq/VoOrderModal';
+import { BoqItemRow } from './boq/BoqItemRow';
+import { buildBoqRowViewModel } from './boq/boqRowViewModel';
 import { DeleteBlockedModal } from './boq/DeleteBlockedModal';
 import { collection, query, where, orderBy, addDoc, serverTimestamp, deleteDoc, doc, getDocs, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { cn, listKey, normalizeDate } from '../lib/utils';
+import { cn, listKey } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { formatNumber } from '../lib/numberLocale';
@@ -38,10 +34,6 @@ import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
 import { isLocalBackend } from '../lib/dataBackend';
 import { ApiError } from '../lib/apiClient';
 import { boqApi, billingApi, contractsApi, inventoryApi, projectsApi, settingsApi, boqMaterialsApi, NetworkQueuedError } from '../services/local/modulesApi';
-import { useOfflineUserId } from '../hooks/useOfflineUserId';
-import { useFormDraftAutosave } from '../hooks/useFormDraftAutosave';
-import { FORM_DRAFT_KEYS } from '../lib/offline/formDraftKeys';
-import { FormDraftRestoreBanner } from './offline/FormDraftRestoreBanner';
 import { consumePendingBoqFocus } from '../lib/shellNavigation';
 import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { useVoPrintPreview } from '../hooks/useVoPrintPreview';
@@ -88,6 +80,27 @@ interface BOQItem {
   startDate?: string;
   expectedDuration?: number;
   createdAt?: { toDate(): Date } | Date | string;
+}
+
+function buildBoqFormFromItem(item: BOQItem): BoqItemFormData {
+  return {
+    chapterCode: item.chapterCode || '',
+    chapterName: item.chapterName || '',
+    workTypeCode: item.workTypeCode || '',
+    sectionCode: item.sectionCode || '',
+    sectionName: item.sectionName || '',
+    itemCode: item.itemCode,
+    description: item.description,
+    unit: item.unit,
+    tenderQty: item.tenderQty,
+    rateMaterials: item.rateMaterials || 0,
+    rateLabour: item.rateLabour || 0,
+    rateEquipment: item.rateEquipment || 0,
+    rateOverheadPct: item.rateOverheadPct,
+    rateProfitPct: item.rateProfitPct,
+    startDate: item.startDate || '',
+    expectedDuration: item.expectedDuration || 0,
+  };
 }
 
 function apiLoadErrorToast(err: unknown, language: string, label: string) {
@@ -369,10 +382,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   } | null>(null);
   
   // New Contract Form State
-  const [contractFormData, setContractFormData] = useState({
-    contractName: '',
-    contractNumber: ''
-  });
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
     title: string;
@@ -396,40 +405,10 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const sensitiveClearBoqRef = useRef<(() => Promise<void>) | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Form State
-  const EMPTY_BOQ_FORM = {
-    chapterCode: '',
-    chapterName: '',
-    workTypeCode: '',
-    sectionCode: '',
-    sectionName: '',
-    itemCode: '',
-    description: '',
-    unit: '',
-    tenderQty: 0,
-    rateMaterials: 0,
-    rateLabour: 0,
-    rateEquipment: 0,
-    rateOverheadPct: 10,
-    rateProfitPct: 12,
-    startDate: '',
-    expectedDuration: 0,
-  };
-  const [formData, setFormData] = useState({ ...EMPTY_BOQ_FORM });
-
-  const offlineUserId = useOfflineUserId();
-  const {
-    clearDraft: clearBoqDraft,
-    restorePrompt: boqRestorePrompt,
-    acceptRestore: acceptBoqRestore,
-    dismissRestore: dismissBoqRestore,
-  } = useFormDraftAutosave({
-    userId: offlineUserId,
-    draftKey: selectedContractId ? FORM_DRAFT_KEYS.boqItemNew(selectedContractId) : 'boq_item:none',
-    value: formData,
-    enabled: Boolean(isLocalBackend && isModalOpen && !editingItem && selectedContractId),
-    isEmpty: (v) => !String(v.itemCode || '').trim() && !String(v.description || '').trim(),
-  });
+  const boqModalInitialData = useMemo<BoqItemFormData>(
+    () => (editingItem ? buildBoqFormFromItem(editingItem) : EMPTY_BOQ_FORM),
+    [editingItem],
+  );
 
   // Compute progress map from approved/paid billings
   const progressMap = useMemo(() => {
@@ -552,46 +531,42 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
     return () => { cancelled = true; };
   }, [selectedContractId]);
 
-  const handleContractSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleContractSubmit = async (data: ContractFormFields) => {
     if (!selectedProjectId) return;
     setIsSubmitting(true);
 
     try {
       if (isLocalBackend) {
         const created = (await contractsApi.create({
-          contractName: contractFormData.contractName,
-          contractNumber: contractFormData.contractNumber,
+          contractName: data.contractName,
+          contractNumber: data.contractNumber,
           projectId: selectedProjectId,
           isDeleted: false,
         })) as { id: string };
         setIsContractModalOpen(false);
-        setContractFormData({ contractName: '', contractNumber: '' });
         setDataRefreshKey((k) => k + 1);
         setSelectedContractId(created.id);
         return;
       }
       const docRef = await addDoc(collection(db, 'contracts'), {
-        ...contractFormData,
+        ...data,
         projectId: selectedProjectId,
         isDeleted: false,
         createdAt: serverTimestamp(),
       });
       setIsContractModalOpen(false);
-      setContractFormData({ contractName: '', contractNumber: '' });
       setSelectedContractId(docRef.id);
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'contracts');
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
   };
 
 
-  const handleSubmit = async (e: React.FormEvent, resolvedData?: typeof formData) => {
-    e.preventDefault();
+  const handleSubmit = async (data: BoqItemFormData) => {
     setIsSubmitting(true);
-    const data = resolvedData || formData;
 
     try {
       if (isLocalBackend) {
@@ -602,7 +577,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
         } else {
           const created = await boqApi.create(payload);
           newItemId = created.id;
-          await clearBoqDraft();
           // وراثة الروابط من بند مشابه
           if (newItemId && data.sectionCode) {
             const similarItem = sortedItems.find(
@@ -652,17 +626,15 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
       setIsModalOpen(false);
       setEditingItem(null);
       setBoqModalVariant('default');
-      setFormData({ ...EMPTY_BOQ_FORM });
     } catch (error) {
       if (error instanceof NetworkQueuedError) {
-        if (!editingItem) await clearBoqDraft();
         setIsModalOpen(false);
         setEditingItem(null);
         setBoqModalVariant('default');
-        setFormData({ ...EMPTY_BOQ_FORM });
         return;
       }
       handleFirestoreError(error, editingItem ? OperationType.UPDATE : OperationType.CREATE, 'boq_items');
+      throw error;
     } finally {
       setIsSubmitting(false);
     }
@@ -715,43 +687,21 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
     });
   };
 
-  const buildBoqFormFromItem = useCallback((item: BOQItem) => ({
-    chapterCode: item.chapterCode || '',
-    chapterName: item.chapterName || '',
-    workTypeCode: item.workTypeCode || '',
-    sectionCode: item.sectionCode || '',
-    sectionName: item.sectionName || '',
-    itemCode: item.itemCode,
-    description: item.description,
-    unit: item.unit,
-    tenderQty: item.tenderQty,
-    rateMaterials: item.rateMaterials || 0,
-    rateLabour: item.rateLabour || 0,
-    rateEquipment: item.rateEquipment || 0,
-    rateOverheadPct: item.rateOverheadPct,
-    rateProfitPct: item.rateProfitPct,
-    startDate: item.startDate || '',
-    expectedDuration: item.expectedDuration || 0,
-  }), []);
-
   const handleEditItem = useCallback((item: BOQItem) => {
     setEditingItem(item);
     setBoqModalVariant('default');
-    setFormData(buildBoqFormFromItem(item));
     setIsModalOpen(true);
-  }, [buildBoqFormFromItem]);
+  }, []);
 
   const handleOpenChangeOrder = useCallback((item: BOQItem) => {
     setEditingItem(item);
     setBoqModalVariant('changeOrder');
-    setFormData(buildBoqFormFromItem(item));
     setIsModalOpen(true);
-  }, [buildBoqFormFromItem]);
+  }, []);
 
-  const handleDeleteItem = async (itemId: string) => {
-    // Find the item to get its code and description
+  const handleDeleteItem = useCallback(async (itemId: string) => {
     const item = items.find(i => i.id === itemId);
-    
+
     if (isLocalBackend) {
       try {
         const checkResult = await boqMaterialsApi.canDelete(itemId);
@@ -792,7 +742,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
         }
       }
     });
-  };
+  }, [items, isLocalBackend, t]);
 
   const sortedItems = useMemo(
     () => [...items].sort((a, b) => a.itemCode.localeCompare(b.itemCode, undefined, { numeric: true })),
@@ -849,6 +799,81 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   );
   const totalBOQAmount = grandBoqTotal;
   const boqTableColSpan = isLocalBackend ? 22 : 20;
+
+  const boqRowLabels = useMemo(
+    () => ({
+      done: t('done'),
+      late: t('late'),
+      running: t('running'),
+      notStarted: language === 'ar' ? 'لم يبدأ' : 'Not started',
+      edit: language === 'ar' ? 'تعديل البند' : 'Edit item',
+      changeOrders: language === 'ar' ? 'أوامر التغيير' : 'Change orders',
+      delete: language === 'ar' ? 'حذف' : 'Delete',
+      materials: language === 'ar' ? 'أصناف مسموحة' : 'Allowed materials',
+    }),
+    [t, language],
+  );
+
+  const boqRowViewModels = useMemo(() => {
+    const now = new Date();
+    return baseItems.map((item, idx) => {
+      const invKey = String(item.description || '').toLowerCase().trim();
+      return buildBoqRowViewModel(
+        item,
+        idx,
+        progressMap[item.id] || 0,
+        locale,
+        now,
+        boqActuals.consumedByBoqId[String(item.id)] ?? 0,
+        boqActuals.inventoryByDesc[invKey] ?? null,
+      );
+    });
+  }, [baseItems, progressMap, locale, boqActuals]);
+
+  const handleRowEdit = useCallback(
+    (id: string) => {
+      const item = items.find((i) => i.id === id);
+      if (item) handleEditItem(item);
+    },
+    [items, handleEditItem],
+  );
+
+  const handleRowChangeOrder = useCallback(
+    (id: string) => {
+      const item = items.find((i) => i.id === id);
+      if (item) handleOpenChangeOrder(item);
+    },
+    [items, handleOpenChangeOrder],
+  );
+
+  const handleRowMaterials = useCallback(
+    (id: string) => {
+      const item = items.find((i) => i.id === id) || baseItems.find((i) => i.id === id);
+      if (!item) return;
+      setMaterialsModal({
+        boqItemId: item.id,
+        label: `${item.itemCode} — ${item.description}`,
+        boqHint: {
+          projectId: item.projectId || selectedProjectId,
+          contractId: item.contractId || selectedContractId,
+          itemCode: item.itemCode,
+          description: item.description,
+          unit: item.unit,
+          chapterCode: item.chapterCode,
+          chapterName: item.chapterName,
+          workTypeCode: item.workTypeCode,
+          sectionCode: item.sectionCode,
+          sectionName: item.sectionName,
+          tenderQty: item.tenderQty,
+          unitRateTotal: item.unitRateTotal,
+          tenderAmount: item.tenderAmount,
+          expectedDuration: item.expectedDuration,
+          startDate: item.startDate,
+        },
+      });
+    },
+    [items, baseItems, selectedProjectId, selectedContractId],
+  );
   const showVoInline = isLocalBackend && !!selectedContractId && (canWriteVo || canApproveVo);
 
   const handleExportTemplate = () => {
@@ -1122,24 +1147,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
               onClick={() => {
                 setEditingItem(null);
                 setBoqModalVariant('default');
-                setFormData({
-                  chapterCode: '',
-                  chapterName: '',
-                  workTypeCode: '',
-                  sectionCode: '',
-                  sectionName: '',
-                  itemCode: '',
-                  description: '',
-                  unit: '',
-                  tenderQty: 0,
-                  rateMaterials: 0,
-                  rateLabour: 0,
-                  rateEquipment: 0,
-                  rateOverheadPct: 10,
-                  rateProfitPct: 12,
-                  startDate: '',
-                  expectedDuration: 0
-                });
                 setIsModalOpen(true);
               }}
               className="bg-blue-600 hover:bg-blue-500 disabled:bg-blue-800 disabled:text-gray-400 px-4 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 text-white"
@@ -1291,223 +1298,20 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                 </td>
               </tr>
             ) : (
-              baseItems.map((item, idx) => (
-                <tr key={listKey(item.id, idx, `boq-row-${item.itemCode}`)} className={cn(
-                  "border-b transition-colors group",
-                  theme === 'dark' ? "border-gray-800/50 hover:bg-gray-800/30" : 
-                  theme === 'soft' ? "border-[#cfd8dc] hover:bg-[#eceff1]" : 
-                  "border-gray-100 hover:bg-gray-50"
-                )}>
-                  <td
-                    className={cn(
-                      'p-2 align-middle sticky right-0 z-10 border-l shadow-[inset_1px_0_0_rgba(0,0,0,0.06)]',
-                      theme === 'dark' ? 'bg-[#151619]/95 border-gray-800 group-hover:bg-gray-800/50' : theme === 'soft' ? 'bg-white border-[#cfd8dc] group-hover:bg-[#eceff1]' : 'bg-white border-gray-200 group-hover:bg-gray-50',
-                    )}
-                  >
-                    <div className="flex items-center justify-end gap-1 flex-nowrap">
-                      {isLocalBackend && (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setMaterialsModal({
-                              boqItemId: item.id,
-                              label: `${item.itemCode} — ${item.description}`,
-                              boqHint: {
-                                projectId: item.projectId || selectedProjectId,
-                                contractId: item.contractId || selectedContractId,
-                                itemCode: item.itemCode,
-                                description: item.description,
-                                unit: item.unit,
-                                chapterCode: item.chapterCode,
-                                chapterName: item.chapterName,
-                                workTypeCode: item.workTypeCode,
-                                sectionCode: item.sectionCode,
-                                sectionName: item.sectionName,
-                                tenderQty: item.tenderQty,
-                                unitRateTotal: item.unitRateTotal,
-                                tenderAmount: item.tenderAmount,
-                                expectedDuration: item.expectedDuration,
-                                startDate: item.startDate,
-                              },
-                            })
-                          }
-                          className="text-emerald-500 hover:text-emerald-400 p-1 shrink-0 relative"
-                          title={language === 'ar' ? 'أصناف مسموحة' : 'Allowed materials'}
-                        >
-                          <Package size={16} />
-                          {linkCounts[item.id] > 0 && (
-                            <span className="absolute -top-1 -right-1 bg-blue-600 text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                              {linkCounts[item.id]}
-                            </span>
-                          )}
-                        </button>
-                      )}
-                      <button 
-                        type="button"
-                        onClick={() => handleEditItem(item)}
-                        className="text-blue-500 hover:text-blue-400 p-1 shrink-0"
-                        title={language === 'ar' ? 'تعديل البند' : 'Edit item'}
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenChangeOrder(item)}
-                        className="text-amber-500 hover:text-amber-400 p-1 shrink-0"
-                        title={language === 'ar' ? 'أوامر التغيير' : 'Change orders'}
-                      >
-                        <ScrollText size={16} />
-                      </button>
-                      <button 
-                        type="button"
-                        onClick={() => handleDeleteItem(item.id)}
-                        className="text-red-500 hover:text-red-400 p-1 shrink-0"
-                        title={language === 'ar' ? 'حذف' : 'Delete'}
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
-                  <td className="p-4 text-[10px]">
-                    <div className="font-bold whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]">{item.chapterName}</div>
-                    <div className="text-[8px] opacity-50">{item.chapterCode}</div>
-                  </td>
-                  <td className="p-4 text-[10px]">
-                    <div className="whitespace-nowrap overflow-hidden text-ellipsis max-w-[80px]">{item.sectionName}</div>
-                    <div className="text-[8px] opacity-50">{item.sectionCode}</div>
-                  </td>
-                  <td className="p-4 text-[10px] font-mono text-gray-500">{item.workTypeCode || '-'}</td>
-                  <td className="p-4 font-mono text-[10px] text-blue-400">{item.itemCode}</td>
-                  <td className="p-4 text-xs font-medium max-w-[150px] whitespace-normal">
-                    <div className="line-clamp-2" title={item.description}>{item.description}</div>
-                  </td>
-                  <td className="p-4 text-xs text-gray-400">{item.unit}</td>
-                  <td className="p-4 text-xs font-bold">{formatNumber(item.tenderQty)}</td>
-                  <td className="p-4 text-[10px] font-mono text-gray-400">
-                    {item.startDate ? normalizeDate(item.startDate) : '-'}
-                  </td>
-                  <td className="p-4 text-[10px] font-mono">
-                    {item.expectedDuration ? (
-                      <div className="flex items-center gap-1">
-                        <Clock size={12} className="text-gray-500" />
-                        <span>{item.expectedDuration}</span>
-                      </div>
-                    ) : '-'}
-                  </td>
-                  <td className={cn(
-                    "p-4 text-[10px] font-mono font-bold",
-                    (() => {
-                      if (!item.startDate || !item.expectedDuration) return "text-gray-500";
-                      const [sy, sm, sd] = normalizeDate(item.startDate).split('-').map(Number);
-                      const start = new Date(sy, sm - 1, sd);
-                      const end = new Date(sy, sm - 1, sd + item.expectedDuration);
-                      const totalExecuted = progressMap[item.id] || 0;
-                      const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
-                      const isDelayed = end < new Date() && progressPct < 99.9;
-                      return isDelayed ? "text-red-500" : "text-blue-500";
-                    })()
-                  )}>
-                    {(() => {
-                      if (!item.startDate || !item.expectedDuration) return '-';
-                      const [sy, sm, sd] = normalizeDate(item.startDate).split('-').map(Number);
-                      const end = new Date(sy, sm - 1, sd + item.expectedDuration);
-                      return end.toLocaleDateString(locale);
-                    })()}
-                  </td>
-                  <td className="p-4">
-                    {(() => {
-                      const totalExecuted = progressMap[item.id] || 0;
-                      const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
-                      return (
-                        <div className="space-y-1">
-                          <div className="flex justify-between text-[10px] font-mono">
-                            <span>{progressPct.toFixed(1)}%</span>
-                          </div>
-                          <div className={cn("w-full h-0.5 bg-gray-800 rounded-full")}>
-                            <div 
-                              className={cn(
-                                "h-full rounded-full transition-all duration-500",
-                                progressPct >= 100 ? "bg-green-500" : "bg-blue-500"
-                              )}
-                              style={{ width: `${Math.min(progressPct, 100)}%` }}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="p-4">
-                    {(() => {
-                      if (!item.startDate || !item.expectedDuration) return null;
-                      const [sy, sm, sd] = normalizeDate(item.startDate).split('-').map(Number);
-                      const start = new Date(sy, sm - 1, sd);
-                      const end = new Date(sy, sm - 1, sd + item.expectedDuration);
-                      const now = new Date(); now.setHours(0, 0, 0, 0);
-                      const totalExecuted = progressMap[item.id] || 0;
-                      const progressPct = item.tenderQty > 0 ? (totalExecuted / item.tenderQty) * 100 : 0;
-
-                      const isCompleted = progressPct >= 99.9;
-                      const notStarted = start > now;
-                      const isDelayed = end < now && !isCompleted;
-
-                      if (isCompleted) {
-                        return (
-                          <div className="flex items-center gap-1 text-[8px] font-bold text-green-500 bg-green-500/10 px-1.5 py-0.5 rounded-full w-fit">
-                            <CheckCircle2 size={8} />
-                            {t('done')}
-                          </div>
-                        );
-                      }
-
-                      if (notStarted) {
-                        return (
-                          <div className="flex items-center gap-1 text-[8px] font-bold text-gray-400 bg-gray-500/10 px-1.5 py-0.5 rounded-full w-fit">
-                            <Clock size={8} />
-                            {language === 'ar' ? 'لم يبدأ' : 'Not started'}
-                          </div>
-                        );
-                      }
-
-                      if (isDelayed) {
-                        return (
-                          <div className="flex items-center gap-1 text-[8px] font-bold text-red-500 bg-red-500/10 px-1.5 py-0.5 rounded-full w-fit">
-                            <AlertCircle size={8} />
-                            {t('late')}
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="flex items-center gap-1 text-[8px] font-bold text-blue-500 bg-blue-500/10 px-1.5 py-0.5 rounded-full w-fit">
-                          <Clock size={8} />
-                          {t('running')}
-                        </div>
-                      );
-                    })()}
-                  </td>
-                  <td className="p-4 text-[10px] font-mono text-gray-400">{formatNumber(item.rateMaterials ?? 0)}</td>
-                  <td className="p-4 text-[10px] font-mono text-gray-400">{formatNumber(item.rateLabour ?? 0)}</td>
-                  <td className="p-4 text-[10px] font-mono text-gray-400">{formatNumber(item.rateEquipment ?? 0)}</td>
-                  <td className="p-4 text-[10px] font-mono text-gray-500">{item.rateOverheadPct}%</td>
-                  <td className="p-4 text-[10px] font-mono text-gray-500">{item.rateProfitPct}%</td>
-                  <td className="p-4 text-xs font-bold text-blue-400">{formatNumber(item.unitRateTotal ?? 0)}</td>
-                  <td className="p-4 text-xs font-bold text-green-400">{formatNumber(item.tenderAmount ?? 0)}</td>
-                  {isLocalBackend && (() => {
-                    const consumed = boqActuals.consumedByBoqId[String(item.id)] ?? 0;
-                    const invKey = String(item.description || '').toLowerCase().trim();
-                    const invBalance = boqActuals.inventoryByDesc[invKey] ?? null;
-                    return (
-                      <>
-                        <td className="p-4 text-xs font-mono text-orange-300">
-                          {consumed > 0 ? formatMoney(consumed) : '—'}
-                        </td>
-                        <td className="p-4 text-xs font-mono text-cyan-300">
-                          {invBalance !== null ? formatNumber(invBalance, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) : '—'}
-                        </td>
-                      </>
-                    );
-                  })()}
-                </tr>
+              boqRowViewModels.map((row) => (
+                <BoqItemRow
+                  key={listKey(row.id, row.index, `boq-row-${row.itemCode}`)}
+                  row={row}
+                  theme={theme}
+                  isLocalBackend={isLocalBackend}
+                  linkCount={linkCounts[row.id] || 0}
+                  formatMoney={formatMoney}
+                  labels={boqRowLabels}
+                  onEdit={handleRowEdit}
+                  onChangeOrder={handleRowChangeOrder}
+                  onDelete={handleDeleteItem}
+                  onMaterials={handleRowMaterials}
+                />
               ))
             )}
           </tbody>
@@ -1693,8 +1497,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
 
         <ContractFormModal
           isOpen={isContractModalOpen}
-          contractFormData={contractFormData}
-          setContractFormData={setContractFormData}
           isSubmitting={isSubmitting}
           onSubmit={handleContractSubmit}
           onClose={() => setIsContractModalOpen(false)}
@@ -1705,8 +1507,8 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           isOpen={isModalOpen}
           editingItem={editingItem}
           variant={boqModalVariant}
-          formData={formData}
-          setFormData={setFormData}
+          initialData={boqModalInitialData}
+          contractId={selectedContractId || undefined}
           isSubmitting={isSubmitting}
           onSubmit={handleSubmit}
           onClose={() => {
@@ -1717,22 +1519,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           theme={theme}
           language={language}
           existingItems={items}
-          draftBanner={
-            !editingItem ? (
-              <FormDraftRestoreBanner
-                show={Boolean(boqRestorePrompt)}
-                updatedAt={boqRestorePrompt?.updatedAt}
-                onRestore={() => {
-                  const p = boqRestorePrompt?.payload;
-                  if (p) setFormData(p);
-                  acceptBoqRestore();
-                }}
-                onDiscard={() => {
-                  void dismissBoqRestore();
-                }}
-              />
-            ) : undefined
-          }
         />
       </AnimatePresence>
 

@@ -196,7 +196,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 
 | Component | Firestore Collections | SQLite (isLocalBackend) |
 |-----------|----------------------|------------------------|
-| `Projects.tsx` | cloud: Firestore | **local:** `projectsApi` · `contractsApi` · `billingApi` · `glApi` — قراءة/كتابة كاملة |
+| `Projects.tsx` | cloud: Firestore | **local:** `projectsApi` · `contractsApi` · `billingApi` · `glApi` — بطاقات: ميزانية من `boqValue`/`budget`+`voValue` (لا all-BOQ)؛ GL cap **2000**؛ `ProjectCard`/`ProjectFormModal` |
 | `BOQ.tsx` | cloud: Firestore | **local:** `projectsApi` · `contractsApi` · `boqApi` · `billingApi` (progress) |
 | `Billing.tsx` | cloud: Firestore + `recordIPC` | **local:** `billingApi` CRUD + journal عبر الخادم؛ MOS panel Postgres فقط (لا مرآة Firestore) |
 | `GeneralLedger.tsx` | cloud: Firestore | **local:** `glApi` + `chartOfAccountsApi` (pickers only) — **لا دمج Firestore** · COA edit في **Settings** |
@@ -968,6 +968,35 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — تخفيف lag — BOQ ثم Projects ✅ (2026-08-09)
+
+> **جلسة 2026-08-09:** عزل نماذج الكتابة + صفوف memo لـ BOQ · مقاييس أخف + بطاقة/مودال memo للمشاريع — **بدون** تغيير حفظ البند / اعتماد VO / قيود GL.
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **BOQ forms** | `formData` داخل `BOQItemFormModal` + draft autosave؛ `ContractFormModal` محلي | `boq/BOQItemFormModal.tsx` · `boq/ContractFormModal.tsx` · `BOQ.tsx` |
+| **BOQ rows** | `buildBoqRowViewModel` + `BoqItemRow` (`memo`) + callbacks مستقرة | `boq/boqRowViewModel.ts` · `boq/BoqItemRow.tsx` |
+| **Projects data** | لا all-`boq_items` للبطاقات → `boqValue`/`budget`+`voValue`؛ `PROJECT_CARDS_GL_TX_CAP=2000`؛ تمريرة واحدة GL | `Projects.tsx` |
+| **Projects UI** | `ProjectCard` · `ProjectFormModal` · `filteredProjects` memo · بلا `delay: i*0.05` | `projects/ProjectCard.tsx` · `projects/ProjectFormModal.tsx` |
+
+### لا تراجع
+
+- لا تُبقِ `formData` بند BOQ في `BOQ.tsx` أثناء الكتابة.
+- لا تُعدّ `boqApi.list()` لكل البنود فقط لبطاقات المشاريع.
+- لا تُصفّ العقود داخل كل `ProjectCard` — مرّر `contractCount`.
+- لا تنقل مسارات الحفظ / اعتماد VO إلى المكونات المستخرجة.
+
+### تحقق
+
+```powershell
+# BOQ: بند جديد → كتابة والجدول لا يتلعثم؛ حفظ/تعديل يعمل
+# مشاريع: فتح أسرع · بحث · تعديل وكتابة دون تجمّد الشبكة
+```
 
 ---
 

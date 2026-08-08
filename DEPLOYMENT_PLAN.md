@@ -169,10 +169,10 @@
 ### المرحلة 5 — تحويل الواجهة لاستدعاء الـ API المركزي (الأكبر في الواجهة)
 - [x] `src/hooks/useApiQuery.ts` — hook عام لجلب قوائم من الـ API
 - [x] `useChartOfAccountsRef` — Postgres/API عند `isLocalBackend`
-- [x] `Projects.tsx` — projects/contracts/boq/billing/GL من API
+- [x] `Projects.tsx` — projects/contracts/billing/GL من API (بطاقات: لا all-BOQ؛ GL cap 2000؛ `projects/ProjectCard` + `ProjectFormModal`)
 - [x] `GeneralLedger.tsx` — Postgres فقط (لا دمج Firestore)
 - [x] `ActualCosts.tsx` — suppliers/COA/projects/boq/purchase/GL
-- [x] `BOQ.tsx` — projects/contracts/boq/billing
+- [x] `BOQ.tsx` — projects/contracts/boq/billing · forms/rows معزولة (`BOQItemFormModal` · `BoqItemRow` · `boqRowViewModel`)
 - [x] `Billing.tsx` — `billingApi` CRUD + journal عبر الخادم (`billing.ts`, `billingHelpers.ts`)
 - [x] `Dashboard.tsx` — KPIs + مرجعيات عبر API
 - [x] `Reports.tsx` + `LiquidityReport.tsx` — تقارير + سيولة من Postgres

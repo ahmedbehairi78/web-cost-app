@@ -39,7 +39,10 @@
 web-cost-app/
 ├── src/
 │   ├── components/
-│   │   ├── Projects.tsx          # مشاريع + شجرة الأصناف (أسفل الصفحة)
+│   │   ├── Projects.tsx          # مشاريع — بطاقات memo + ميزانية من حقول المشروع (لا all-BOQ)
+│   │   ├── projects/             # ProjectCard · ProjectFormModal (state محلي)
+│   │   ├── BOQ.tsx               # parent — حفظ/VO/استيراد؛ صفوف عبر BoqItemRow
+│   │   ├── boq/                  # Item/Contract forms · BoqItemRow · boqRowViewModel · VO · DeleteBlocked
 │   │   ├── MaterialsTree.tsx   # مجموعات/أصناف + تصدير/استيراد Excel
 │   │   ├── Inventory.tsx       # مخازن — parent؛ تبويبات + اعتماد تحويلات / ربط 127
 │   │   ├── inventory/          # أوراق: تحويل مشروع · حركات · دليل · طباعة صرف · استيراد افتتاحي · …
@@ -171,8 +174,8 @@ web-cost-app/
 
 | الموديول | Firestore | SQLite (محلي) |
 |---|---|---|
-| **المشاريع** | `projects` | `MaterialsTree` في أسفل الصفحة |
-| **BOQ** | `boq_items`, `billing` | `BoqMaterialsModal`، `boq-actuals`؛ **rates** (مواد/عمالة/معدات/OH/ربح) في Postgres · `normalizeBoqItem()` · VO orders |
+| **المشاريع** | `projects` | بطاقات: `boqValue`/`budget`+`voValue` (لا تحميل كل BOQ)؛ GL cap 2000؛ `ProjectCard`/`ProjectFormModal` |
+| **BOQ** | `boq_items`, `billing` | state النماذج داخل المودالات؛ `BoqItemRow`+`boqRowViewModel`؛ rates · VO · مواد |
 | **التكاليف الفعلية** | `purchase_transactions`, … | فاتورة → مخزن مشروع + GL `12701001` (لا مصروف 511 من الفاتورة) |
 | **المخازن** | `chart_of_accounts` (ربط 127…) | أصناف · رصيد مشروع · **تحويل مشاريع** · صرف/إرجاع · legacy عقود (معلّق فقط) |
 | **أوامر الشراء** | — | Postgres `purchase_requests` — متاح لكل المستخدمين · حالة فقط عند التنفيذ (لا فاتورة/GL) · BOQ: كود+وصف · إشعار `purchase_request_pending` + واتساب |

@@ -367,7 +367,8 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 
 - **ممنوع** `key={row.id}` أو `key={a.id || a.accountCode}` عندما قد تكون القيمة **`""`** — ينتج `Encountered two children with the same key, ''`.
 - استخدم **`listKey(id, index, prefix)`** أو **`compositeListKey(primary, secondary, index, prefix)`** من `src/lib/utils.ts`.
-- **`useFirestoreQuery`** يطبّق `{ ...d.data(), id: d.id }` تلقائيًا. **`BOQ.tsx`**: `normalizeBoqItem()` + `listKey` على صفوف الجدول.
+- **`useFirestoreQuery`** يطبّق `{ ...d.data(), id: d.id }` تلقائيًا. **`BOQ.tsx`**: `normalizeBoqItem()` + `listKey` على صفوف الجدول · العرض عبر **`BoqItemRow`** + **`buildBoqRowViewModel`** (state الكتابة في `BOQItemFormModal`/`ContractFormModal` فقط).
+- **`Projects.tsx` (2026-08-09):** بطاقات القائمة لا تحمّل كل `boq_items`؛ ميزانية من حقول المشروع؛ `PROJECT_CARDS_GL_TX_CAP=2000`؛ `ProjectCard`/`ProjectFormModal`.
 - بعد تغييرات على مفاتيح القوائم: تأكد أن **`npm run dev:local`** يستمع على **:3000 و :3001** (لا `EADDRINUSE`) ثم **hard refresh**.
 
 ### 6.4 الصلاحيات (ثلاثة مفاهيم منفصلة)
