@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-08 (سلوك إدخال شبيه بإكسل على الجداول والحقول · لا إشعار موقع جغرافي · خمول 3 دقائق)
+**آخر تحديث:** 2026-08-08 (تخفيف lag Electron · إدخال شبيه بإكسل · لا إشعار موقع جغرافي · خمول 3 دقائق)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -23,7 +23,7 @@
 
 **Shell:** موديول واحد (`shellWindowPolicy.ts`)؛ الآلة الحاسبة استثناء. ERP = `TopNavBar` + `ErpWorkspace`.
 
-**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول → خروج بعد **3 دقائق** (`IDLE_LOGOUT_MS`) — **يُيقاف** أثناء الانقطاع أو وجود مسودة/طابور مزامنة (`idleGate` + `useIdleLogout`).
+**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول → خروج بعد **3 دقائق** (`IDLE_LOGOUT_MS`) — **يُيقاف** أثناء الانقطاع أو وجود مسودة/طابور مزامنة (`idleGate` + `useIdleLogout`). مستمعات `mousemove`/`scroll`/`wheel` مُقيَّدة بـ **1 ثانية** (`IDLE_ACTIVITY_THROTTLE_MS`) لتقليل lag في Electron.
 
 **Offline sync (محلي/ريلواي):** مسودات نماذج في IndexedDB + طابور إرسال (`safe_save` تلقائي · `confirm_required` بمراجعة يدوية) — شريط حالة + `PendingSyncPanel`. يشمل المشتريات/التكاليف/البنوك/المخزون/الرواتب/الأصول/**BOQ·VO**/GL. مفاتيح: `src/lib/offline/`. دليل: موضوع `tools.offline.sync`.
 

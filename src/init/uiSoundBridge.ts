@@ -8,15 +8,26 @@ import {
   playModalClose,
 } from '../lib/uiSound';
 
-function looksLikeModalOverlay(el: Element): boolean {
-  if (!(el instanceof HTMLElement)) return false;
-  const c = el.className;
-  if (typeof c !== 'string') return false;
-  return (
-    c.includes('fixed') &&
-    c.includes('inset-0') &&
-    (c.includes('z-50') || c.includes('z-[60') || c.includes('z-[100') || c.includes('z-[70'))
-  );
+/**
+ * Ref-counted modal sounds — call from portals/dialogs instead of a document-wide
+ * MutationObserver (subtree observers were a major Electron/main-thread lag source).
+ */
+let modalOpenDepth = 0;
+
+export function notifyUiModalOpen(): void {
+  modalOpenDepth += 1;
+  if (modalOpenDepth === 1) playModalOpen();
+}
+
+export function notifyUiModalClose(): void {
+  if (modalOpenDepth <= 0) return;
+  modalOpenDepth -= 1;
+  if (modalOpenDepth === 0) playModalClose();
+}
+
+/** Test / HMR helper — do not use in product UI. */
+export function resetUiModalSoundDepth(): void {
+  modalOpenDepth = 0;
 }
 
 function patchToast(): void {
@@ -47,41 +58,8 @@ function patchDialogs(): void {
   };
 }
 
-function setupModalObserver(): void {
-  let overlayCount = 0;
-
-  const bumpAdd = (node: Node) => {
-    if (node instanceof HTMLElement && looksLikeModalOverlay(node)) {
-      overlayCount += 1;
-      if (overlayCount === 1) playModalOpen();
-    }
-  };
-
-  const bumpRemove = (node: Node) => {
-    if (node instanceof HTMLElement && looksLikeModalOverlay(node)) {
-      overlayCount = Math.max(0, overlayCount - 1);
-      if (overlayCount === 0) playModalClose();
-    }
-  };
-
-  const observer = new MutationObserver((mutations) => {
-    for (const m of mutations) {
-      m.addedNodes.forEach(bumpAdd);
-      m.removedNodes.forEach(bumpRemove);
-    }
-  });
-
-  observer.observe(document.body, { childList: true, subtree: true });
-}
-
 if (typeof window !== 'undefined') {
   unlockAudio();
   patchToast();
   patchDialogs();
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => setupModalObserver(), { once: true });
-  } else {
-    setupModalObserver();
-  }
 }

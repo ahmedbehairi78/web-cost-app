@@ -2,7 +2,7 @@
  * In-app confirmation overlay for shell actions (replaces window.confirm).
  */
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { X } from 'lucide-react';
@@ -12,6 +12,7 @@ import { SHELL_MODAL_Z } from '../lib/shellTheme';
 import { erpModalMotion } from '../lib/erpMotion';
 import { shellModalOverlayCls, shellModalPanelCls } from '../lib/erpShell';
 import { isErpTheme } from '../lib/erpBrand';
+import { notifyUiModalClose, notifyUiModalOpen } from '../init/uiSoundBridge';
 
 export type ShellConfirmVariant = 'neutral' | 'danger';
 
@@ -41,6 +42,12 @@ export function ShellConfirmDialog({
   dir,
 }: ShellConfirmDialogProps) {
   const displayed = useRef({ title: '', message: '', confirmLabel: '', cancelLabel: '' });
+
+  useEffect(() => {
+    if (!open) return;
+    notifyUiModalOpen();
+    return () => notifyUiModalClose();
+  }, [open]);
 
   if (open) {
     displayed.current = { title, message, confirmLabel, cancelLabel };

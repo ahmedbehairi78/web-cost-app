@@ -3,7 +3,7 @@
  * are not clipped by the Settings module shell. Use layer="stack" for verify/confirm
  * above a base dialog (only one should be visible at a time when sequencing).
  */
-import React from 'react';
+import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '../../lib/utils';
@@ -11,6 +11,7 @@ import { coerceAppTheme, type AppTheme, SHELL_MODAL_Z, SHELL_MODAL_STACK_Z } fro
 import { shellModalOverlayCls } from '../../lib/erpShell';
 import { isErpTheme } from '../../lib/erpBrand';
 import { erpModalMotion } from '../../lib/erpMotion';
+import { notifyUiModalClose, notifyUiModalOpen } from '../../init/uiSoundBridge';
 
 export type SettingsFloatingDialogLayer = 'base' | 'stack';
 
@@ -41,6 +42,12 @@ export function SettingsFloatingDialog({
 }: Props) {
   const appTheme = coerceAppTheme(theme);
   const zCls = layer === 'stack' ? SHELL_MODAL_STACK_Z : SHELL_MODAL_Z;
+
+  useEffect(() => {
+    if (!open) return;
+    notifyUiModalOpen();
+    return () => notifyUiModalClose();
+  }, [open]);
 
   if (typeof document === 'undefined') return null;
 

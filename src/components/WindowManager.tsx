@@ -295,7 +295,9 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
       ref={windowRef}
       style={style}
         className={cn(
-        'flex flex-col border overflow-hidden shell-transition',
+        // Avoid shell-transition on the full frame — paint cost on every theme/hover
+        // change cascaded into huge module trees (Electron input lag).
+        'flex flex-col border overflow-hidden',
         overlayPointerEvents && 'pointer-events-auto',
         windowCls,
         useFixedPanel ? (isErpTheme(theme) ? 'rounded-lg' : 'rounded-xl') : 'rounded-none',
@@ -309,7 +311,7 @@ const WindowFrame = React.memo(function WindowFrame({ win, overlayPointerEvents,
       <div
         style={{ direction: 'ltr' }}
         className={cn(
-          'flex items-center gap-2 px-3 h-10 border-b flex-shrink-0 select-none',
+          'flex items-center gap-2 px-3 h-10 border-b flex-shrink-0 select-none shell-transition',
           titleBarCls,
           useFixedPanel && 'cursor-move',
         )}

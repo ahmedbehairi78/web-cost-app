@@ -778,7 +778,7 @@ npm run dev:local
 
 إصلاح صفوف يتيمة (فاتورة): `npx tsx server/src/scripts/linkOrphanPurchaseInvoiceJournals.ts` ثم `--live`.
 
-**خمول الجلسة:** `useIdleLogout` يتوقف أثناء الانقطاع أو وجود مسودة/طابور (`idleGate.ts`).
+**خمول الجلسة:** `useIdleLogout` يتوقف أثناء الانقطاع أو وجود مسودة/طابور (`idleGate.ts`). إعادة ضبط المؤقّت من `mousemove`/`scroll`/`wheel` مُقيَّدة بـ ثانية واحدة (`IDLE_ACTIVITY_THROTTLE_MS`) — بدون throttle كان يسبب lag ملحوظاً في Electron. أصوات المودال عبر `notifyUiModalOpen/Close` (لا `MutationObserver` على `document.body`). مسح HTTP cache للقشرة المعبأة **مرة/يوم** كحد أقصى.
 
 **اختبارات:** `npm run test -- src/lib/offline/offline.test.ts`
 

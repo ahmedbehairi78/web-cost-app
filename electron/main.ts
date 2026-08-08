@@ -231,12 +231,29 @@ function showLoadError(target: BrowserWindow | null, message: string) {
   void win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
 }
 
-/** Packaged shell loads hosted SPA — clear Chromium HTTP cache so Railway deploys show without stale assets. */
+/**
+ * Packaged shell: clear Chromium HTTP cache at most once per calendar day so Railway
+ * SPA deploys refresh without paying full cold-cache cost on every launch (was a
+ * noticeable Electron startup lag). Ctrl+Shift+R still forces reloadIgnoringCache.
+ */
 async function prepareDesktopSession(): Promise<void> {
   if (!app.isPackaged) return;
   try {
+    const markerPath = path.join(app.getPath('userData'), 'spa-http-cache-cleared-day.txt');
+    const today = new Date().toISOString().slice(0, 10);
+    let lastDay = '';
+    try {
+      lastDay = fs.readFileSync(markerPath, 'utf8').trim();
+    } catch {
+      /* first run */
+    }
+    if (lastDay === today) {
+      console.log('[electron] HTTP cache already cleared today — skip');
+      return;
+    }
     const ses = session.fromPartition(DESKTOP_SESSION_PARTITION);
     await ses.clearCache();
+    fs.writeFileSync(markerPath, today, 'utf8');
     console.log('[electron] HTTP cache cleared — loading latest hosted build');
   } catch (err) {
     console.warn('[electron] clearCache failed', err);
@@ -266,6 +283,8 @@ function createAppWindow(opts?: { reuseSession?: boolean }): BrowserWindow {
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        spellcheck: false,
+        backgroundThrottling: false,
         partition: DESKTOP_SESSION_PARTITION,
         // Preload reads this from process.argv — do not clear cookies on secondary windows.
         additionalArguments: reuseSession ? ['--web-cost-reuse-session'] : [],

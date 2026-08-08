@@ -971,6 +971,35 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — تخفيف lag Electron / استجابة الأوامر ✅ (2026-08-08)
+
+> **جلسة 2026-08-08:** تقليل حمل الـ main thread الذي كان يظهر كتأخر استجابة في Electron (والويب).
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **Idle** | throttle لـ `mousemove`/`scroll`/`wheel` (1s) قبل إعادة ضبط مؤقّت الخمول | `useIdleLogout.ts` |
+| **أصوات مودال** | حذف `MutationObserver(subtree)` على `body` → `notifyUiModalOpen/Close` من البوابات | `uiSoundBridge.ts` · `SettingsFloatingDialog` · `ShellConfirmDialog` |
+| **نافذة** | `shell-transition` على شريط العنوان فقط (ليس إطار الموديول الكامل) | `WindowManager.tsx` |
+| **قشرة Electron** | مسح HTTP cache **مرة/يوم** · `spellcheck: false` · `backgroundThrottling: false` | `electron/main.ts` |
+
+### لا تراجع
+
+- لا تُعد `MutationObserver` بـ `subtree: true` على `document.body` لأجل الأصوات.
+- لا تمسح HTTP cache عند **كل** تشغيل للقشرة المعبأة — مرة يومياً أو **Ctrl+Shift+R**.
+- لا تضع `shell-transition` على إطار المحتوى الذي يحمل ActualCosts/Inventory/…
+
+### تحقق
+
+```powershell
+npm run electron:build:shell
+# محتوى SPA: git push → Railway · أو npm run dev:local + WEB_COST_APP_URL=localhost
+# قشرة: electron:dev أو electron:publish بعد رفع version
+```
+
+---
+
 ## 🔴 HANDOFF — إدخال شبيه بإكسل على الجداول والحقول ✅ (2026-08-08)
 
 > **جلسة 2026-08-08:** تعميم سلوك إكسل — تحديد القيمة عند التركيز (الكتابة تمحو الموجود) · تنقل بالأسهم داخل جداول التحرير (مستخلصات، قيد، رواتب، …).
@@ -1603,7 +1632,7 @@ Operational master data often lives in **Firestore** first; SQLite holds the fin
 - **Dev origin:** Use **`http://localhost:3000`** only (not `127.0.0.1`) — `devOriginGuard.ts` redirects; Vite `strictPort: true`.
 - **Stale local API (`EADDRINUSE` :3001):** see combined **:3000 + :3001** note above. Sanity: unauthenticated `GET /api/settings/push-to-production/preview` should return **401**, not **404**.
 - **Local vs Electron GL counts:** Local **`DATABASE_URL`** and Railway/Electron are **different databases** until **Push to production**. Electron count = Railway truth for production users.
-- **Electron UI after deploy:** Setup.exe loads **hosted SPA** (`production-url.json` → Railway) — **`git push` + Railway redeploy** updates content; **`electron:publish`** updates **shell only** (OAuth, cache policy). Stale UI = Chromium cache in `persist:webcost` — full quit + reopen; **Ctrl+Shift+R** (shell with `reloadIgnoringCache`); packaged shell **clears HTTP cache on startup** after `electron/main.ts` fix + new Setup. **Data fixes** (migrations, `local:backfill-boq-rates`) must run on **Railway Postgres**, not local DB. See **`docs/RAILWAY_DEPLOY.md`** «الإصلاحات لا تظهر على Electron».
+- **Electron UI after deploy:** Setup.exe loads **hosted SPA** (`production-url.json` → Railway) — **`git push` + Railway redeploy** updates content; **`electron:publish`** updates **shell only** (OAuth, cache policy). Stale UI = Chromium cache in `persist:webcost` — full quit + reopen; **Ctrl+Shift+R** (shell with `reloadIgnoringCache`); packaged shell clears HTTP cache **at most once per calendar day** (`spa-http-cache-cleared-day.txt` in userData) — not on every launch (perf). **Data fixes** (migrations, `local:backfill-boq-rates`) must run on **Railway Postgres**, not local DB. See **`docs/RAILWAY_DEPLOY.md`** «الإصلاحات لا تظهر على Electron».
 - **`useUserAccessScope` + password login:** Gating role on Firebase `onAuthStateChanged` resets admin to `user` on Electron — empty Inventory project picker / «فشل تحميل المشاريع». Fix (2026-06-26): local mode uses `PermissionsContext.role` + `/auth/me` for contracts only. **`POST /auth/login`** must call `req.session.save()` before response (same as `firebase-session`).
 - **`App.tsx` hook order (TDZ):** any `useEffect`/`useCallback` that references `userPermissions`, `userRole`, or `defaultModuleRef` must appear **after** those declarations. Violating this causes **`ReferenceError: Cannot access '…' before initialization`** at runtime (minified bundle).
 - **`boqApi.list` query string:** always pass `?contractId=` or `?projectId=` (e.g. `` boqApi.list(`?projectId=${id}`) ``). Passing a bare id (`boqApi.list(contractId)`) hits `GET /boq-items/:id` → **404** and empty quick-link BOQ lists in consumption.

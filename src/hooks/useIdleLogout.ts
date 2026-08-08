@@ -6,6 +6,10 @@ import { OFFLINE_CHANGED_EVENT } from '../lib/offline/types';
 
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
 
+/** mousemove / scroll / wheel fire dozens of times per second — throttle timer resets. */
+const HIGH_FREQ_EVENTS = new Set<string>(['mousemove', 'scroll', 'wheel']);
+export const IDLE_ACTIVITY_THROTTLE_MS = 1000;
+
 /**
  * Signs the user out after `idleMs` with no pointer/keyboard activity.
  * Pauses while offline or when offline drafts/outbox work is pending.
@@ -26,6 +30,7 @@ export function useIdleLogout(
 
     let timerId = 0;
     let cancelled = false;
+    let lastHighFreqScheduleAt = 0;
 
     const clear = () => {
       window.clearTimeout(timerId);
@@ -56,8 +61,17 @@ export function useIdleLogout(
       }, idleMs);
     };
 
+    const onActivity = (event: Event) => {
+      if (HIGH_FREQ_EVENTS.has(event.type)) {
+        const now = Date.now();
+        if (now - lastHighFreqScheduleAt < IDLE_ACTIVITY_THROTTLE_MS) return;
+        lastHighFreqScheduleAt = now;
+      }
+      schedule();
+    };
+
     for (const event of ACTIVITY_EVENTS) {
-      window.addEventListener(event, schedule, { passive: true });
+      window.addEventListener(event, onActivity, { passive: true });
     }
     document.addEventListener('visibilitychange', schedule);
     const unsubOnline = subscribeOnlineStatus(() => schedule());
@@ -69,7 +83,7 @@ export function useIdleLogout(
       cancelled = true;
       clear();
       for (const event of ACTIVITY_EVENTS) {
-        window.removeEventListener(event, schedule);
+        window.removeEventListener(event, onActivity);
       }
       document.removeEventListener('visibilitychange', schedule);
       unsubOnline();
