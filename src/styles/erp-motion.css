@@ -1,0 +1,390 @@
+/**
+ * Odoo 17 CE motion system — faithful to open-source web client animations.
+ * Sources: odoo/web/static/src/scss/animation.scss + transitions.scss
+ */
+
+html.erp {
+  --erp-navbar-height: 46px;         /* Odoo standard nav height */
+  --erp-radius:        6px;
+  --erp-radius-lg:     10px;
+  --erp-font-size-base: 14px;
+
+  /* Motion tokens — Odoo uses simple ease-out, no heavy spring */
+  --erp-motion-ease:          cubic-bezier(0.22, 0.84, 0.42, 1);
+  --erp-motion-ease-out:      cubic-bezier(0.22, 0.84, 0.42, 1);
+  --erp-motion-ease-in-out:   cubic-bezier(0.45, 0.02, 0.42, 1);
+  --erp-motion-ease-bounce:   cubic-bezier(0.34, 1.08, 0.38, 1);
+  --erp-motion-duration:      0.26s;
+  --erp-motion-duration-fast: 0.15s;
+  --erp-motion-duration-slow: 0.42s;
+
+  font-size: var(--erp-font-size-base);
+  line-height: 1.5;
+}
+
+/* ── Keyframes ───────────────────────────────────────────────────────────────── */
+
+/* Odoo main page/view enter — gentle rise + fade */
+@keyframes erp-rise-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(0.985); }
+  to   { opacity: 1; transform: translate3d(0, 0,    0) scale(1);     }
+}
+
+/* Odoo stat card stagger */
+@keyframes erp-rise-in-soft {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0,   0); }
+}
+
+/* Dropdown slide down (Odoo-style — from top of trigger) */
+@keyframes erp-fade-in-down {
+  from { opacity: 0; transform: translate3d(0, -8px, 0) scaleY(0.96); }
+  to   { opacity: 1; transform: translate3d(0,  0,   0) scaleY(1);    }
+}
+
+/* Dropdown slide up (for dropdowns above cursor) */
+@keyframes erp-fade-in-up {
+  from { opacity: 0; transform: translate3d(0, 8px, 0) scaleY(0.96); }
+  to   { opacity: 1; transform: translate3d(0, 0,   0) scaleY(1);    }
+}
+
+/* Window open from workspace */
+@keyframes erp-window-open {
+  from { opacity: 0; transform: scale(0.968) translateY(12px); }
+  to   { opacity: 1; transform: scale(1)     translateY(0);    }
+}
+
+/* Window restore from taskbar */
+@keyframes erp-window-restore {
+  from { opacity: 0.6; transform: scale(0.975); }
+  to   { opacity: 1;   transform: scale(1);     }
+}
+
+/* Desktop logo idle breathe */
+@keyframes erp-soft-pulse {
+  0%, 100% { opacity: 0.38; }
+  50%       { opacity: 0.52; }
+}
+
+/* Taskbar button flash on restore */
+@keyframes erp-highlight-flash {
+  0%, 100% { opacity: 1;    }
+  40%       { opacity: 0.5;  }
+}
+
+/* KPI card value count-up shimmer */
+@keyframes erp-count-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* Skeleton loading bar */
+@keyframes erp-skeleton-sweep {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%);  }
+}
+
+/* Nav item active indicator slide */
+@keyframes erp-nav-indicator-slide {
+  from { transform: scaleX(0); opacity: 0; }
+  to   { transform: scaleX(1); opacity: 1; }
+}
+
+/* Notification badge pop */
+@keyframes erp-badge-pop {
+  0%   { transform: scale(0.5);  opacity: 0; }
+  65%  { transform: scale(1.18); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+/* Toast slide-in from right */
+@keyframes erp-toast-in {
+  from { opacity: 0; transform: translateX(60px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+/* Page transition — slide old out, slide new in (Odoo breadcrumb feel) */
+@keyframes erp-page-enter {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+@keyframes erp-page-exit {
+  from { opacity: 1; transform: translateX(0);    }
+  to   { opacity: 0; transform: translateX(-24px); }
+}
+
+/* Table row stagger */
+@keyframes erp-row-in {
+  from { opacity: 0; transform: translateX(6px); }
+  to   { opacity: 1; transform: translateX(0);   }
+}
+
+/* Loading spinner (Odoo-style thin ring) */
+@keyframes erp-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Utility classes ─────────────────────────────────────────────────────────── */
+
+/* View / page enter */
+.erp-animate-rise-in {
+  animation: erp-rise-in var(--erp-motion-duration) var(--erp-motion-ease-out) both;
+}
+
+.erp-animate-rise-in-soft {
+  animation: erp-rise-in-soft var(--erp-motion-duration) var(--erp-motion-ease-out) both;
+}
+
+/* Window animations */
+.erp-window-enter {
+  animation: erp-window-open var(--erp-motion-duration) var(--erp-motion-ease-out) both;
+  transform-origin: center 8%;
+}
+
+.erp-window-restore {
+  animation: erp-window-restore 0.22s var(--erp-motion-ease) both;
+}
+
+/* Desktop logo */
+.erp-desktop-logo {
+  animation: erp-soft-pulse 5s ease-in-out infinite;
+}
+
+/* Taskbar restore flash */
+.erp-taskbar-btn-restored {
+  animation: erp-highlight-flash 0.48s ease;
+}
+
+/* Dropdown panels */
+.erp-dropdown-panel {
+  animation: erp-fade-in-down var(--erp-motion-duration-fast) var(--erp-motion-ease-out) both;
+  transform-origin: top center;
+}
+
+.erp-dropdown-panel--up {
+  animation: erp-fade-in-up var(--erp-motion-duration-fast) var(--erp-motion-ease-out) both;
+  transform-origin: bottom center;
+}
+
+/* Cards */
+html.erp .erp-card-enter {
+  animation: erp-rise-in-soft var(--erp-motion-duration) var(--erp-motion-ease-out) both;
+}
+
+html.erp .erp-card-enter:nth-child(2) { animation-delay: 0.04s; }
+html.erp .erp-card-enter:nth-child(3) { animation-delay: 0.08s; }
+html.erp .erp-card-enter:nth-child(4) { animation-delay: 0.12s; }
+html.erp .erp-card-enter:nth-child(5) { animation-delay: 0.16s; }
+html.erp .erp-card-enter:nth-child(6) { animation-delay: 0.20s; }
+
+/* Stat / KPI cards — delayed stagger */
+html.erp .erp-stat-card-enter {
+  animation: erp-rise-in-soft 0.32s var(--erp-motion-ease-out) both;
+}
+
+html.erp .erp-stat-card-enter:nth-child(1) { animation-delay: 0.00s; }
+html.erp .erp-stat-card-enter:nth-child(2) { animation-delay: 0.05s; }
+html.erp .erp-stat-card-enter:nth-child(3) { animation-delay: 0.10s; }
+html.erp .erp-stat-card-enter:nth-child(4) { animation-delay: 0.15s; }
+
+/* Page / view enter */
+.erp-page-enter {
+  animation: erp-page-enter 0.24s var(--erp-motion-ease-out) both;
+}
+
+/* Table rows stagger */
+html.erp .erp-table-body tr {
+  animation: erp-row-in 0.18s var(--erp-motion-ease-out) both;
+}
+
+html.erp .erp-table-body tr:nth-child(1)  { animation-delay: 0.00s; }
+html.erp .erp-table-body tr:nth-child(2)  { animation-delay: 0.02s; }
+html.erp .erp-table-body tr:nth-child(3)  { animation-delay: 0.04s; }
+html.erp .erp-table-body tr:nth-child(4)  { animation-delay: 0.06s; }
+html.erp .erp-table-body tr:nth-child(5)  { animation-delay: 0.08s; }
+html.erp .erp-table-body tr:nth-child(6)  { animation-delay: 0.10s; }
+html.erp .erp-table-body tr:nth-child(7)  { animation-delay: 0.12s; }
+html.erp .erp-table-body tr:nth-child(8)  { animation-delay: 0.14s; }
+
+/* Notification badge */
+.erp-badge-pop {
+  animation: erp-badge-pop 0.36s var(--erp-motion-ease-bounce) both;
+}
+
+/* Toast */
+.erp-toast-in {
+  animation: erp-toast-in 0.28s var(--erp-motion-ease-out) both;
+}
+
+/* Odoo-style spinner */
+.erp-spinner {
+  width: 20px;
+  height: 20px;
+  border: 2px solid color-mix(in srgb, var(--erp-primary) 25%, transparent);
+  border-top-color: var(--erp-primary);
+  border-radius: 50%;
+  animation: erp-spin 0.7s linear infinite;
+}
+
+.erp-spinner--sm {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.erp-spinner--lg {
+  width: 28px;
+  height: 28px;
+  border-width: 3px;
+}
+
+/* ── Skeleton loading ────────────────────────────────────────────────────────── */
+.erp-skeleton {
+  position: relative;
+  overflow: hidden;
+  background: #E8E4E2;
+  border-radius: 4px;
+}
+
+.erp-skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.52) 50%,
+    transparent 100%
+  );
+  animation: erp-skeleton-sweep 1.4s ease-in-out infinite;
+}
+
+/* ── Navigation entry transitions ────────────────────────────────────────────── */
+html.erp .erp-nav-entry {
+  position: relative;
+  transition:
+    background-color var(--erp-motion-duration-fast) ease,
+    color            var(--erp-motion-duration-fast) ease,
+    box-shadow       var(--erp-motion-duration-fast) ease,
+    transform        0.12s ease;
+}
+
+html.erp .erp-nav-entry:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* Active nav indicator bar (left edge) — Odoo sidebar style */
+html.erp .erp-nav-entry--active::before {
+  content: "";
+  position: absolute;
+  inset-inline-start: 0;
+  top: 20%;
+  bottom: 20%;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: rgba(255, 255, 255, 0.85);
+  animation: erp-nav-indicator-slide 0.2s var(--erp-motion-ease-out) both;
+}
+
+/* ── Primary button ─────────────────────────────────────────────────────────── */
+html.erp .erp-btn-primary {
+  transition:
+    background-color var(--erp-motion-duration-fast) ease,
+    border-color     var(--erp-motion-duration-fast) ease,
+    box-shadow       var(--erp-motion-duration-fast) ease,
+    transform        0.12s ease;
+}
+
+html.erp .erp-btn-primary:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* ── Module icon hover (Odoo home menu) ──────────────────────────────────────── */
+html.erp .erp-module-icon {
+  transition: transform 0.2s var(--erp-motion-ease-bounce), box-shadow 0.2s ease;
+}
+
+html.erp .erp-module-icon:hover {
+  transform: translateY(-3px) scale(1.04);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+/* ── Odoo nav bar item — active indicator underline on top-bar ───────────────── */
+html.erp .erp-topnav-item {
+  position: relative;
+  transition: color var(--erp-motion-duration-fast) ease, background-color var(--erp-motion-duration-fast) ease;
+}
+
+html.erp .erp-topnav-item--active::after {
+  content: "";
+  position: absolute;
+  bottom: -2px;
+  inset-inline-start: 12px;
+  inset-inline-end: 12px;
+  height: 2px;
+  border-radius: 1px 1px 0 0;
+  background: color-mix(in srgb, var(--erp-accent-warm) 85%, white);
+  animation: erp-nav-indicator-slide 0.22s var(--erp-motion-ease-out) both;
+}
+
+/* ── List / kanban item hover ─────────────────────────────────────────────────── */
+html.erp .o-record-row,
+html.erp .erp-list-row {
+  transition: background-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+html.erp .o-record-row:hover,
+html.erp .erp-list-row:hover {
+  background-color: var(--erp-accent-soft) !important;
+}
+
+/* ── Kanban card ─────────────────────────────────────────────────────────────── */
+html.erp .o-kanban-record,
+html.erp .erp-kanban-card {
+  transition: box-shadow 0.18s ease, transform 0.18s ease;
+  border-radius: var(--erp-radius);
+}
+
+html.erp .o-kanban-record:hover,
+html.erp .erp-kanban-card:hover {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.12);
+  transform: translateY(-1px);
+}
+
+/* ── Focus ring (Odoo-style thin primary ring) ───────────────────────────────── */
+html.erp *:focus-visible {
+  outline: 2px solid var(--erp-primary);
+  outline-offset: 2px;
+}
+
+/* ── Reduced-motion guard ────────────────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .erp-animate-rise-in,
+  .erp-animate-rise-in-soft,
+  .erp-window-enter,
+  .erp-window-restore,
+  .erp-desktop-logo,
+  .erp-dropdown-panel,
+  .erp-dropdown-panel--up,
+  .erp-card-enter,
+  .erp-stat-card-enter,
+  .erp-page-enter,
+  .erp-taskbar-btn-restored,
+  .erp-badge-pop,
+  .erp-toast-in,
+  .erp-spinner {
+    animation: none !important;
+  }
+
+  html.erp .erp-nav-entry,
+  html.erp .erp-btn-primary,
+  html.erp .erp-module-icon,
+  html.erp .erp-topnav-item,
+  html.erp .erp-table-body tr,
+  html.erp .erp-card-enter,
+  html.erp .erp-stat-card-enter {
+    transition: none !important;
+    animation: none !important;
+  }
+}

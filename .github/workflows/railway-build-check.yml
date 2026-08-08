@@ -1,0 +1,44 @@
+name: Railway build check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma generate
+        run: npx prisma generate
+
+      - name: Sync COA seed
+        run: node scripts/copy-coa-seed.mjs
+
+      - name: Generate Vite env (Railway-like — no VITE_FIREBASE_* in env)
+        env:
+          VITE_DATA_BACKEND: local
+          VITE_API_BASE_URL: /api
+        run: node scripts/generate-vite-env.mjs
+
+      - name: Vite production build
+        run: npm run build
+
+      - name: Compile API (tsc)
+        run: npx tsc -p server/tsconfig.build.json
+
+      - name: Liquidity metrics tests
+        run: npm run test -- src/lib/liquidityMetrics.test.ts
+
+      - name: Docker build (parity with Railway)
+        run: docker build -f deploy/railway-api.Dockerfile -t web-cost-app:ci .

@@ -1,0 +1,982 @@
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+@import "./styles/erp-motion.css";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  /* Odoo 17 CE faithful palette — odoo/web/static/src/scss/_variables.scss */
+  --erp-primary:        #714B67;   /* o-brand-primary (wine/mauve) */
+  --erp-primary-hover:  #5C3B52;
+  --erp-primary-light:  #875A7B;
+  --erp-accent:         #00A09D;   /* o-brand-secondary (teal) */
+  --erp-accent-warm:    #ECB613;   /* warning / highlight */
+  --erp-danger:         #E2534A;
+  --erp-text:           #212529;
+  --erp-text-heading:   #1F1F1F;
+  --erp-text-muted:     #6C757D;
+  --erp-bg:             #F0EFEF;   /* o-webclient-background-color */
+  --erp-surface:        #FFFFFF;
+  --erp-border:         #D6D1CD;   /* warm-gray border */
+  --erp-nav-hover:      #F3F2F1;
+  --erp-nav-active-bg:  #714B67;
+  --erp-nav-active-text:#FFFFFF;
+  --erp-accent-soft:    #F3EFF2;
+  --erp-open-nav-bg:    #EDE6EB;
+  --erp-navbar-bg:      #714B67;   /* Odoo CE top bar (o-brand-primary) */
+  --erp-navbar-text:    #F0EFEF;
+  --erp-ws-bg:          #F0EFEF;
+
+  /* Workspace background — Odoo-style very subtle warm gradient */
+  --erp-shell-bg-base: #F0EFEF;
+  --erp-shell-bg-image:
+    radial-gradient(ellipse 120% 60% at 100% 0%,   rgba(113, 75, 103, 0.06) 0%, transparent 55%),
+    radial-gradient(ellipse 80%  60% at 0%   100%, rgba(0,  160, 157, 0.04) 0%, transparent 50%),
+    linear-gradient(165deg, #F5F3F4 0%, #F0EFEF 50%, #EDE9EC 100%);
+  --erp-shell-bg-shine: linear-gradient(
+    200deg,
+    rgba(255, 255, 255, 0.45) 0%,
+    rgba(255, 255, 255, 0.06) 48%,
+    rgba(255, 255, 255, 0.15) 100%
+  );
+  --erp-shell-bg-fold: linear-gradient(
+    170deg,
+    rgba(113, 75, 103, 0.03) 0%,
+    transparent 55%,
+    rgba(0, 160, 157, 0.02) 100%
+  );
+  --soft-bg: #eceff1;
+  --soft-surface: #ffffff;
+  --soft-border: #cfd8dc;
+  --soft-text: #37474f;
+  --soft-accent: #546e7a;
+
+  /* Override oklch colors with hex for html2canvas compatibility */
+  --color-blue-50: #eff6ff;
+  --color-blue-100: #dbeafe;
+  --color-blue-200: #bfdbfe;
+  --color-blue-300: #93c5fd;
+  --color-blue-400: #60a5fa;
+  --color-blue-500: #3b82f6;
+  --color-blue-600: #2563eb;
+  --color-blue-700: #1d4ed8;
+  --color-blue-800: #1e40af;
+  --color-blue-900: #1e3a8a;
+  --color-blue-950: #172554;
+  
+  --color-green-50: #f0fdf4;
+  --color-green-100: #dcfce7;
+  --color-green-200: #bbf7d0;
+  --color-green-300: #86efac;
+  --color-green-400: #4ade80;
+  --color-green-500: #22c55e;
+  --color-green-600: #16a34a;
+  --color-green-700: #15803d;
+  --color-green-800: #166534;
+  --color-green-900: #14532d;
+  --color-green-950: #052e16;
+
+  --color-red-50: #fef2f2;
+  --color-red-100: #fee2e2;
+  --color-red-200: #fecaca;
+  --color-red-300: #fca5a5;
+  --color-red-400: #f87171;
+  --color-red-500: #ef4444;
+  --color-red-600: #dc2626;
+  --color-red-700: #b91c1c;
+  --color-red-800: #991b1b;
+  --color-red-900: #7f1d1d;
+  --color-red-950: #450a0a;
+
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-400: #9ca3af;
+  --color-gray-500: #6b7280;
+  --color-gray-600: #4b5563;
+  --color-gray-700: #374151;
+  --color-gray-800: #1f2937;
+  --color-gray-900: #111827;
+  --color-gray-950: #030712;
+
+  --color-yellow-50: #fefce8;
+  --color-yellow-100: #fef9c3;
+  --color-yellow-200: #fef08a;
+  --color-yellow-300: #fde047;
+  --color-yellow-400: #facc15;
+  --color-yellow-500: #eab308;
+  --color-yellow-600: #ca8a04;
+  --color-yellow-700: #a16207;
+  --color-yellow-800: #854d0e;
+  --color-yellow-900: #713f12;
+  --color-yellow-950: #422006;
+
+  --color-purple-50: #faf5ff;
+  --color-purple-100: #f3e8ff;
+  --color-purple-200: #e9d5ff;
+  --color-purple-300: #d8b4fe;
+  --color-purple-400: #c084fc;
+  --color-purple-500: #a855f7;
+  --color-purple-600: #9333ea;
+  --color-purple-700: #7e22ce;
+  --color-purple-800: #6b21a8;
+  --color-purple-900: #581c87;
+  --color-purple-950: #3b0764;
+
+  --color-orange-50: #fff7ed;
+  --color-orange-100: #ffedd5;
+  --color-orange-200: #fed7aa;
+  --color-orange-300: #fdba74;
+  --color-orange-400: #fb923c;
+  --color-orange-500: #f97316;
+  --color-orange-600: #ea580c;
+  --color-orange-700: #c2410c;
+  --color-orange-800: #9a3412;
+  --color-orange-900: #7c2d12;
+  --color-orange-950: #431407;
+
+  --color-cyan-50: #ecfeff;
+  --color-cyan-100: #cffafe;
+  --color-cyan-200: #a5f3fc;
+  --color-cyan-300: #67e8f9;
+  --color-cyan-400: #22d3ee;
+  --color-cyan-500: #06b6d4;
+  --color-cyan-600: #0891b2;
+  --color-cyan-700: #0e7490;
+  --color-cyan-800: #155e75;
+  --color-cyan-900: #164e63;
+  --color-cyan-950: #083344;
+}
+
+body {
+  @apply bg-[#0a0a0a] text-gray-100 antialiased;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+body:has(.soft) {
+  background-color: var(--soft-bg);
+  color: var(--soft-text);
+}
+
+.soft {
+  background-color: var(--soft-bg);
+  color: var(--soft-text);
+}
+
+html.erp,
+html.erp body,
+.erp {
+  background-color: var(--erp-shell-bg-base);
+  background-image: var(--erp-shell-bg-image);
+  background-attachment: fixed;
+  background-size: cover;
+  color: var(--erp-text);
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+}
+
+/*
+ * Concord ERP shell gradient — cool slate + subtle Concord orange/navy wash.
+ * ::before / ::after = very soft ambient light (no visible fold lines).
+ */
+.erp-gradient-bg {
+  background-color: var(--erp-shell-bg-base);
+  background-image: var(--erp-shell-bg-image);
+  background-attachment: fixed;
+  background-size: cover;
+  position: relative;
+}
+
+.erp-gradient-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-shine);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.erp-gradient-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-fold);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/*
+ * Shell stacking in ERP mode — chrome above desktop, modals above everything.
+ * Do NOT set z-index on all direct children (breaks nav dropdowns under main).
+ */
+html.erp .shell-chrome {
+  position: relative;
+  z-index: 1000;
+  overflow: visible;
+}
+
+html.erp .shell-main {
+  position: relative;
+  z-index: 0;
+}
+
+.shell-dropdown-panel {
+  z-index: 1200;
+}
+
+.shell-modal-root {
+  isolation: isolate;
+  z-index: 10050 !important;
+}
+
+.shell-modal-root > * {
+  position: relative;
+  z-index: 2;
+}
+
+/* Modal / popup overlay — same smooth gradient + blur */
+.erp-modal-backdrop {
+  position: fixed;
+  isolation: isolate;
+  background-color: var(--erp-shell-bg-base) !important;
+  background-image: var(--erp-shell-bg-image) !important;
+  background-attachment: fixed !important;
+  background-size: cover !important;
+  backdrop-filter: blur(10px);
+}
+
+.erp-modal-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-shine);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.erp-modal-backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-fold);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.erp-modal-backdrop > * {
+  position: relative;
+  z-index: 2;
+}
+
+/*
+ * Module page roots: let shell gradient show through (cards/panels stay opaque).
+ * Covers min-h-screen / min-h-full / h-full roots used across feature modules.
+ */
+html.erp [class*="min-h-full"][class*="bg-["],
+html.erp [class*="min-h-full"].bg-gray-50,
+html.erp [class*="min-h-full"].bg-white,
+html.erp [class*="min-h-screen"].bg-gray-50,
+html.erp [class*="min-h-screen"].bg-white,
+html.erp [class*="min-h-screen"][class*="bg-[#eceff1]"],
+html.erp [class*="min-h-full"][class*="bg-[#eceff1]"],
+html.erp [class*="h-full"].bg-gray-50,
+html.erp [class*="h-full"][class*="bg-[#dde3e8]"],
+html.erp [class*="min-h-screen"][class*="bg-["] {
+  background: transparent !important;
+}
+
+/* All modal overlays in ERP mode — smooth gradient (replaces dark dim) */
+html.erp div.fixed.inset-0[class*="bg-black"] {
+  isolation: isolate;
+  z-index: 10050 !important;
+  background-color: var(--erp-shell-bg-base) !important;
+  background-image: var(--erp-shell-bg-image) !important;
+  background-attachment: fixed !important;
+  background-size: cover !important;
+  backdrop-filter: blur(10px);
+}
+
+html.erp div.fixed.inset-0[class*="bg-black"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-shine);
+  pointer-events: none;
+  z-index: 0;
+}
+
+html.erp div.fixed.inset-0[class*="bg-black"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-fold);
+  pointer-events: none;
+  z-index: 0;
+}
+
+html.erp div.fixed.inset-0[class*="bg-black"] > * {
+  position: relative;
+  z-index: 2;
+}
+
+html.erp[lang="ar"] body,
+html.erp[lang="ar"] .erp {
+  font-family: "Cairo", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* ── Odoo 17 CE — remap blue Tailwind utilities to brand palette ────────────── */
+html.erp .bg-blue-600,
+html.erp .bg-blue-500 {
+  background-color: var(--erp-primary) !important;
+}
+
+html.erp .hover\:bg-blue-700:hover,
+html.erp .hover\:bg-blue-600:hover {
+  background-color: var(--erp-primary-hover) !important;
+}
+
+html.erp .text-blue-600,
+html.erp .text-blue-700,
+html.erp .text-blue-800 {
+  color: var(--erp-primary) !important;
+}
+
+html.erp .text-blue-500 {
+  color: var(--erp-primary-light, var(--erp-primary)) !important;
+}
+
+html.erp .bg-blue-50 {
+  background-color: var(--erp-accent-soft) !important;
+}
+
+html.erp .bg-blue-100 {
+  background-color: var(--erp-open-nav-bg) !important;
+}
+
+html.erp .hover\:bg-blue-50:hover {
+  background-color: var(--erp-nav-hover) !important;
+}
+
+html.erp .hover\:bg-blue-100:hover {
+  background-color: var(--erp-accent-soft) !important;
+}
+
+html.erp .border-blue-500,
+html.erp .border-blue-600 {
+  border-color: var(--erp-primary) !important;
+}
+
+html.erp .ring-blue-500,
+html.erp .focus\:ring-blue-500:focus {
+  --tw-ring-color: var(--erp-primary);
+}
+
+html.erp .focus\:border-blue-500:focus {
+  border-color: var(--erp-primary) !important;
+}
+
+html.erp .shadow-blue-900\/20 {
+  --tw-shadow-color: rgba(113, 75, 103, 0.18);
+}
+
+/* ── Odoo 17 CE — table & form polish ───────────────────────────────────────── */
+html.erp table thead th {
+  background-color: var(--erp-nav-hover);
+  color: var(--erp-primary);
+  font-weight: 600;
+  font-size: 0.78rem;
+  letter-spacing: 0.025em;
+  border-color: var(--erp-border);
+}
+
+html.erp table tbody tr {
+  transition: background-color 0.14s ease;
+}
+
+html.erp table tbody tr:hover {
+  background-color: var(--erp-accent-soft) !important;
+}
+
+/* Odoo-style selected row */
+html.erp table tbody tr.selected,
+html.erp table tbody tr[aria-selected="true"] {
+  background-color: var(--erp-open-nav-bg) !important;
+  border-color: var(--erp-border) !important;
+}
+
+html.erp input:not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+html.erp select,
+html.erp textarea {
+  border-color: var(--erp-border);
+  border-radius: 4px;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+html.erp input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):focus,
+html.erp select:focus,
+html.erp textarea:focus {
+  border-color: var(--erp-primary);
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(113, 75, 103, 0.18);
+}
+
+/* ── Odoo 17 CE — scrollbars (warm-gray thumb) ──────────────────────────────── */
+html.erp ::-webkit-scrollbar-thumb {
+  background-color: #C9C2BF;
+  border-radius: 9999px;
+}
+
+html.erp ::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--erp-primary) 55%, #b8b0b8);
+}
+
+html.erp {
+  scrollbar-color: #C9C2BF transparent;
+}
+
+/* ── Odoo 17 CE — card / panel polish ───────────────────────────────────────── */
+html.erp .o-card,
+html.erp .erp-card {
+  background: #fff;
+  border: 1px solid var(--erp-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+html.erp .o-card:hover,
+html.erp .erp-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* ── Odoo stat/KPI cards — lift on hover ─────────────────────────────────────── */
+html.erp .erp-stat-card {
+  transition: box-shadow 0.22s ease, transform 0.22s ease;
+}
+
+html.erp .erp-stat-card:hover {
+  box-shadow: 0 6px 20px rgba(113, 75, 103, 0.14);
+  transform: translateY(-2px);
+}
+
+/* ── Odoo buttons (primary = wine/mauve fill) ────────────────────────────────── */
+html.erp .erp-btn-primary,
+html.erp button.bg-blue-600 {
+  background-color: var(--erp-primary) !important;
+  color: #fff !important;
+  border-radius: 6px !important;
+  box-shadow: 0 1px 3px rgba(113, 75, 103, 0.28) !important;
+}
+
+html.erp .erp-btn-primary:hover,
+html.erp button.bg-blue-600:hover {
+  background-color: var(--erp-primary-hover) !important;
+  box-shadow: 0 2px 6px rgba(113, 75, 103, 0.36) !important;
+}
+
+.shell-transition {
+  transition:
+    background-color 0.25s ease,
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.2s ease,
+    opacity 0.2s ease;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+/* Light (no html.dark / html.soft) */
+:root:not(.dark):not(.soft) ::-webkit-scrollbar-thumb {
+  @apply bg-gray-300 rounded-full;
+}
+:root:not(.dark):not(.soft) ::-webkit-scrollbar-thumb:hover {
+  @apply bg-gray-400;
+}
+
+html.dark ::-webkit-scrollbar-thumb {
+  @apply bg-gray-700 rounded-full hover:bg-gray-600;
+}
+
+html.soft ::-webkit-scrollbar-thumb {
+  background-color: #b0bec5;
+  border-radius: 9999px;
+}
+html.soft ::-webkit-scrollbar-thumb:hover {
+  background-color: #90a4ae;
+}
+
+/* Firefox */
+:root:not(.dark):not(.soft) {
+  scrollbar-color: #cbd5e1 transparent;
+}
+html.dark {
+  scrollbar-color: #4b5563 transparent;
+}
+html.soft {
+  scrollbar-color: #b0bec5 transparent;
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Login screen — Concord ERP shell gradient (independent of saved theme). */
+.login-screen {
+  background-color: var(--erp-shell-bg-base);
+  background-image: var(--erp-shell-bg-image);
+  background-attachment: fixed;
+  background-size: cover;
+}
+
+.login-screen::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-shine);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.login-screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--erp-shell-bg-fold);
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes login-logo-breathe {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.88;
+  }
+  50% {
+    transform: scale(1.04);
+    opacity: 1;
+  }
+}
+
+.login-logo-breathe {
+  animation: login-logo-breathe 3s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+/* ── Reports: on-screen A4 page viewer ───────────────────────────────────── */
+/*
+ * Wraps the report-print-area to give it a physical "paper on desk" look.
+ * data-orientation + data-page-size control the paper width/height.
+ * Negative horizontal margin offsets the outer p-8 padding so the gray bg
+ * bleeds to the window edges; bottom margin similarly bleeds to footer.
+ */
+.report-page-viewer {
+  background: #94a3b8;
+  margin: 0 -2rem -2rem;
+  padding: 28px 24px 48px;
+}
+
+.report-page-viewer .report-print-area {
+  max-width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #ffffff;
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.08),
+    0 8px 32px rgb(0 0 0 / 0.18);
+  /* Tight margins — data gets the page; footer is a fixed 3-line band */
+  padding: 8mm 10mm 6mm;
+  color: #0f172a;
+  font-size: 10pt;
+  line-height: 1.35;
+  display: flex;
+  flex-direction: column;
+}
+
+.report-page-viewer .report-print-sheet {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.report-page-viewer .report-print-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Live format toolbar preview — compact letterhead */
+.report-page-viewer .report-print-header {
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 4px;
+}
+
+.report-page-viewer .report-print-header-accent {
+  height: 2px;
+  margin: 0 0 4px;
+  background: color-mix(in srgb, var(--report-accent, #003B71) 85%, #64748b);
+  border-radius: 2px;
+}
+
+.report-page-viewer .report-print-header-inner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+}
+
+/* Logo opposite company (default): company at start, logo at end — works in LTR + RTL without row-reverse */
+.report-page-viewer .report-print-header[data-logo-align="start"] .report-print-header-inner {
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+/* Logo on same side cluster as company (start of page) */
+.report-page-viewer .report-print-header[data-logo-align="end"] .report-print-header-inner {
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 16px;
+}
+
+/* Logo centered above company block */
+.report-page-viewer .report-print-header[data-logo-align="center"] .report-print-header-inner {
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.report-page-viewer .report-print-header[data-logo-align="center"] .report-print-brand-text {
+  text-align: center;
+  max-width: 100%;
+}
+
+.report-page-viewer .report-print-header[data-show-logo="0"] .report-print-logo-slot {
+  display: none !important;
+}
+
+.report-page-viewer .report-print-brand-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 65%;
+  text-align: start;
+}
+
+.report-page-viewer .report-print-logo-slot {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.report-page-viewer .report-print-company {
+  margin: 0;
+  font-size: 9.5pt;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.report-page-viewer .report-print-meta {
+  margin: 1px 0 0;
+  font-size: 7pt;
+  color: #64748b;
+  line-height: 1.2;
+}
+
+.report-page-viewer .report-print-logo-img {
+  max-height: 28px;
+  max-width: 100px;
+  object-fit: contain;
+}
+
+.report-page-viewer .report-print-header-title {
+  margin-top: 2px;
+  text-align: center;
+}
+
+.report-page-viewer .report-print-header-title h1,
+.report-page-viewer .report-print-header-title .report-print-doc-title {
+  font-size: 12pt;
+  margin: 0;
+  line-height: 1.2;
+}
+
+.report-page-viewer .report-print-area[data-title-align="start"] .report-print-header-title {
+  text-align: start;
+}
+
+.report-page-viewer .report-print-area[data-title-align="center"] .report-print-header-title {
+  text-align: center;
+}
+
+.report-page-viewer .report-print-area[data-title-align="end"] .report-print-header-title {
+  text-align: end;
+}
+
+.report-page-viewer .report-print-report-title {
+  margin: 0;
+  font-size: 13pt;
+  font-weight: 800;
+  color: color-mix(in srgb, var(--report-accent, #003B71) 90%, #0f172a);
+}
+
+.report-page-viewer .report-print-header[data-title-align="start"] .report-print-header-title,
+.report-page-viewer .report-print-header[data-title-align="start"] .report-print-header-meta-line,
+.report-page-viewer .report-print-header[data-title-align="start"] .report-print-header-extra {
+  text-align: start;
+}
+
+.report-page-viewer .report-print-header[data-title-align="center"] .report-print-header-title,
+.report-page-viewer .report-print-header[data-title-align="center"] .report-print-header-meta-line,
+.report-page-viewer .report-print-header[data-title-align="center"] .report-print-header-extra {
+  text-align: center;
+}
+
+.report-page-viewer .report-print-header[data-title-align="end"] .report-print-header-title,
+.report-page-viewer .report-print-header[data-title-align="end"] .report-print-header-meta-line,
+.report-page-viewer .report-print-header[data-title-align="end"] .report-print-header-extra {
+  text-align: end;
+}
+
+.report-page-viewer .report-print-footer--screen {
+  flex: 0 0 12mm;
+  height: 12mm;
+  max-height: 12mm;
+  margin-top: auto;
+  margin-bottom: 0;
+  padding-top: 3px;
+  overflow: hidden;
+  text-align: center;
+  font-size: 7.5pt;
+  line-height: 1.25;
+  color: #64748b;
+}
+
+.report-page-viewer .report-print-footer--screen .report-print-footer-inner {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  height: 100%;
+  gap: 0;
+}
+
+.report-page-viewer .report-print-footer--screen .report-print-footer-line {
+  margin: 0;
+  padding: 0;
+  min-height: 1.25em;
+  max-height: 1.25em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: inherit;
+  line-height: 1.25;
+}
+
+/* Hide in-body duplicate titles when letterhead already shows the report title */
+.report-page-viewer .report-print-hide-title {
+  display: none !important;
+}
+
+/* Portrait A4 (default) */
+.report-page-viewer[data-page-size="A4"][data-orientation="portrait"] .report-print-area {
+  max-width: 210mm;
+  min-height: 297mm;
+}
+
+/* Landscape A4 */
+.report-page-viewer[data-page-size="A4"][data-orientation="landscape"] .report-print-area {
+  max-width: 297mm;
+  min-height: 210mm;
+}
+
+/* Portrait A3 */
+.report-page-viewer[data-page-size="A3"][data-orientation="portrait"] .report-print-area {
+  max-width: 297mm;
+  min-height: 420mm;
+}
+
+/* Landscape A3 */
+.report-page-viewer[data-page-size="A3"][data-orientation="landscape"] .report-print-area {
+  max-width: 420mm;
+  min-height: 297mm;
+}
+
+/*
+ * Multipage reports (Budget vs Actual): outer print-area becomes a transparent
+ * stack; on-screen sheets are wider than physical A4 for readability.
+ */
+.report-page-viewer[data-multipage="true"] {
+  /* Parent uses tighter padding on budget tab (px-3); cancel only that. */
+  margin-left: -0.75rem;
+  margin-right: -0.75rem;
+  margin-bottom: -1.5rem;
+  padding: 12px 6px 32px;
+}
+
+.report-page-viewer[data-multipage="true"] .report-print-area {
+  max-width: 100%;
+  min-height: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0 4px;
+}
+
+/* Multipage budget: letterhead lives inside each .bva-sheet — never float outer H/F */
+.report-page-viewer[data-multipage="true"] .report-print-header,
+.report-page-viewer[data-multipage="true"] .report-print-footer--screen {
+  display: none !important;
+}
+
+.bva-pages {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  width: 100%;
+}
+
+.bva-sheet {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  min-height: 680px;
+  box-sizing: border-box;
+  margin: 0 auto;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow:
+    0 2px 4px rgb(0 0 0 / 0.08),
+    0 8px 32px rgb(0 0 0 / 0.18);
+  padding: 16px 20px 10px;
+  border-radius: 4px;
+  page-break-after: always;
+  break-after: page;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.bva-sheet:last-child {
+  page-break-after: auto;
+  break-after: auto;
+}
+
+.bva-sheet-header h4 {
+  font-size: 1.25rem;
+  line-height: 1.3;
+}
+
+.bva-sheet-body {
+  flex: 1 1 auto;
+}
+
+.bva-sheet-body td.bva-entity-cell,
+.bva-sheet-body td.bva-meta-cell {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.bva-sheet-body th {
+  padding: 0.7rem 0.85rem !important;
+  font-size: 0.8rem !important;
+}
+
+.bva-sheet-body td {
+  padding: 0.75rem 0.85rem !important;
+  font-size: 0.9375rem !important;
+}
+
+.bva-sheet-body tfoot td {
+  font-size: 0.95rem !important;
+  padding: 0.85rem !important;
+}
+
+.bva-sheet-footer {
+  flex: 0 0 12mm;
+  height: 12mm;
+  max-height: 12mm;
+  margin-top: auto;
+  padding-top: 3px;
+  font-size: 7.5pt;
+  line-height: 1.25;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.bva-sheet-footer .bva-ftr-line {
+  margin: 0;
+  padding: 0;
+  min-height: 1.25em;
+  max-height: 1.25em;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Dark/soft theme — slightly darker surround for contrast */
+:root[data-theme="dark"] .report-page-viewer,
+.dark .report-page-viewer {
+  background: #475569;
+}
+
+/* Direct browser print of the app window (Ctrl+P) — reset on-screen viewer chrome.
+   Actual report printing goes through the reportDocument iframe pipeline. */
+@media print {
+  .report-page-viewer {
+    background: transparent !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .report-page-viewer .report-print-area {
+    max-width: none !important;
+    min-height: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .report-page-viewer[data-multipage="true"] .report-print-header,
+  .report-page-viewer[data-multipage="true"] .report-print-footer {
+    display: none !important;
+  }
+}
+
+/* Mobile approval PWA (/m/*) */
+.mobile-approval-shell {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-approval-shell a {
+  text-decoration: none;
+  color: inherit;
+}
+
+@media (max-width: 640px) {
+  .mobile-approval-shell button {
+    min-height: 48px;
+  }
+}
+

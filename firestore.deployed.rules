@@ -1,0 +1,316 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Admin is determined solely by the /admins/{uid} collection.
+    // Add a user's UID as a document ID in that collection via Firebase Console
+    // to grant them admin privileges.
+    function isAdmin() {
+      return isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // App-level admin flag on the user profile (Settings / Permissions UI).
+    function isUserDocAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function userPerms() {
+      return hasUserDoc()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.permissions
+        : null;
+    }
+
+    // Firestore rules cannot use permissions[variableKey] — literal field access only.
+    function modulePermission(field) {
+      let p = userPerms();
+      return p is map && field == 'dashboard' ? p.dashboard
+        : p is map && field == 'reports' ? p.reports
+        : p is map && field == 'settings' ? p.settings
+        : p is map && field == 'ledger' ? p.ledger
+        : p is map && field == 'projects' ? p.projects
+        : p is map && field == 'boq' ? p.boq
+        : p is map && field == 'billing' ? p.billing
+        : p is map && field == 'costs' ? p.costs
+        : p is map && field == 'suppliers' ? p.suppliers
+        : p is map && field == 'banks' ? p.banks
+        : p is map && field == 'inventory' ? p.inventory
+        : p is map && field == 'subcontractor' ? p.subcontractor
+        : null;
+    }
+
+    function userRole() {
+      return hasUserDoc()
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role
+        : 'user';
+    }
+
+    function isProjectAccountant() {
+      return userRole() == 'project_accountant';
+    }
+
+    function assignedContractIds() {
+      return hasUserDoc()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedContractIds is list
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)).data.assignedContractIds
+        : [];
+    }
+
+    function hasAssignedContract(contractId) {
+      return !isProjectAccountant()
+        || !(contractId is string)
+        || contractId == ''
+        || contractId in assignedContractIds();
+    }
+
+    function roleCrudPermCreate(field) {
+      return userRole() == 'admin'
+        || (userRole() == 'projects_manager' && (field == 'projects' || field == 'boq' || field == 'billing'))
+        || (userRole() == 'project_accountant' && (
+          field == 'billing' || field == 'costs' || field == 'suppliers'
+          || field == 'inventory' || field == 'subcontractor'
+        ));
+    }
+
+    function canModuleView(moduleKey) {
+      let p = modulePermission(moduleKey);
+      return isUserDocAdmin()
+        || (p is bool && p == true)
+        || (p is map && p.view == true);
+    }
+
+    function canModuleCreate(moduleKey) {
+      let p = modulePermission(moduleKey);
+      return isUserDocAdmin()
+        || (p is bool && p == true)
+        || (p is map && p.create == true)
+        || roleCrudPermCreate(moduleKey);
+    }
+
+    function canModuleEdit(moduleKey) {
+      let p = modulePermission(moduleKey);
+      return isUserDocAdmin()
+        || (p is bool && p == true)
+        || (p is map && p.edit == true);
+    }
+
+    function canModuleUse(moduleKey) {
+      return canModuleView(moduleKey) || canModuleCreate(moduleKey) || canModuleEdit(moduleKey);
+    }
+
+    // Reference reads: module UI may be closed but permitted modules still need lookups.
+    function canReadCoaRef() {
+      return canModuleUse('dashboard') || canModuleUse('ledger')  || canModuleUse('banks')   ||
+             canModuleUse('costs')   || canModuleUse('billing') ||
+             canModuleUse('suppliers') || canModuleUse('boq')   ||
+             canModuleUse('projects') || canModuleUse('inventory') ||
+             canModuleUse('subcontractor') || canModuleUse('reports');
+    }
+
+    function canReadTransactionsRef() {
+      return canModuleUse('dashboard') || canModuleUse('ledger') || canModuleUse('reports') ||
+             canModuleUse('costs') || canModuleUse('billing') || canModuleUse('banks') ||
+             canModuleUse('projects') || canModuleUse('inventory') || canModuleUse('subcontractor');
+    }
+
+    function canReadBoqRef() {
+      return canModuleUse('dashboard') || canModuleUse('boq')     || canModuleUse('billing') ||
+             canModuleUse('costs')   || canModuleUse('reports') ||
+             canModuleUse('subcontractor') || canModuleUse('inventory');
+    }
+
+    function canReadPurchaseTxRef() {
+      return canModuleUse('dashboard') || canModuleUse('costs') || canModuleUse('suppliers') || canModuleUse('reports');
+    }
+
+    // ===============================================================
+    // Collection Match Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || (isOwner(userId) && isEmailVerified());
+      allow update: if isAdmin() || (isOwner(userId) && request.resource.data.role == resource.data.role);
+      allow delete: if isAdmin();
+    }
+
+    match /projects/{projectId} {
+      allow read: if isSignedIn() && canModuleView('projects');
+      allow create: if isSignedIn() && canModuleCreate('projects');
+      allow update: if isSignedIn() && canModuleEdit('projects');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isSignedIn() && canModuleView('projects');
+      allow create: if isSignedIn() && canModuleCreate('projects');
+      allow update: if isSignedIn() && canModuleEdit('projects');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /boq_items/{itemId} {
+      allow read: if isSignedIn() && canReadBoqRef();
+      allow create: if isSignedIn() && canModuleCreate('boq');
+      allow update: if isSignedIn() && canModuleEdit('boq');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /actual_costs/{costId} {
+      allow read: if isSignedIn() && canModuleView('costs');
+      allow create: if isSignedIn() && canModuleCreate('costs');
+      allow update: if isSignedIn() && canModuleEdit('costs');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /collections/{collectionId} {
+      allow read: if isSignedIn() && canModuleView('billing');
+      allow create: if isSignedIn() && canModuleCreate('billing');
+      allow update: if isSignedIn() && canModuleEdit('billing');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn() && canModuleView('suppliers');
+      allow create: if isSignedIn() && canModuleCreate('suppliers');
+      allow update: if isSignedIn() && canModuleEdit('suppliers');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /purchase_transactions/{txId} {
+      allow read: if isSignedIn() && canReadPurchaseTxRef();
+      allow create: if isSignedIn()
+        && (canModuleCreate('costs') || canModuleCreate('suppliers') || canModuleCreate('billing'))
+        && hasAssignedContract(request.resource.data.contractId);
+      allow update: if isSignedIn()
+        && (canModuleEdit('costs') || canModuleEdit('suppliers') || canModuleEdit('billing'))
+        && hasAssignedContract(resource.data.contractId)
+        && hasAssignedContract(request.resource.data.contractId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /admin_expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /chart_of_accounts/{accountId} {
+      allow read: if isSignedIn() && canReadCoaRef();
+      allow create: if isSignedIn() && canModuleCreate('ledger');
+      allow update: if isSignedIn() && canModuleEdit('ledger');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && canReadTransactionsRef();
+      allow create: if isSignedIn() && canModuleCreate('ledger');
+      allow update: if isSignedIn() && canModuleEdit('ledger');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /billing/{billingId} {
+      allow read: if isSignedIn() && canModuleView('billing');
+      allow create: if isSignedIn() && canModuleCreate('billing');
+      allow update: if isSignedIn() && canModuleEdit('billing');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /ipc_progress/{progressId} {
+      allow read: if isSignedIn() && canModuleView('billing');
+      allow create: if isSignedIn() && canModuleCreate('billing');
+      allow update: if isSignedIn() && canModuleEdit('billing');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_accounts/{accountId} {
+      allow read: if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_movements/{movementId} {
+      allow read: if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_cheques/{chequeId} {
+      allow read: if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_statements/{statementId} {
+      allow read: if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_statement_lines/{lineId} {
+      allow read: if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /settings/{settingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || isUserDocAdmin();
+    }
+
+    // Admins collection: managed via Firebase Console only.
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Pre-registered user permissions (for users not yet logged in).
+    // Keyed by email. Admin manages; any signed-in user can read their own.
+    match /user_permissions/{permId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // Client audit trail (web app): append-only per signed-in user; admins read all.
+    match /activity_logs/{logId} {
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.kind is string
+        && request.resource.data.kind.size() < 96
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() < 128;
+      allow read: if isAdmin() || isUserDocAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

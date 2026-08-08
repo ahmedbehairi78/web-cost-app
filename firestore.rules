@@ -1,0 +1,731 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // ===============================================================
+    // Helper Functions — Identity & Auth
+    // ===============================================================
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Admin via /admins/{uid} collection (Firebase Console).
+    function isAdmin() {
+      return isEmailVerified() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // App-level admin flag on user profile (Settings / Permissions UI).
+    function isUserDocAdmin() {
+      return isSignedIn() && userRole() == 'admin';
+    }
+
+    function canManageAppUsers() {
+      return isAdmin() || userRole() == 'admin' || boolPermOn('settings');
+    }
+
+    function hasUserDoc() {
+      return isSignedIn() && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    // ===============================================================
+    // Helper Functions — Module Permissions
+    // Firestore rules cannot use variable map keys (permissions[moduleKey]).
+    // Use literal field access: permissions.costs, permissions.ledger, …
+    // ===============================================================
+
+    function userDocData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function userPerms() {
+      return userDocData().permissions;
+    }
+
+    // Admin-maintained profile keyed by email (Settings / local SQLite sync).
+    // Used when users/{uid}.role is still the first-login default 'user'.
+    function emailProfileData() {
+      return isSignedIn() && request.auth.token.email is string
+        && exists(/databases/$(database)/documents/email_profiles/$(lower(request.auth.token.email)))
+        ? get(/databases/$(database)/documents/email_profiles/$(lower(request.auth.token.email))).data
+        : null;
+    }
+
+    function emailProfileRole() {
+      let ep = emailProfileData();
+      return ep != null && ep.role is string ? ep.role : null;
+    }
+
+    function userRole() {
+      let docRole = hasUserDoc() ? userDocData().role : 'user';
+      if (docRole != 'user') return docRole;
+      let epRole = emailProfileRole();
+      return epRole == 'project_accountant' || epRole == 'projects_manager' || epRole == 'admin'
+        ? epRole
+        : docRole;
+    }
+
+    function isProjectsManager() {
+      return userRole() == 'projects_manager';
+    }
+
+    function boolPermOnFromMap(p, field) {
+      return p is map && (
+        (field == 'dashboard' && p.dashboard is bool && p.dashboard == true) ||
+        (field == 'reports' && p.reports is bool && p.reports == true) ||
+        (field == 'settings' && p.settings is bool && p.settings == true)
+      );
+    }
+
+    function crudPermUseFromMap(p, field) {
+      return p is map && (
+          (field == 'ledger' && p.ledger is bool && p.ledger == true) ||
+          (field == 'ledger' && p.ledger is map && (p.ledger.view == true || p.ledger.create == true || p.ledger.edit == true)) ||
+          (field == 'projects' && p.projects is bool && p.projects == true) ||
+          (field == 'projects' && p.projects is map && (p.projects.view == true || p.projects.create == true || p.projects.edit == true)) ||
+          (field == 'boq' && p.boq is bool && p.boq == true) ||
+          (field == 'boq' && p.boq is map && (p.boq.view == true || p.boq.create == true || p.boq.edit == true)) ||
+          (field == 'billing' && p.billing is bool && p.billing == true) ||
+          (field == 'billing' && p.billing is map && (p.billing.view == true || p.billing.create == true || p.billing.edit == true)) ||
+          (field == 'costs' && p.costs is bool && p.costs == true) ||
+          (field == 'costs' && p.costs is map && (p.costs.view == true || p.costs.create == true || p.costs.edit == true)) ||
+          (field == 'costs_invoice' && p.costs_invoice is map && (p.costs_invoice.view == true || p.costs_invoice.create == true || p.costs_invoice.edit == true)) ||
+          (field == 'costs_ipc' && p.costs_ipc is map && (p.costs_ipc.view == true || p.costs_ipc.create == true || p.costs_ipc.edit == true)) ||
+          (field == 'costs_custody' && p.costs_custody is map && (p.costs_custody.view == true || p.costs_custody.create == true || p.costs_custody.edit == true)) ||
+          (field == 'suppliers' && p.suppliers is bool && p.suppliers == true) ||
+          (field == 'suppliers' && p.suppliers is map && (p.suppliers.view == true || p.suppliers.create == true || p.suppliers.edit == true)) ||
+          (field == 'banks' && p.banks is bool && p.banks == true) ||
+          (field == 'banks' && p.banks is map && (p.banks.view == true || p.banks.create == true || p.banks.edit == true)) ||
+          (field == 'inventory' && p.inventory is bool && p.inventory == true) ||
+          (field == 'inventory' && p.inventory is map && (p.inventory.view == true || p.inventory.create == true || p.inventory.edit == true)) ||
+          (field == 'subcontractor' && p.subcontractor is bool && p.subcontractor == true) ||
+          (field == 'subcontractor' && p.subcontractor is map && (p.subcontractor.view == true || p.subcontractor.create == true || p.subcontractor.edit == true))
+        );
+    }
+
+    function storedPermsGrantAny() {
+      let p = userPerms();
+      return boolPermOnFromMap(p, 'dashboard') || boolPermOnFromMap(p, 'reports') || boolPermOnFromMap(p, 'settings')
+        || crudPermUseFromMap(p, 'ledger') || crudPermUseFromMap(p, 'projects') || crudPermUseFromMap(p, 'boq')
+        || crudPermUseFromMap(p, 'billing') || crudPermUseFromMap(p, 'costs') || crudPermUseFromMap(p, 'suppliers')
+        || crudPermUseFromMap(p, 'banks') || crudPermUseFromMap(p, 'inventory') || crudPermUseFromMap(p, 'subcontractor')
+        || crudPermUseFromMap(p, 'assets') || crudPermUseFromMap(p, 'payroll');
+    }
+
+    function permissionsNeedBootstrap() {
+      let p = userPerms();
+      if (!(p is map) || p.size() == 0) return true;
+      let r = userRole();
+      return (r == 'projects_manager' || r == 'project_accountant') && !storedPermsGrantAny();
+    }
+
+    function resourcePermissionsNeedBootstrap(data) {
+      let p = data.permissions;
+      if (!(p is map) || p.size() == 0) return true;
+      let r = data.role;
+      if (r != 'projects_manager' && r != 'project_accountant') return false;
+      return !(
+        boolPermOnFromMap(p, 'dashboard') || boolPermOnFromMap(p, 'reports') || boolPermOnFromMap(p, 'settings')
+        || crudPermUseFromMap(p, 'ledger') || crudPermUseFromMap(p, 'projects') || crudPermUseFromMap(p, 'boq')
+        || crudPermUseFromMap(p, 'billing') || crudPermUseFromMap(p, 'costs') || crudPermUseFromMap(p, 'suppliers')
+        || crudPermUseFromMap(p, 'banks') || crudPermUseFromMap(p, 'inventory') || crudPermUseFromMap(p, 'subcontractor')
+        || crudPermUseFromMap(p, 'assets') || crudPermUseFromMap(p, 'payroll')
+      );
+    }
+
+    function roleBoolPermOn(field) {
+      let r = userRole();
+      return r == 'admin'
+        || ((r == 'projects_manager' || r == 'project_accountant')
+            && (field == 'dashboard' || field == 'reports'));
+    }
+
+    function roleCrudPermUse(field) {
+      let r = userRole();
+      return r == 'admin'
+        || (r == 'projects_manager' && (
+          field == 'projects' || field == 'boq' || field == 'billing' || field == 'costs'
+          || field == 'costs_invoice' || field == 'costs_ipc' || field == 'costs_custody'
+          || field == 'suppliers' || field == 'inventory' || field == 'subcontractor'
+        ))
+        || (r == 'project_accountant' && (
+          field == 'projects' || field == 'boq' || field == 'billing' || field == 'costs'
+          || field == 'costs_invoice' || field == 'costs_ipc' || field == 'costs_custody'
+          || field == 'suppliers' || field == 'banks' || field == 'inventory' || field == 'subcontractor'
+        ));
+    }
+
+    function roleCrudPermView(field) {
+      return roleCrudPermUse(field);
+    }
+
+    function roleCrudPermCreate(field) {
+      let r = userRole();
+      return r == 'admin'
+        || (r == 'projects_manager' && (field == 'projects' || field == 'boq' || field == 'billing'))
+        || (r == 'project_accountant' && (
+          field == 'billing' || field == 'costs'
+          || field == 'costs_invoice' || field == 'costs_ipc' || field == 'costs_custody'
+          || field == 'suppliers' || field == 'inventory' || field == 'subcontractor'
+        ));
+    }
+
+    function roleCrudPermEdit(field) {
+      let r = userRole();
+      return r == 'admin'
+        || (r == 'projects_manager' && (
+          field == 'projects' || field == 'boq' || field == 'billing' || field == 'inventory'
+        ))
+        || (r == 'project_accountant' && (
+          field == 'billing' || field == 'costs'
+          || field == 'costs_invoice' || field == 'costs_ipc' || field == 'costs_custody'
+          || field == 'suppliers' || field == 'inventory' || field == 'subcontractor'
+        ));
+    }
+
+    function boolPermOn(field) {
+      let p = userPerms();
+      return boolPermOnFromMap(p, field)
+        || (permissionsNeedBootstrap() && roleBoolPermOn(field));
+    }
+
+    function emailProfilePermissions() {
+      let ep = emailProfileData();
+      return ep != null && ep.permissions is map ? ep.permissions : null;
+    }
+
+    function crudPermUse(field) {
+      if (!hasUserDoc()) return false;
+      if (isUserDocAdmin()) return true;
+      let ep = emailProfilePermissions();
+      if (ep != null && crudPermUseFromMap(ep, field)) return true;
+      let p = userPerms();
+      if (crudPermUseFromMap(p, field)) return true;
+      if (isProjectAccountant() || isProjectsManager()) return roleCrudPermUse(field);
+      return permissionsNeedBootstrap() && roleCrudPermUse(field);
+    }
+
+    function crudPermViewFromMap(p, field) {
+      return p is map && (
+          (field == 'ledger' && p.ledger is bool && p.ledger == true) ||
+          (field == 'ledger' && p.ledger is map && p.ledger.view == true) ||
+          (field == 'projects' && p.projects is bool && p.projects == true) ||
+          (field == 'projects' && p.projects is map && p.projects.view == true) ||
+          (field == 'boq' && p.boq is bool && p.boq == true) ||
+          (field == 'boq' && p.boq is map && p.boq.view == true) ||
+          (field == 'billing' && p.billing is bool && p.billing == true) ||
+          (field == 'billing' && p.billing is map && p.billing.view == true) ||
+          (field == 'costs' && p.costs is bool && p.costs == true) ||
+          (field == 'costs' && p.costs is map && p.costs.view == true) ||
+          (field == 'costs_invoice' && p.costs_invoice is map && p.costs_invoice.view == true) ||
+          (field == 'costs_ipc' && p.costs_ipc is map && p.costs_ipc.view == true) ||
+          (field == 'costs_custody' && p.costs_custody is map && p.costs_custody.view == true) ||
+          (field == 'suppliers' && p.suppliers is bool && p.suppliers == true) ||
+          (field == 'suppliers' && p.suppliers is map && p.suppliers.view == true) ||
+          (field == 'banks' && p.banks is bool && p.banks == true) ||
+          (field == 'banks' && p.banks is map && p.banks.view == true) ||
+          (field == 'inventory' && p.inventory is bool && p.inventory == true) ||
+          (field == 'inventory' && p.inventory is map && p.inventory.view == true) ||
+          (field == 'subcontractor' && p.subcontractor is bool && p.subcontractor == true) ||
+          (field == 'subcontractor' && p.subcontractor is map && p.subcontractor.view == true)
+        );
+    }
+
+    function crudPermView(field) {
+      if (!hasUserDoc()) return false;
+      if (isUserDocAdmin()) return true;
+      let p = userPerms();
+      if (crudPermViewFromMap(p, field)) return true;
+      if (isProjectAccountant() || isProjectsManager()) return roleCrudPermView(field);
+      return permissionsNeedBootstrap() && roleCrudPermView(field);
+    }
+
+    function crudPermCreateFromMap(p, field) {
+      return p is map && (
+          (field == 'ledger' && p.ledger is bool && p.ledger == true) ||
+          (field == 'ledger' && p.ledger is map && p.ledger.create == true) ||
+          (field == 'projects' && p.projects is bool && p.projects == true) ||
+          (field == 'projects' && p.projects is map && p.projects.create == true) ||
+          (field == 'boq' && p.boq is bool && p.boq == true) ||
+          (field == 'boq' && p.boq is map && p.boq.create == true) ||
+          (field == 'billing' && p.billing is bool && p.billing == true) ||
+          (field == 'billing' && p.billing is map && p.billing.create == true) ||
+          (field == 'costs' && p.costs is bool && p.costs == true) ||
+          (field == 'costs' && p.costs is map && p.costs.create == true) ||
+          (field == 'costs_invoice' && p.costs_invoice is map && p.costs_invoice.create == true) ||
+          (field == 'costs_ipc' && p.costs_ipc is map && p.costs_ipc.create == true) ||
+          (field == 'costs_custody' && p.costs_custody is map && p.costs_custody.create == true) ||
+          (field == 'suppliers' && p.suppliers is bool && p.suppliers == true) ||
+          (field == 'suppliers' && p.suppliers is map && p.suppliers.create == true) ||
+          (field == 'banks' && p.banks is bool && p.banks == true) ||
+          (field == 'banks' && p.banks is map && p.banks.create == true) ||
+          (field == 'inventory' && p.inventory is bool && p.inventory == true) ||
+          (field == 'inventory' && p.inventory is map && p.inventory.create == true) ||
+          (field == 'subcontractor' && p.subcontractor is bool && p.subcontractor == true) ||
+          (field == 'subcontractor' && p.subcontractor is map && p.subcontractor.create == true)
+        );
+    }
+
+    function crudPermCreate(field) {
+      if (!hasUserDoc()) return false;
+      if (isUserDocAdmin()) return true;
+      let p = userPerms();
+      if (crudPermCreateFromMap(p, field)) return true;
+      if (isProjectAccountant() || isProjectsManager()) return roleCrudPermCreate(field);
+      return permissionsNeedBootstrap() && roleCrudPermCreate(field);
+    }
+
+    function crudPermEditFromMap(p, field) {
+      return p is map && (
+          (field == 'ledger' && p.ledger is bool && p.ledger == true) ||
+          (field == 'ledger' && p.ledger is map && p.ledger.edit == true) ||
+          (field == 'projects' && p.projects is bool && p.projects == true) ||
+          (field == 'projects' && p.projects is map && p.projects.edit == true) ||
+          (field == 'boq' && p.boq is bool && p.boq == true) ||
+          (field == 'boq' && p.boq is map && p.boq.edit == true) ||
+          (field == 'billing' && p.billing is bool && p.billing == true) ||
+          (field == 'billing' && p.billing is map && p.billing.edit == true) ||
+          (field == 'costs' && p.costs is bool && p.costs == true) ||
+          (field == 'costs' && p.costs is map && p.costs.edit == true) ||
+          (field == 'costs_invoice' && p.costs_invoice is map && p.costs_invoice.edit == true) ||
+          (field == 'costs_ipc' && p.costs_ipc is map && p.costs_ipc.edit == true) ||
+          (field == 'costs_custody' && p.costs_custody is map && p.costs_custody.edit == true) ||
+          (field == 'suppliers' && p.suppliers is bool && p.suppliers == true) ||
+          (field == 'suppliers' && p.suppliers is map && p.suppliers.edit == true) ||
+          (field == 'banks' && p.banks is bool && p.banks == true) ||
+          (field == 'banks' && p.banks is map && p.banks.edit == true) ||
+          (field == 'inventory' && p.inventory is bool && p.inventory == true) ||
+          (field == 'inventory' && p.inventory is map && p.inventory.edit == true) ||
+          (field == 'subcontractor' && p.subcontractor is bool && p.subcontractor == true) ||
+          (field == 'subcontractor' && p.subcontractor is map && p.subcontractor.edit == true)
+        );
+    }
+
+    function crudPermEdit(field) {
+      if (!hasUserDoc()) return false;
+      if (isUserDocAdmin()) return true;
+      let p = userPerms();
+      if (crudPermEditFromMap(p, field)) return true;
+      if (isProjectAccountant() || isProjectsManager()) return roleCrudPermEdit(field);
+      return permissionsNeedBootstrap() && roleCrudPermEdit(field);
+    }
+
+    function canModuleView(moduleKey) {
+      return moduleKey == 'dashboard' ? boolPermOn('dashboard')
+        : moduleKey == 'reports' ? boolPermOn('reports')
+        : moduleKey == 'settings' ? boolPermOn('settings')
+        : moduleKey == 'ledger' ? crudPermView('ledger')
+        : moduleKey == 'projects' ? crudPermView('projects')
+        : moduleKey == 'boq' ? crudPermView('boq')
+        : moduleKey == 'billing' ? crudPermView('billing')
+        : moduleKey == 'costs' ? crudPermView('costs')
+        : moduleKey == 'costs_invoice' ? crudPermView('costs_invoice')
+        : moduleKey == 'costs_ipc' ? crudPermView('costs_ipc')
+        : moduleKey == 'costs_custody' ? crudPermView('costs_custody')
+        : moduleKey == 'suppliers' ? crudPermView('suppliers')
+        : moduleKey == 'banks' ? crudPermView('banks')
+        : moduleKey == 'inventory' ? crudPermView('inventory')
+        : moduleKey == 'subcontractor' ? crudPermView('subcontractor')
+        : moduleKey == 'assets' ? crudPermView('assets')
+        : moduleKey == 'payroll' ? crudPermView('payroll')
+        : false;
+    }
+
+    function canModuleUse(moduleKey) {
+      return moduleKey == 'dashboard' ? boolPermOn('dashboard')
+        : moduleKey == 'reports' ? boolPermOn('reports')
+        : moduleKey == 'settings' ? boolPermOn('settings')
+        : moduleKey == 'ledger' ? crudPermUse('ledger')
+        : moduleKey == 'projects' ? crudPermUse('projects')
+        : moduleKey == 'boq' ? crudPermUse('boq')
+        : moduleKey == 'billing' ? crudPermUse('billing')
+        : moduleKey == 'costs' ? crudPermUse('costs')
+        : moduleKey == 'costs_invoice' ? crudPermUse('costs_invoice')
+        : moduleKey == 'costs_ipc' ? crudPermUse('costs_ipc')
+        : moduleKey == 'costs_custody' ? crudPermUse('costs_custody')
+        : moduleKey == 'suppliers' ? crudPermUse('suppliers')
+        : moduleKey == 'banks' ? crudPermUse('banks')
+        : moduleKey == 'inventory' ? crudPermUse('inventory')
+        : moduleKey == 'subcontractor' ? crudPermUse('subcontractor')
+        : moduleKey == 'assets' ? crudPermUse('assets')
+        : moduleKey == 'payroll' ? crudPermUse('payroll')
+        : false;
+    }
+
+    function canModuleCreate(moduleKey) {
+      return moduleKey == 'ledger' ? crudPermCreate('ledger')
+        : moduleKey == 'projects' ? crudPermCreate('projects')
+        : moduleKey == 'boq' ? crudPermCreate('boq')
+        : moduleKey == 'billing' ? crudPermCreate('billing')
+        : moduleKey == 'costs' ? crudPermCreate('costs')
+        : moduleKey == 'costs_invoice' ? crudPermCreate('costs_invoice')
+        : moduleKey == 'costs_ipc' ? crudPermCreate('costs_ipc')
+        : moduleKey == 'costs_custody' ? crudPermCreate('costs_custody')
+        : moduleKey == 'suppliers' ? crudPermCreate('suppliers')
+        : moduleKey == 'banks' ? crudPermCreate('banks')
+        : moduleKey == 'inventory' ? crudPermCreate('inventory')
+        : moduleKey == 'subcontractor' ? crudPermCreate('subcontractor')
+        : moduleKey == 'assets' ? crudPermCreate('assets')
+        : moduleKey == 'payroll' ? crudPermCreate('payroll')
+        : false;
+    }
+
+    function canModuleEdit(moduleKey) {
+      return moduleKey == 'ledger' ? crudPermEdit('ledger')
+        : moduleKey == 'projects' ? crudPermEdit('projects')
+        : moduleKey == 'boq' ? crudPermEdit('boq')
+        : moduleKey == 'billing' ? crudPermEdit('billing')
+        : moduleKey == 'costs' ? crudPermEdit('costs')
+        : moduleKey == 'costs_invoice' ? crudPermEdit('costs_invoice')
+        : moduleKey == 'costs_ipc' ? crudPermEdit('costs_ipc')
+        : moduleKey == 'costs_custody' ? crudPermEdit('costs_custody')
+        : moduleKey == 'suppliers' ? crudPermEdit('suppliers')
+        : moduleKey == 'banks' ? crudPermEdit('banks')
+        : moduleKey == 'inventory' ? crudPermEdit('inventory')
+        : moduleKey == 'subcontractor' ? crudPermEdit('subcontractor')
+        : moduleKey == 'assets' ? crudPermEdit('assets')
+        : moduleKey == 'payroll' ? crudPermEdit('payroll')
+        : false;
+    }
+
+    // ===============================================================
+    // Helper Functions — Role & Assignment
+    // ===============================================================
+
+    function assignedContractIds() {
+      let docIds = hasUserDoc() && userDocData().assignedContractIds is list
+        ? userDocData().assignedContractIds
+        : [];
+      if (docIds.size() > 0) return docIds;
+      let ep = emailProfileData();
+      return ep != null && ep.assignedContractIds is list ? ep.assignedContractIds : [];
+    }
+
+    function assignedProjectIds() {
+      let docIds = hasUserDoc() && userDocData().assignedProjectIds is list
+        ? userDocData().assignedProjectIds
+        : [];
+      if (docIds.size() > 0) return docIds;
+      let ep = emailProfileData();
+      return ep != null && ep.assignedProjectIds is list ? ep.assignedProjectIds : [];
+    }
+
+    // Local-backend: assigned contracts synced from SQLite on login mean project-accountant scope
+    // even when users/{uid}.role is still the first-login default 'user'.
+    function isProjectAccountant() {
+      return userRole() == 'project_accountant'
+        || (userRole() == 'user' && assignedContractIds().size() > 0);
+    }
+
+    // For project accountants: restrict to assigned contracts/projects.
+    // For all other roles: no restriction (returns true).
+    // Purchase invoices / warehouse GL may omit costCenterId; IPC must match assigned contracts.
+    function hasAssignedContract(contractId) {
+      return !isProjectAccountant()
+        || !(contractId is string)
+        || contractId == ''
+        || contractId in assignedContractIds();
+    }
+
+    function hasAssignedProject(projectId) {
+      return !isProjectAccountant() || (projectId is string && projectId in assignedProjectIds());
+    }
+
+    // ===============================================================
+    // Helper Functions — Cross-Module Data Access
+    //
+    // Principle: denying access to a MODULE (opening the window) must
+    // NOT prevent a user from reading the REFERENCE DATA that module
+    // owns, when another permitted module requires that data as a lookup.
+    //
+    // Each function answers: "can this user read this collection as a
+    // reference lookup from any module they are allowed to use?"
+    // ===============================================================
+
+    // chart_of_accounts — reference lookups (view OR create OR edit on any consuming module).
+    function canReadCoaRef() {
+      return canModuleUse('dashboard') || canModuleUse('ledger')  || canModuleUse('banks')   ||
+             canModuleUse('costs')   || canModuleUse('billing') ||
+             canModuleUse('suppliers') || canModuleUse('boq')   ||
+             canModuleUse('projects') || canModuleUse('inventory') ||
+             canModuleUse('subcontractor') || canModuleUse('reports') ||
+             canModuleUse('assets') || canModuleUse('payroll');
+    }
+
+    function canReadProjectsRef() {
+      return canModuleUse('dashboard') || canModuleUse('projects') || canModuleUse('costs')   ||
+             canModuleUse('billing')  || canModuleUse('boq')     ||
+             canModuleUse('reports')  || canModuleUse('subcontractor') ||
+             canModuleUse('inventory') || canModuleUse('banks');
+    }
+
+    function canReadContractsRef() {
+      return canModuleUse('dashboard') || canModuleUse('projects') || canModuleUse('costs')   ||
+             canModuleUse('billing')  || canModuleUse('boq')     ||
+             canModuleUse('reports')  || canModuleUse('subcontractor') ||
+             canModuleUse('inventory') || canModuleUse('banks');
+    }
+
+    function canReadBoqRef() {
+      return canModuleUse('dashboard') || canModuleUse('boq')     || canModuleUse('billing') ||
+             canModuleUse('costs')   || canModuleUse('reports') ||
+             canModuleUse('subcontractor') || canModuleUse('inventory');
+    }
+
+    function canReadSuppliersRef() {
+      return canModuleUse('dashboard') || canModuleUse('suppliers') || canModuleUse('costs') ||
+             canModuleUse('billing')   || canModuleUse('reports');
+    }
+
+    function canReadPurchaseTxRef() {
+      return canModuleUse('dashboard') || canModuleUse('costs') || canModuleUse('suppliers') || canModuleUse('reports');
+    }
+
+    function canReadTransactionsRef() {
+      return canModuleUse('dashboard') || canModuleUse('ledger') || canModuleUse('reports') ||
+             canModuleUse('costs') || canModuleUse('billing') || canModuleUse('banks') ||
+             canModuleUse('projects') || canModuleUse('inventory') || canModuleUse('subcontractor');
+    }
+
+    function canReadBillingRef() {
+      return canModuleUse('dashboard') || canModuleUse('billing') || canModuleUse('reports') || canModuleUse('costs');
+    }
+
+    // ===============================================================
+    // Collection Match Rules
+    // ===============================================================
+
+    // Role/contracts mirror for local-backend users (key = lowercased email).
+    match /email_profiles/{emailKey} {
+      allow read: if isSignedIn() && (
+        canManageAppUsers()
+        || (request.auth.token.email is string && lower(request.auth.token.email) == emailKey)
+      );
+      allow create, update, delete: if canManageAppUsers();
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || isUserDocAdmin()
+        || (isOwner(userId) && isEmailVerified()
+            && request.resource.data.role == 'user');
+      allow update: if isAdmin() || isUserDocAdmin()
+        || (canManageAppUsers() && !isOwner(userId))
+        || (isOwner(userId) && isEmailVerified() && resourcePermissionsNeedBootstrap(resource.data))
+        || (isOwner(userId) && isEmailVerified()
+            && request.resource.data.role == resource.data.role
+            && (
+              request.resource.data.permissions == resource.data.permissions
+              || resourcePermissionsNeedBootstrap(resource.data)
+            ));
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Project & Contract reference data ──────────────────────────
+
+    match /projects/{projectId} {
+      // Any module that uses projects as a cost-centre reference may read.
+      allow read: if isSignedIn() && canReadProjectsRef();
+      // Only the projects module (managers) may write.
+      allow create: if isSignedIn() && canModuleCreate('projects') && !isProjectAccountant();
+      allow update: if isSignedIn() && canModuleEdit('projects')   && !isProjectAccountant();
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /contracts/{contractId} {
+      allow read: if isSignedIn() && canReadContractsRef();
+      allow create: if isSignedIn() && canModuleCreate('projects') && !isProjectAccountant();
+      allow update: if isSignedIn() && canModuleEdit('projects')   && !isProjectAccountant();
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /boq_items/{itemId} {
+      allow read: if isSignedIn() && canReadBoqRef();
+      allow create: if isSignedIn() && canModuleCreate('boq') && hasAssignedContract(request.resource.data.contractId);
+      allow update: if isSignedIn() && canModuleEdit('boq')   && hasAssignedContract(resource.data.contractId) && hasAssignedContract(request.resource.data.contractId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Cost data ──────────────────────────────────────────────────
+
+    match /actual_costs/{costId} {
+      allow read:   if isSignedIn() && canModuleUse('costs');
+      allow create: if isSignedIn() && canModuleCreate('costs') && hasAssignedProject(request.resource.data.projectId);
+      allow update: if isSignedIn() && canModuleEdit('costs')   && hasAssignedProject(resource.data.projectId) && hasAssignedProject(request.resource.data.projectId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /purchase_transactions/{txId} {
+      allow read:   if isSignedIn() && canReadPurchaseTxRef();
+      allow create: if isSignedIn() && (canModuleCreate('costs') || canModuleCreate('suppliers')) && hasAssignedContract(request.resource.data.contractId);
+      allow update: if isSignedIn() && (canModuleEdit('costs')   || canModuleEdit('suppliers'))   && hasAssignedContract(resource.data.contractId) && hasAssignedContract(request.resource.data.contractId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /suppliers/{supplierId} {
+      // Supplier master is reference data for costs and billing lookups.
+      allow read:   if isSignedIn() && canReadSuppliersRef();
+      allow create: if isSignedIn() && (canModuleCreate('suppliers') || canModuleCreate('costs'));
+      allow update: if isSignedIn() && (canModuleEdit('suppliers')   || canModuleEdit('costs'));
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Billing / IPC ──────────────────────────────────────────────
+
+    match /billing/{billingId} {
+      allow read:   if isSignedIn() && canReadBillingRef();
+      allow create: if isSignedIn() && canModuleCreate('billing') && hasAssignedContract(request.resource.data.contractId);
+      allow update: if isSignedIn() && canModuleEdit('billing')   && hasAssignedContract(resource.data.contractId) && hasAssignedContract(request.resource.data.contractId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /ipc_progress/{progressId} {
+      allow read:   if isSignedIn() && canReadBillingRef();
+      allow create: if isSignedIn() && canModuleCreate('billing') && hasAssignedContract(request.resource.data.contractId);
+      allow update: if isSignedIn() && canModuleEdit('billing')   && hasAssignedContract(resource.data.contractId) && hasAssignedContract(request.resource.data.contractId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Material On-Site (MOS) extracts — مستخلصات التشوين ──────────────
+    // Independent collection; never modifies billing/IPC logic.
+
+    match /material_on_site/{mosId} {
+      allow read:   if isSignedIn() && canReadBillingRef();
+      allow create: if isSignedIn() && canModuleCreate('billing') && hasAssignedContract(request.resource.data.contractId);
+      allow update: if isSignedIn() && (
+        (canModuleEdit('billing') && hasAssignedContract(resource.data.contractId))
+        || isAdmin() || isProjectsManager() || isUserDocAdmin()
+      );
+      allow delete: if false; // soft delete only (isDeleted)
+    }
+
+    match /collections/{collectionId} {
+      allow read:   if isSignedIn() && canModuleView('billing');
+      allow create: if isSignedIn() && canModuleCreate('billing');
+      allow update: if isSignedIn() && canModuleEdit('billing');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Chart of Accounts (GL reference) ───────────────────────────
+
+    match /chart_of_accounts/{accountId} {
+      // Reference data consumed by every financial module — any permitted user may read.
+      allow read:   if isSignedIn() && canReadCoaRef();
+      allow create: if isSignedIn() && canModuleCreate('ledger');
+      allow update: if isSignedIn() && canModuleEdit('ledger');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── GL Transactions ────────────────────────────────────────────
+
+    match /transactions/{transactionId} {
+      // Reports module needs GL transactions for income statement, trial balance, liquidity.
+      allow read:   if isSignedIn() && canReadTransactionsRef();
+      // Operational modules may create their own GL journals without exposing the GL module UI.
+      allow create: if isSignedIn() &&
+        (
+          canModuleCreate('ledger') || canModuleCreate('costs') || canModuleCreate('billing') ||
+          canModuleCreate('inventory') || canModuleCreate('subcontractor') || canModuleEdit('banks')
+        ) &&
+        hasAssignedContract(request.resource.data.costCenterId);
+      allow update: if isSignedIn() &&
+        (
+          canModuleEdit('ledger') || canModuleEdit('costs') || canModuleEdit('billing') ||
+          canModuleEdit('inventory') || canModuleEdit('subcontractor') || canModuleEdit('banks')
+        ) &&
+        hasAssignedContract(resource.data.costCenterId) &&
+        hasAssignedContract(request.resource.data.costCenterId);
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Banks ──────────────────────────────────────────────────────
+
+    match /bank_accounts/{accountId} {
+      allow read:   if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_movements/{movementId} {
+      allow read:   if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_cheques/{chequeId} {
+      allow read:   if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_statements/{statementId} {
+      allow read:   if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /bank_statement_lines/{lineId} {
+      allow read:   if isSignedIn() && canModuleView('banks');
+      allow create: if isSignedIn() && canModuleCreate('banks');
+      allow update: if isSignedIn() && canModuleEdit('banks');
+      allow delete: if isAdmin() || isUserDocAdmin();
+    }
+
+    // ── Settings & Misc ────────────────────────────────────────────
+
+    match /settings/{settingId} {
+      allow read:  if isSignedIn();
+      allow write: if isAdmin() || isUserDocAdmin();
+    }
+
+    match /admin_expenses/{expenseId} {
+      allow read: if isSignedIn();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Admins collection: managed via Firebase Console only.
+    match /admins/{adminId} {
+      allow read:  if isSignedIn();
+      allow write: if false;
+    }
+
+    // Pre-registered user permissions (legacy — kept for backward compat).
+    match /user_permissions/{permId} {
+      allow get:    if true;
+      allow list:   if isSignedIn();
+      allow create, update: if isAdmin() || isUserDocAdmin();
+      allow delete: if isAdmin() || isUserDocAdmin()
+        || (isSignedIn() && isEmailVerified() && permId == request.auth.token.email);
+    }
+
+    // Activity logs — append-only per user; admins read all.
+    match /activity_logs/{logId} {
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.kind is string
+        && request.resource.data.kind.size() < 96
+        && request.resource.data.sessionId is string
+        && request.resource.data.sessionId.size() < 128;
+      allow read:   if isAdmin() || isUserDocAdmin();
+      allow update, delete: if false;
+    }
+  }
+}

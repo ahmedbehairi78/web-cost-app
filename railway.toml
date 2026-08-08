@@ -1,0 +1,13 @@
+# Railway project config — full-stack app (API + SPA) on one service.
+# PostgreSQL: add as separate plugin; link DATABASE_URL to this service.
+# Docs: docs/RAILWAY_DEPLOY.md
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "deploy/railway-api.Dockerfile"
+
+[deploy]
+healthcheckPath = "/api/health/live"
+healthcheckTimeout = 300
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

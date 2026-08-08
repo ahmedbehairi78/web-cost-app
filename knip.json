@@ -1,0 +1,14 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": [
+    "server/src/scripts/*.ts",
+    "electron/main.ts",
+    "electron/preload.ts",
+    "scripts/*.mjs"
+  ],
+  "project": [
+    "src/**/*.{ts,tsx}",
+    "server/src/**/*.ts",
+    "electron/*.ts"
+  ]
+}

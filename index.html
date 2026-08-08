@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="/branding/icon-favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/desktop-icon.png" />
+    <title>Cost Management</title>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: #F5F0F6; }
+      #root { min-height: 100vh; }
+      .boot-splash {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        background: linear-gradient(225deg, #EDE4F2 0%, #F8F5FA 38%, #F3EEF8 62%, #F5F0F6 100%);
+      }
+      .boot-splash-card {
+        width: 100%;
+        max-width: 28rem;
+        background: #fff;
+        border: 1px solid #DEE2E6;
+        border-radius: 1rem;
+        padding: 2rem;
+        box-shadow: 0 25px 50px -12px rgba(113, 75, 103, 0.12);
+        text-align: center;
+      }
+      .boot-splash-logo {
+        display: block;
+        width: min(280px, 90vw);
+        height: auto;
+        margin: 0 auto 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root">
+      <div class="boot-splash" aria-hidden="true">
+        <div class="boot-splash-card">
+          <img class="boot-splash-logo" src="/branding/logo-full.svg" alt="" width="208" height="88" />
+        </div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

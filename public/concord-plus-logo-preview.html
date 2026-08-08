@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Concord Plus — Brand Kit</title>
+  <style>
+    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: #eef1f5; padding: 2rem; color: #333; }
+    h1 { margin-bottom: 0.25rem; }
+    p.sub { color: #666; margin-top: 0; margin-bottom: 1.5rem; }
+    .grid { display: grid; gap: 1rem; max-width: 800px; }
+    .card { background: #fff; border-radius: 12px; padding: 1.5rem 2rem; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .card.dark { background: #1e293b; }
+    .card.soft { background: #f5f0f8; }
+    .label { font-size: 0.8rem; color: #666; margin-bottom: 1rem; }
+    .card.dark .label { color: #94a3b8; }
+    img { max-width: 100%; height: auto; display: block; }
+    .row { display: flex; flex-wrap: wrap; gap: 2rem; align-items: flex-end; }
+    .row span { display: block; font-size: 0.75rem; color: #888; margin-top: 0.5rem; text-align: center; }
+    code { background: #f4f4f5; padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.85em; }
+  </style>
+</head>
+<body>
+  <h1>Concord Plus — Brand Kit</h1>
+  <p class="sub">ملفات الشعار لجميع أجزاء التطبيق</p>
+  <div class="grid">
+    <div class="card">
+      <div class="label">الألوان — Navy <code>#003B71</code> · Orange <code>#F58220</code></div>
+      <img src="./branding/logo-full.svg" alt="" width="360" />
+    </div>
+    <div class="card">
+      <div class="label">شريط علوي — <code>/branding/logo-compact.svg</code></div>
+      <img src="./branding/logo-compact.svg" alt="" width="320" />
+    </div>
+    <div class="card">
+      <div class="label">تسجيل الدخول — <code>/branding/logo-full.svg</code></div>
+      <img src="./branding/logo-full.svg" alt="" width="360" />
+    </div>
+    <div class="card">
+      <div class="label">الطباعة — <code>/branding/logo-print.svg</code></div>
+      <img src="./branding/logo-print.svg" alt="" width="480" />
+    </div>
+    <div class="card soft">
+      <div class="label">أيقونة التطبيق — <code>/branding/icon-app.svg</code></div>
+      <img src="./branding/icon-app.svg" alt="" width="160" />
+    </div>
+    <div class="card">
+      <div class="label">سطح المكتب / Taskbar — <code>/desktop-icon.png</code> (512px)</div>
+      <img src="./desktop-icon.png" alt="" width="128" />
+    </div>
+    <div class="card dark">
+      <div class="label">Favicon — <code>/branding/icon-favicon.svg</code></div>
+      <img src="./branding/icon-favicon.svg" alt="" width="64" />
+    </div>
+    <div class="card">
+      <div class="label">أحجام الأيقونة</div>
+      <div class="row">
+        <div><img src="./branding/icon-app.svg" height="32" alt="" /><span>32px</span></div>
+        <div><img src="./branding/icon-app.svg" height="48" alt="" /><span>48px</span></div>
+        <div><img src="./desktop-icon.png" height="72" alt="" /><span>72px</span></div>
+        <div><img src="./desktop-icon.png" height="128" alt="" /><span>128px</span></div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

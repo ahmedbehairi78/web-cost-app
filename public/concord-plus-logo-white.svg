@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 88" role="img" aria-label="Concord Plus - MEP, Finishing, Infra">
+  <rect width="320" height="88" fill="#FFFFFF"/>
+  <text x="0" y="30" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="-0.02em" fill="#1A3F6B">Concord</text>
+
+  <g transform="translate(0, 38)" fill="#1A3F6B">
+    <path d="M9.5 0L3 11.5h4.2L5.8 22l8.7-11.2H10.2L13.5 0H9.5z"/>
+    <g transform="translate(22, 1)">
+      <path d="M0 18V8.5L4 5.5L8 8.5V18H0z"/>
+      <path d="M8 18V10.5L12 7.5L16 10.5V18H8z"/>
+      <rect x="2" y="12" width="2.5" height="2.5" fill="#ffffff" opacity="0.85"/>
+      <rect x="10" y="13" width="2.5" height="2.5" fill="#ffffff" opacity="0.85"/>
+      <rect x="0" y="18" width="16" height="1.5"/>
+    </g>
+    <g transform="translate(44, 0.5)">
+      <rect x="0" y="0" width="18" height="20" rx="2.5" fill="none" stroke="#1A3F6B" stroke-width="1.8"/>
+      <path d="M4 17V8.5L9 5.5L14 8.5V17H4z"/>
+      <rect x="7" y="10" width="1.2" height="7" fill="#ffffff" opacity="0.9"/>
+      <rect x="10.8" y="10" width="1.2" height="7" fill="#ffffff" opacity="0.9"/>
+    </g>
+  </g>
+
+  <text x="68" y="58" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="30" font-weight="700" letter-spacing="-0.02em" fill="#F78F1E">Plus</text>
+  <text x="0" y="82" font-family="Segoe UI, Helvetica Neue, Arial, sans-serif" font-size="11.5" font-weight="600" letter-spacing="0.08em" fill="#1A3F6B">MEP &#8226; Finishing &#8226; Infra</text>
+</svg>
