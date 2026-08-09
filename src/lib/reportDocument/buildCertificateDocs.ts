@@ -4,11 +4,17 @@
  * print platform (letterhead + flowing items table + summary + signatures).
  */
 import { formatNumber } from '../numberLocale';
+import { roundMoney } from '../money';
+import { amountInWordsEgyptianPounds } from '../amountInWordsEn';
+import { buildIpcCoverClosingData } from '../ipcCoverClosing';
+import { BILLING_DEFAULTS, IPC_KIND } from '../../constants/billingDefaults';
 import {
-  deductionPctLabel,
+  buildIpcCoverSheetModel,
+  defaultIpcCoverSheetRates,
+} from '../ipcCoverSheet';
+import {
   groupIpcItemsByChapter,
   ipcPrintTitle,
-  totalIpcDeductions,
   type CompanyPrintInfo,
   type IpcPrintData,
 } from '../ipcPrintData';
@@ -51,11 +57,22 @@ const CERT_FOOTER_NOTE = {
 
 /** Client / subcontractor IPC certificate. */
 export function buildIpcCertificateDocument(
-  input: CertificateDocBase & { data: IpcPrintData; printId: IpcPrintProfileId },
+  input: CertificateDocBase & {
+    data: IpcPrintData;
+    printId: IpcPrintProfileId;
+    /** Cover sheet only (no quantities table) — single A4 portrait page. */
+    coverOnly?: boolean;
+  },
 ): ReportDocument {
-  const { data, language, formatMoney } = input;
+  const { data, language, formatMoney, coverOnly = false } = input;
   const isAr = language === 'ar';
-  const works = data.worksValueExVat;
+  const cover = data.coverWorks;
+  const works =
+    cover && cover.periodWorksTotal > 0 ? cover.periodWorksTotal : data.worksValueExVat;
+  const schedule = data.coverSchedule;
+  const sums = data.coverContractSums;
+  const mos = Number(data.materialsOnSite || 0);
+  const priceAdj = Number(data.priceAdjustment || 0);
 
   const meta: ReportDocKeyValueItem[] = [
     { label: isAr ? 'رقم المستخلص' : 'IPC Number', value: data.documentNumber },
@@ -63,10 +80,139 @@ export function buildIpcCertificateDocument(
   ];
   if (data.projectName) meta.push({ label: isAr ? 'المشروع' : 'Project', value: data.projectName });
   if (data.contractName) meta.push({ label: isAr ? 'العقد' : 'Contract', value: data.contractName });
+  if (data.contractorName) {
+    meta.push({ label: isAr ? 'المقاول' : 'Contractor', value: data.contractorName });
+  }
   if (data.subcontractorName) {
-    meta.push({ label: isAr ? 'المقاول' : 'Subcontractor', value: data.subcontractorName });
+    meta.push({ label: isAr ? 'مقاول الباطن' : 'Subcontractor', value: data.subcontractorName });
   }
   if (data.statusLabel) meta.push({ label: isAr ? 'الحالة' : 'Status', value: data.statusLabel });
+
+  const contractSumItems: ReportDocKeyValueItem[] = [
+    {
+      label: isAr ? 'قيمة العقد الأصلية' : 'Original Contract Sum',
+      value: formatMoney(sums?.originalContractSum ?? 0),
+    },
+    {
+      label: isAr
+        ? 'مبالغ مؤقتة / أوامر تغيير على الحساب'
+        : "Provisional Sums / On Account V.O.'s",
+      value: formatMoney(sums?.provisionalSums ?? 0),
+    },
+    {
+      label: isAr ? 'أوامر تغيير معتمدة (إضافات)' : "Approved V.O.'s (Additions)",
+      value: formatMoney(sums?.approvedVoAdditions ?? 0),
+    },
+    {
+      label: isAr ? 'أوامر تغيير معتمدة (حذف)' : "Approved V.O.'s (Omissions)",
+      value: formatMoney(sums?.approvedVoOmissions ?? 0),
+    },
+    {
+      label: isAr ? 'قيمة العقد المعدّلة' : 'Adjusted Contract Sum',
+      value: formatMoney(sums?.adjustedContractSum ?? 0),
+      emphasize: true,
+    },
+    {
+      label: isAr ? "إجمالي قيم أوامر الموافقة (CAI)" : "Total Values of CAI's",
+      value: formatMoney(sums?.totalCaiValues ?? 0),
+    },
+  ];
+
+  const scheduleItems: ReportDocKeyValueItem[] = [
+    {
+      label: isAr ? 'تاريخ توقيع خطاب الترسية (LOA)' : 'Date of signing LOA',
+      value: schedule?.loaDate ?? '—',
+    },
+    {
+      label: isAr ? 'تاريخ المباشرة' : 'Commencement Date',
+      value: schedule?.commencementDate ?? '—',
+    },
+    {
+      label: isAr ? 'مدة العقد' : 'Contract Duration',
+      value: schedule?.durationLabel ?? '—',
+    },
+    {
+      label: isAr ? 'تمديد المدة' : 'Time Extension',
+      value: schedule?.timeExtensionLabel ?? '—',
+    },
+    {
+      label: isAr ? 'تاريخ الإنجاز' : 'Date of Completion',
+      value: schedule?.completionDate ?? '—',
+    },
+  ];
+
+  // Same sheet model as on-screen IpcCoverPanel (rates VAT-inclusive; Sub = sum of lines).
+  const sheetRates = defaultIpcCoverSheetRates({
+    ...(typeof data.vatPct === 'number' && data.vatPct > 0 ? { vatPct: data.vatPct } : {}),
+    ...data.coverRates,
+  });
+  const sheet = buildIpcCoverSheetModel({
+    grossBasic: cover?.basic.toDateValue ?? 0,
+    provisionalWorks: 0,
+    approvedVoWorks: cover?.additional.toDateValue ?? 0,
+    materialsOnSite: mos,
+    priceAdjustment: priceAdj,
+    rates: sheetRates,
+    advancePaymentTotal: data.advancePaymentTotal,
+    advanceRecovery: data.advancePaymentRecovery,
+    backCharge: data.backChargeAmount,
+    previousPayments: data.previousPayments,
+    netPayable: data.netPayable,
+  });
+  const {
+    grossBasic,
+    provisionalWorks,
+    approvedVoWorks,
+    materialsOnSite: mosLine,
+    priceAdjustment: priceAdjLine,
+    subTotal: workDoneSubTotal,
+    vatPct,
+  } = sheet;
+  const vatPctLabel = ` ${vatPct}%`;
+
+  const coverWorksItems: ReportDocKeyValueItem[] = [
+    {
+      label: isAr
+        ? 'إجمالي قيمة الأعمال المنفذة حتى نهاية فترة المستخلص'
+        : 'Gross Value of Works Executed To End of Invoice Period',
+      value: formatMoney(grossBasic),
+    },
+    {
+      label: isAr
+        ? 'قيمة أعمال المبالغ المؤقتة / أوامر على الحساب حتى نهاية الفترة'
+        : "Value Work Executed Provisional Sums / On Account V.O.'s To End of Invoice Period",
+      value: formatMoney(provisionalWorks),
+    },
+    {
+      label: isAr
+        ? 'قيمة أعمال أوامر التغيير المعتمدة حتى نهاية الفترة'
+        : "Value Work Executed Approved V.O.'s To End of Invoice Period",
+      value: formatMoney(approvedVoWorks),
+    },
+    {
+      label: isAr
+        ? 'مواد بالموقع حتى نهاية الفترة'
+        : 'Materials On Site To End of Invoice Period',
+      value: formatMoney(mosLine),
+    },
+    {
+      label: isAr
+        ? 'دفعات مقابل تعديل الأسعار بسبب تغير التكلفة'
+        : 'Payment against Price Adjustment due to Change in Cost',
+      value: formatMoney(priceAdjLine),
+    },
+    {
+      label: isAr
+        ? `ضريبة القيمة المضافة (VAT${vatPctLabel})`
+        : `Value Added Tax (VAT${vatPctLabel})`,
+      value: isAr ? 'مشمولة' : 'Included',
+    },
+    {
+      label: isAr ? 'Sub - Total' : 'Sub - Total',
+      value: formatMoney(workDoneSubTotal),
+      emphasize: true,
+    },
+  ];
 
   const columns: ReportDocColumn[] = [
     { key: 'chapter', header: isAr ? 'الفصل' : 'Chapter', width: 12 },
@@ -87,7 +233,8 @@ export function buildIpcCertificateDocument(
   for (const { chapterName, items } of groupIpcItemsByChapter(data.items, language)) {
     let chapterTotal = 0;
     for (const item of items) {
-      chapterTotal += item.amount;
+      const periodAmount = Number(item.currentQty || 0) * Number(item.rate || 0);
+      chapterTotal += periodAmount;
       const execPct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
       rows.push({
         chapter: chapterName,
@@ -101,7 +248,7 @@ export function buildIpcCertificateDocument(
         curr: formatNumber(item.currentQty),
         total: formatNumber(item.totalQty),
         execPct: `${execPct.toFixed(1)}%`,
-        amount: item.amount,
+        amount: periodAmount,
       });
     }
     rows.push({
@@ -110,75 +257,200 @@ export function buildIpcCertificateDocument(
     });
   }
 
-  const totalDeductions = totalIpcDeductions(data);
-  const summary: ReportDocKeyValueItem[] = [
-    {
-      label: isAr ? 'قيمة الأعمال (بدون ضريبة)' : 'Work Value (Excl. VAT)',
-      value: formatMoney(works),
-    },
-    { label: isAr ? 'قيمة الضريبة المضافة' : 'VAT Amount', value: formatMoney(data.vatAmount) },
-  ];
-  if (data.execGuaranteeAmount > 0) {
-    summary.push({
-      label: `${isAr ? 'حجز ضمان أعمال' : 'Execution Guarantee'} (${deductionPctLabel(data.execGuaranteeAmount, works)})`,
-      value: formatMoney(data.execGuaranteeAmount),
-    });
-  }
-  if ((data.whtAmount || 0) > 0) {
-    summary.push({
-      label: `${isAr ? 'خصم وإضافة' : 'WHT'} (${deductionPctLabel(data.whtAmount || 0, works)})`,
-      value: formatMoney(data.whtAmount || 0),
-    });
-  }
-  if (data.labourInsuranceAmount > 0) {
-    summary.push({
-      label: `${isAr ? 'التأمينات' : 'Labour Insurance'} (${deductionPctLabel(data.labourInsuranceAmount, works)})`,
-      value: formatMoney(data.labourInsuranceAmount),
-    });
-  }
-  if (data.manpowerLevyAmount > 0) {
-    summary.push({
-      label: `${isAr ? 'القوى العاملة' : 'Manpower Levy'} (${deductionPctLabel(data.manpowerLevyAmount, works, 3)})`,
-      value: formatMoney(data.manpowerLevyAmount),
-    });
-  }
-  if ((data.advancePaymentRecovery || 0) > 0) {
-    summary.push({
-      label: isAr ? 'استرداد دفعة مقدمة' : 'Advance Recovery',
-      value: formatMoney(data.advancePaymentRecovery || 0),
-    });
-  }
-  summary.push({
-    label: isAr ? 'إجمالي الاستقطاعات' : 'Total Deductions',
-    value: formatMoney(totalDeductions),
-  });
-  summary.push({
-    label: isAr ? 'صافي المستحق الصرف' : 'Net Payable',
-    value: formatMoney(data.netPayable),
-    emphasize: true,
-  });
+  const moneyPrefix = isAr ? '' : 'EGP ';
+  const moneyCell = (n: number) => `${moneyPrefix}${formatMoney(n)}`;
+  const deductionAmt = (n: number) => (n === 0 ? moneyCell(0) : `(${moneyCell(Math.abs(n))})`);
 
-  const sections: ReportDocSection[] = [
-    { kind: 'keyValue', items: meta, columnsPerRow: 3 },
-    {
+  type DeductionPrintRow = {
+    item: string;
+    base: string;
+    pct: string;
+    amount: string;
+  };
+
+  const showCoverJll = data.variant === 'billing';
+  const deductionRows: DeductionPrintRow[] = [];
+
+  if (showCoverJll) {
+    deductionRows.push({
+      item: isAr ? 'إجمالي الدفعة المقدمة' : 'Total Advance Payment',
+      base: '',
+      pct: '',
+      amount: moneyCell(sheet.advancePaymentTotal),
+    });
+    deductionRows.push({
+      item: isAr ? 'ناقص: استرداد المقدمة حتى تاريخه' : 'Less : Recovery to Date (AP)',
+      base: '',
+      pct: '',
+      amount: deductionAmt(sheet.advanceRecovery),
+    });
+    deductionRows.push({
+      item: '',
+      base: '',
+      pct: '',
+      amount: moneyCell(sheet.advanceNet),
+    });
+    for (const row of sheet.deductions) {
+      const pctLabel =
+        row.pct != null && Number.isFinite(row.pct)
+          ? `${Number(row.pct).toFixed(row.pct % 1 ? 1 : 0)}%`
+          : '';
+      deductionRows.push({
+        item: isAr ? row.labelAr : row.labelEn,
+        base: row.base != null ? moneyCell(row.base) : '',
+        pct: pctLabel,
+        amount: row.isDeduction ? deductionAmt(row.amount) : moneyCell(row.amount),
+      });
+    }
+    deductionRows.push({
+      item: isAr ? 'مدفوعات سابقة' : 'Previous Payments',
+      base: '',
+      pct: '',
+      amount: deductionAmt(sheet.previousPayments),
+    });
+  } else {
+    const pushSub = (item: string, amount: number) => {
+      if (!(amount > 0)) return;
+      deductionRows.push({ item, base: '', pct: '', amount: deductionAmt(amount) });
+    };
+    pushSub(isAr ? 'حجز ضمان أعمال' : 'Retention Withheld', data.execGuaranteeAmount);
+    pushSub(isAr ? 'خصم وإضافة' : 'WHT', data.whtAmount);
+    pushSub(isAr ? 'تأمينات' : 'Insurance', data.labourInsuranceAmount);
+    pushSub(isAr ? 'قوى عاملة' : 'Labour Force', data.manpowerLevyAmount);
+    pushSub(isAr ? 'استرداد مقدمة' : 'Advance Recovery', data.advancePaymentRecovery);
+  }
+
+  const deductionColumns: ReportDocColumn[] = [
+    { key: 'item', header: isAr ? 'البند' : 'Item', width: 40 },
+    { key: 'base', header: isAr ? 'الأساس' : 'Base', width: 22, numeric: true, align: 'right' },
+    { key: 'pct', header: isAr ? '٪' : '%', width: 10, numeric: true, align: 'right' },
+    { key: 'amount', header: isAr ? 'المبلغ' : 'Amount', width: 28, numeric: true, align: 'right' },
+  ];
+
+  const sections: ReportDocSection[] = [];
+
+  if (showCoverJll) {
+    sections.push({
+      kind: 'twoColumn',
+      left: contractSumItems,
+      right: scheduleItems,
+    });
+    sections.push({
+      kind: 'ipcCoverMain',
+      worksTitle: isAr
+        ? `الأعمال المنفذة والتشوينات حتى ${data.dateLabel}`
+        : `WORK DONE & MATERIALS ON SITE AS OF : ${data.dateLabel}`,
+      worksItems: coverWorksItems,
+      deductionsTitle: isAr ? 'إضافات / استقطاعات' : 'ADDITIONS / OMISSIONS',
+      deductionColumns,
+      deductionRows,
+    });
+    sections.push({
+      kind: 'summary',
+      width: 'wide',
+      items: [
+        {
+          label: isAr ? 'صافي المستحق للتحصيل' : 'NET PAYMENT DUE',
+          value: moneyCell(sheet.netPayable),
+          emphasize: true,
+        },
+      ],
+    });
+    const closing = buildIpcCoverClosingData(amountInWordsEgyptianPounds(data.netPayable), {
+      preparedBy: input.company.coverPreparedBy,
+      approvedBy: input.company.coverApprovedBy,
+      rowHeightMm: 4.0,
+    });
+    sections.push({ kind: 'ipcCoverClosing', ...closing });
+  } else {
+    sections.push({ kind: 'keyValue', items: meta, columnsPerRow: 3 });
+    // Subcontractor IPC — compact summary (not Cover-JLL client layout)
+    const subSummary: ReportDocKeyValueItem[] = [
+      {
+        label: isAr ? 'قيمة أعمال الفترة (بدون ضريبة)' : 'Period Work Value (Excl. VAT)',
+        value: formatMoney(works),
+      },
+      { label: isAr ? 'قيمة الضريبة المضافة' : 'VAT Amount', value: formatMoney(data.vatAmount) },
+    ];
+    for (const row of deductionRows) {
+      subSummary.push({
+        label: row.item,
+        value: row.amount,
+        tone: row.amount.trimStart().startsWith('(') ? 'danger' : undefined,
+      });
+    }
+    subSummary.push({
+      label: isAr ? 'صافي المستحق' : 'Net Payable',
+      value: formatMoney(data.netPayable),
+      emphasize: true,
+    });
+    sections.push({
+      kind: 'summary',
+      title: isAr ? 'الملخص المالي' : 'Financial Summary',
+      items: subSummary,
+    });
+  }
+
+  if (!coverOnly) {
+    sections.push({
       kind: 'table',
+      title: isAr ? 'بنود المستخلص (قائمة الكميات)' : 'IPC line items (quantities)',
       columns,
       rows,
       flow: true,
       totals: { amount: works },
-      totalsLabel: isAr ? 'إجمالي الأعمال' : 'Works Total',
-    },
-    {
-      kind: 'summary',
-      title: isAr ? 'ملخص المستخلص والاستقطاعات' : 'Certificate Summary & Deductions',
-      items: summary,
-    },
-    signaturesSection(isAr),
-  ];
+      totalsLabel: isAr ? 'إجمالي أعمال الفترة' : 'Period Works Total',
+    });
+  }
+  // Cover-JLL already has the Excel closing/signature block on page 1.
+  if (!showCoverJll && !coverOnly) {
+    sections.push(signaturesSection(isAr));
+  }
+
+  const certNoLine =
+    data.ipcKind === IPC_KIND.FINAL
+      ? `Final Payment Certificate No.${data.documentNumber}`
+      : `Interim Payment Certificate No.${data.documentNumber}`;
+  const coverContractLabel =
+    (input.company.coverContractLabel || '').trim() || 'CONSTRUCTION CONTRACT';
+  const coverPage = showCoverJll
+    ? {
+        // Always isolate so the cover sheet gets expanded triple-logo header + title lines
+        // (cover-only is still one physical page — no flowing qty table).
+        isolate: true,
+        hideFooter: true,
+        headerVariant: 'tripleLogo' as const,
+        titleLines: [
+          (data.projectName || '').trim() || '—',
+          coverContractLabel,
+          certNoLine,
+        ],
+      }
+    : undefined;
+
+  const coverLayout =
+    showCoverJll
+      ? {
+          pageSize: 'A4' as const,
+          orientation: 'portrait' as const,
+          density: 'compact' as const,
+          marginPreset: 'narrow' as const,
+          headerShowCompany: false,
+          headerShowAddress: false,
+          headerShowTaxId: false,
+          headerShowTitle: coverOnly ? false : true,
+          headerShowMeta: coverOnly ? false : true,
+          ...(coverOnly ? { showFooter: false as const } : {}),
+        }
+      : undefined;
 
   return buildTableReportDocument({
     reportId: input.printId,
-    title: ipcPrintTitle(data, language),
+    title: coverOnly
+      ? isAr
+        ? `كفر المستخلص — ${data.documentNumber}`
+        : `IPC Cover — ${data.documentNumber}`
+      : ipcPrintTitle(data, language),
     language,
     company: input.company,
     storedProfiles: input.storedProfiles,
@@ -187,8 +459,10 @@ export function buildIpcCertificateDocument(
     columns: [],
     rows: [],
     sections,
-    footerNote: CERT_FOOTER_NOTE[language],
-    filename: `ipc-${data.documentNumber}`,
+    coverPage,
+    layoutOverrides: coverLayout,
+    footerNote: coverOnly ? undefined : CERT_FOOTER_NOTE[language],
+    filename: coverOnly ? `ipc-cover-${data.documentNumber}` : `ipc-${data.documentNumber}`,
   });
 }
 

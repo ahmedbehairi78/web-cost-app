@@ -34,6 +34,7 @@ import {
 } from '../lib/liquidityMetrics';
 import { ProjectCard } from './projects/ProjectCard';
 import { ProjectFormModal, type ProjectFormData } from './projects/ProjectFormModal';
+import { normalizeProjectCoverLogoPath } from '../lib/projectCoverLogos';
 
 const safePct = (num: number | undefined, denom: number | undefined, fallback = 0) =>
   denom && denom > 0 ? (Number(num ?? 0) / denom) * 100 : fallback;
@@ -61,6 +62,9 @@ interface Project {
   collected?: number;
   boqValue?: number;
   voValue?: number;
+  coverLogoLeft?: string | null;
+  coverLogoCenter?: string | null;
+  coverLogoRight?: string | null;
 }
 
 interface Contract {
@@ -137,6 +141,9 @@ const EMPTY_FORM: ProjectFormData = {
   status: 'active',
   boqValue: 0,
   voValue: 0,
+  coverLogoLeft: '',
+  coverLogoCenter: '',
+  coverLogoRight: '',
 };
 
 function projectBudget(project: Project): number {
@@ -468,8 +475,15 @@ export function Projects({ embedded = false }: { embedded?: boolean }) {
     async (formData: ProjectFormData) => {
       setIsSubmitting(true);
       try {
+        const logoOrNull = (v: string) => {
+          const t = normalizeProjectCoverLogoPath(v);
+          return t || null;
+        };
         const projectData = {
           ...formData,
+          coverLogoLeft: logoOrNull(formData.coverLogoLeft),
+          coverLogoCenter: logoOrNull(formData.coverLogoCenter),
+          coverLogoRight: logoOrNull(formData.coverLogoRight),
           budget: formData.boqValue + formData.voValue,
           ...(isLocalBackend ? {} : { updatedAt: serverTimestamp() }),
         };
@@ -555,6 +569,9 @@ export function Projects({ embedded = false }: { embedded?: boolean }) {
       status: project.status,
       boqValue: project.boqValue || 0,
       voValue: project.voValue || 0,
+      coverLogoLeft: project.coverLogoLeft || '',
+      coverLogoCenter: project.coverLogoCenter || '',
+      coverLogoRight: project.coverLogoRight || '',
     });
     setIsModalOpen(true);
   }, []);

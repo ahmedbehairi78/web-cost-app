@@ -1335,7 +1335,15 @@ export type CompanyPrintSettings = {
   taxId?: string;
   address?: string;
   addressEn?: string;
+  /** Center letterhead logo. */
   headerLogo?: string;
+  /** Optional side logos for IPC cover (physical left / right). */
+  headerLogoLeft?: string;
+  headerLogoRight?: string;
+  /** Middle title line under center logo (IPC cover). */
+  coverContractLabel?: string;
+  coverPreparedBy?: string;
+  coverApprovedBy?: string;
   footerText?: string;
   footerTextEn?: string;
   reportPrintProfiles?: import('../../lib/reportPrintProfiles').StoredReportPrintProfiles;

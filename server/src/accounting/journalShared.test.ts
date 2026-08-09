@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { assertBalanced, buildIpcEntries } from './journalShared.js';
+import { AccountCodes } from './accountCodes.js';
 import { roundMoney } from '../lib/money.js';
 
 describe('buildIpcEntries', () => {
@@ -35,5 +36,31 @@ describe('buildIpcEntries', () => {
     });
     expect(entries.every((e) => e.debit > 0 || e.credit > 0)).toBe(true);
     expect(entries).toHaveLength(3); // receivables + revenue + vat
+  });
+
+  it('includes Cover-JLL deductions and stays balanced', () => {
+    const entries = buildIpcEntries({
+      worksValue: 100_000,
+      vatAmount: 14_000,
+      netPayable: 0,
+      execGuarantee: 5_000,
+      performanceSecurity: 5_000,
+      whtAmount: 1_000,
+      labourInsurance: 5_000,
+      manpowerLevy: 1_000,
+      syndicateStamp: 300,
+      backCharge: 500,
+      advancePaymentRecovery: 2_000,
+      contractName: 'Cover',
+    });
+    expect(() => assertBalanced(entries)).not.toThrow();
+    const codes = entries.map((e) => e.accountCode);
+    expect(codes).toContain(AccountCodes.PERFORMANCE_SECURITY_RECEIVABLE);
+    expect(codes).toContain(AccountCodes.SYNDICATE_STAMP_RECEIVABLE);
+    expect(codes).toContain(AccountCodes.BACK_CHARGE_RECEIVABLE);
+    expect(codes).toContain(AccountCodes.ADVANCE_PAYMENT);
+    const netLine = entries.find((e) => e.accountCode === AccountCodes.RECEIVABLES);
+    // 114000 - (5000+5000+1000+5000+1000+300+500+2000) = 94200
+    expect(netLine?.debit).toBe(94_200);
   });
 });

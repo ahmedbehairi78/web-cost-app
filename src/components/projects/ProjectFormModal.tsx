@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { AnimatePresence, motion } from 'motion/react';
 import { cn } from '../../lib/utils';
+import { normalizeProjectCoverLogoPath } from '../../lib/projectCoverLogos';
 
 export interface ProjectFormData {
   projectCode: string;
@@ -12,6 +13,10 @@ export interface ProjectFormData {
   status: 'active' | 'completed' | 'suspended' | 'cancelled';
   boqValue: number;
   voValue: number;
+  /** IPC cover letterhead — URL or /public path; empty = use company print settings. */
+  coverLogoLeft: string;
+  coverLogoCenter: string;
+  coverLogoRight: string;
 }
 
 export interface ProjectFormModalProps {
@@ -34,6 +39,9 @@ const emptyForm = (): ProjectFormData => ({
   status: 'active',
   boqValue: 0,
   voValue: 0,
+  coverLogoLeft: '',
+  coverLogoCenter: '',
+  coverLogoRight: '',
 });
 
 export function ProjectFormModal({
@@ -75,7 +83,7 @@ export function ProjectFormModal({
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             className={cn(
-              'border rounded-2xl w-full max-w-lg overflow-hidden shadow-2xl transition-colors',
+              'border rounded-2xl w-full max-w-2xl overflow-hidden shadow-2xl transition-colors max-h-[min(95dvh,calc(100vh-2rem))] overflow-y-auto',
               theme === 'dark'
                 ? 'bg-[#151619] border-gray-800'
                 : theme === 'soft'
@@ -114,7 +122,12 @@ export function ProjectFormModal({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                onSubmit(formData);
+                onSubmit({
+                  ...formData,
+                  coverLogoLeft: normalizeProjectCoverLogoPath(formData.coverLogoLeft),
+                  coverLogoCenter: normalizeProjectCoverLogoPath(formData.coverLogoCenter),
+                  coverLogoRight: normalizeProjectCoverLogoPath(formData.coverLogoRight),
+                });
               }}
               className="p-6 space-y-4"
             >
@@ -246,6 +259,74 @@ export function ProjectFormModal({
                       setFormData({ ...formData, voValue: Number(e.target.value) })
                     }
                   />
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-gray-800/40">
+                <p className="text-xs font-bold text-gray-400 uppercase">
+                  {language === 'ar'
+                    ? 'شعارات كفر المستخلص (يسار · وسط · يمين)'
+                    : 'IPC cover logos (left · center · right)'}
+                </p>
+                <p className="text-[11px] text-gray-500 leading-relaxed">
+                  {language === 'ar'
+                    ? 'اكتب مسار الويب مثل /branding/jll.png (الملفات داخل مجلد public/branding). لا تلصق مسار Windows الكامل — يُحوَّل تلقائياً إن لصقته.'
+                    : 'Use a web path like /branding/jll.png (files under public/branding). Do not paste a full Windows path — it is converted automatically if you do.'}
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  {(
+                    [
+                      {
+                        key: 'coverLogoLeft' as const,
+                        labelAr: 'يسار (عميل / استشاري)',
+                        labelEn: 'Left (client / consultant)',
+                      },
+                      {
+                        key: 'coverLogoCenter' as const,
+                        labelAr: 'وسط (شركتكم)',
+                        labelEn: 'Center (your company)',
+                      },
+                      {
+                        key: 'coverLogoRight' as const,
+                        labelAr: 'يمين',
+                        labelEn: 'Right',
+                      },
+                    ] as const
+                  ).map(({ key, labelAr, labelEn }) => (
+                    <div key={key} className="space-y-2">
+                      <label className="text-[10px] font-bold text-gray-400 uppercase">
+                        {language === 'ar' ? labelAr : labelEn}
+                      </label>
+                      <input
+                        type="text"
+                        dir="ltr"
+                        inputMode="url"
+                        autoComplete="off"
+                        spellCheck={false}
+                        placeholder="/branding/jll.png"
+                        className={inputCls}
+                        value={formData[key]}
+                        onChange={(e) => setFormData({ ...formData, [key]: e.target.value })}
+                        onBlur={(e) => {
+                          const normalized = normalizeProjectCoverLogoPath(e.target.value);
+                          if (normalized !== formData[key]) {
+                            setFormData({ ...formData, [key]: normalized });
+                          }
+                        }}
+                      />
+                      {formData[key] ? (
+                        <img
+                          src={normalizeProjectCoverLogoPath(formData[key]) || formData[key]}
+                          alt=""
+                          className="h-10 w-auto max-w-full object-contain bg-white/5 rounded"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).style.visibility = 'hidden';
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                  ))}
                 </div>
               </div>
 

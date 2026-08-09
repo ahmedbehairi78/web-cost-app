@@ -40,6 +40,10 @@ export type ReportDocKeyValueItem = {
   value: string;
   /** Highlight row (net payable, grand total, …). */
   emphasize?: boolean;
+  /** Deduction amount accent (red parentheses style). */
+  tone?: 'danger';
+  /** Excel Sub-Total style: amount then label on one row. */
+  amountFirst?: boolean;
 };
 
 export type ReportDocSignatureBox = {
@@ -77,9 +81,65 @@ export type ReportDocSection =
       kind: 'summary';
       title?: string;
       items: ReportDocKeyValueItem[];
+      /**
+       * `narrow` (default) = right-aligned totals box.
+       * `wide` = full-width cover block (Work Done / Net).
+       */
+      width?: 'narrow' | 'wide';
+    }
+  | {
+      /**
+       * Cover-JLL main body: Work Done + Additions/Omissions in one Excel frame.
+       * Deduction rows render without a column header row.
+       */
+      kind: 'ipcCoverMain';
+      worksTitle: string;
+      worksItems: ReportDocKeyValueItem[];
+      deductionsTitle: string;
+      deductionColumns: ReportDocColumn[];
+      deductionRows: ReportDocRow[];
+    }
+  | {
+      /** Two side-by-side stacks — Cover-JLL contract sums | schedule. */
+      kind: 'twoColumn';
+      title?: string;
+      left: ReportDocKeyValueItem[];
+      right: ReportDocKeyValueItem[];
     }
   | { kind: 'signatures'; title?: string; signatures: ReportDocSignatureBox[] }
-  | { kind: 'note'; text: string };
+  | { kind: 'note'; text: string }
+  | {
+      /** Cover-JLL closing: IN WORDS · prepared/approved · 4 signs · distribution · contractor. */
+      kind: 'ipcCoverClosing';
+      amountInWords: string;
+      fundsLabel: string;
+      preparedByLabel: string;
+      preparedBy: string;
+      approvedByLabel: string;
+      approvedBy: string;
+      signatories: string[];
+      distributionTitle: string;
+      distribution: string[];
+      acceptanceText: string;
+      contractorLabel: string;
+      /** Excel blank rows under Prepared/Approved before signatory titles (default 11). */
+      signatureSpaceRows?: number;
+      /** Excel blank rows above Contractor signature (default 3). */
+      contractorSpaceRows?: number;
+      rowHeightMm?: number;
+    };
+
+/** Cover sheet (client IPC) — triple-logo letterhead + isolated first page. */
+export type ReportCoverPage = {
+  /** Put pre-flow sections alone on sheet 1 (qty table starts on sheet 2). */
+  isolate: boolean;
+  /** No footer on the cover sheet. */
+  hideFooter: boolean;
+  /** Expanded header with left / center / right logos. */
+  headerVariant: 'tripleLogo';
+  /** Lines under the center logo (project · CONSTRUCTION CONTRACT · IPC No.). */
+  titleLines: string[];
+};
 
 export type ReportDocument = {
   id: string;
@@ -121,6 +181,8 @@ export type ReportDocument = {
    * (letterhead + fixed footer per sheet) and top-level `columns`/`rows` are ignored.
    */
   sections?: ReportDocSection[];
+  /** Client IPC cover: first sheet = Cover-JLL only, expanded triple-logo header. */
+  coverPage?: ReportCoverPage;
   /**
    * Pre-chunked pages (e.g. Budget vs Actual matching on-screen sheets).
    * When set, print/PDF emits one letterheaded sheet per chunk.

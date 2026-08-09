@@ -125,8 +125,10 @@ export enum AccountCodes {
   CASH                        = '12102001', // عهدة نقدية
   RECEIVABLES                 = '12201001', // العملاء - مستخلصات تحت التحصيل
   RETENTION_GUARANTEE         = '12202001', // محتجزات الضمان - عملاء
+  PERFORMANCE_SECURITY_RECEIVABLE = '12202002', // ضمان أداء - محتجز عملاء (Cover-JLL)
   /** وسيط استلام الشيك الوارد — مدين عند الاستلام، دائن عند التحصيل البنكي */
   RECEIVED_CHEQUES_CLEARING   = '12203001',
+  BACK_CHARGE_RECEIVABLE      = '12204001', // مبالغ محتجزة / Back charge
   ADVANCE_TO_SUPPLIERS        = '12301001', // مقدمات للموردين
   ADVANCE_TO_SUBCONTRACTORS   = '12302001', // مقدمات لمقاولي الباطن
   EMPLOYEE_ADVANCES           = '12303001', // سلف العاملين (تُستردّ بخصم من الراتب)
@@ -134,6 +136,7 @@ export enum AccountCodes {
   WHT_RECEIVABLE              = '12401002', // ضريبة الخصم والإضافة - مدين (محتجز من العميل)
   SOCIAL_INSURANCE_RECEIVABLE = '12402001', // التأمينات الاجتماعية - مدين
   MANPOWER_LEVY_RECEIVABLE    = '12403001', // القوى العاملة - مدين
+  SYNDICATE_STAMP_RECEIVABLE  = '12404001', // دمغة نقابة المهندسين - مدين
   /** مخزون مشروع — ورقة تحت 127 بكود 8 أرقام */
   PROJECT_INVENTORY           = '12701001', // مخزون مشروع — نموذج / افتراضي
   // ─── الخصوم المتداولة (مستوى 5 — 8 أرقام، كلها تبدأ بـ 21) ──
@@ -217,6 +220,9 @@ export interface IpcEntryParams {
   labourInsurance: number;
   manpowerLevy: number;
   advancePaymentRecovery: number;
+  performanceSecurity?: number;
+  syndicateStamp?: number;
+  backCharge?: number;
   contractName: string;
 }
 
@@ -229,20 +235,33 @@ export function buildIpcEntries(params: IpcEntryParams): JournalEntry[] {
   const labourInsurance = roundMoney(params.labourInsurance);
   const manpowerLevy = roundMoney(params.manpowerLevy);
   const advancePaymentRecovery = roundMoney(params.advancePaymentRecovery);
+  const performanceSecurity = roundMoney(params.performanceSecurity ?? 0);
+  const syndicateStamp = roundMoney(params.syndicateStamp ?? 0);
+  const backCharge = roundMoney(params.backCharge ?? 0);
 
   // Receivables absorbs 2dp rounding so Dr === Cr (same rule as server journalShared).
   const creditTotal = roundMoney(worksValue + vatAmount);
   const otherDebits = roundMoney(
-    execGuarantee + whtAmount + labourInsurance + manpowerLevy + advancePaymentRecovery,
+    execGuarantee +
+      performanceSecurity +
+      whtAmount +
+      labourInsurance +
+      manpowerLevy +
+      syndicateStamp +
+      backCharge +
+      advancePaymentRecovery,
   );
   const netPayable = roundMoney(creditTotal - otherDebits);
 
   const entries: JournalEntry[] = [
     { accountCode: AccountCodes.RECEIVABLES, accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: netPayable, credit: 0 },
     { accountCode: AccountCodes.RETENTION_GUARANTEE, accountName: 'ح/ محتجز ضمان الأعمال', debit: execGuarantee, credit: 0 },
+    { accountCode: AccountCodes.PERFORMANCE_SECURITY_RECEIVABLE, accountName: 'ح/ ضمان أداء - محتجز عملاء', debit: performanceSecurity, credit: 0 },
     { accountCode: AccountCodes.WHT_RECEIVABLE, accountName: 'ح/ مصلحة الضرائب – خصم وإضافة (مدين)', debit: whtAmount, credit: 0 },
     { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية – عمالة غير منتظمة', debit: labourInsurance, credit: 0 },
     { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE, accountName: 'ح/ القوى العاملة (مدين)', debit: manpowerLevy, credit: 0 },
+    { accountCode: AccountCodes.SYNDICATE_STAMP_RECEIVABLE, accountName: 'ح/ دمغة نقابة المهندسين (مدين)', debit: syndicateStamp, credit: 0 },
+    { accountCode: AccountCodes.BACK_CHARGE_RECEIVABLE, accountName: 'ح/ مبالغ محتجزة وخصومات أخرى', debit: backCharge, credit: 0 },
   ];
   if (advancePaymentRecovery > 0) {
     entries.push({
@@ -779,6 +798,9 @@ export const accountingService = {
     labourInsurance: number;
     manpowerLevy: number;
     advancePaymentRecovery: number;
+    performanceSecurity?: number;
+    syndicateStamp?: number;
+    backCharge?: number;
     description: string;
     projectId: string;
     contractId: string;

@@ -8,6 +8,8 @@ import {
   buildSchedulePrintRows,
 } from './buildAnalyticalPrintRows';
 import { renderReportDocumentHtml } from './renderHtml';
+import { buildIpcCertificateDocument } from './buildCertificateDocs';
+import { buildBillingIpcPrintData } from '../ipcPrintData';
 
 const company = {
   companyName: 'شركة اختبار',
@@ -614,5 +616,285 @@ describe('buildConsumptionOrderSections', () => {
     expect(html).not.toContain('إجمالي قيمة');
     expect(html).not.toContain('حساب المصروف');
     expect(html).not.toContain('1.1.1');
+  });
+
+  it('builds client IPC print with Cover-JLL layout (two-column + wide work done + deductions)', () => {
+    const data = buildBillingIpcPrintData({
+      billingNumber: '06',
+      dateLabel: '2026-08-01',
+      projectName: 'Cairo Gate Project',
+      contractName: 'عقد',
+      items: [
+        {
+          itemCode: '1.1',
+          description: 'بند',
+          unit: 'م',
+          rate: 100,
+          previousQty: 0,
+          currentQty: 10,
+          totalQty: 10,
+          amount: 1000,
+        },
+      ],
+      coverWorks: {
+        basic: {
+          previousValue: 0,
+          currentValue: 1000,
+          toDateValue: 1000,
+        },
+        additional: {
+          previousValue: 0,
+          currentValue: 0,
+          toDateValue: 0,
+        },
+        periodWorksTotal: 1000,
+        toDateWorksTotal: 1000,
+      },
+      coverSchedule: {
+        loaDate: '2026-01-01',
+        commencementDate: '2026-01-15',
+        durationLabel: '12 months',
+        timeExtensionLabel: '—',
+        completionDate: '2026-12-31',
+      },
+      coverContractSums: {
+        originalContractSum: 50000,
+        provisionalSums: 0,
+        approvedVoAdditions: 2000,
+        approvedVoOmissions: 0,
+        adjustedContractSum: 52000,
+        totalCaiValues: 0,
+      },
+      worksValueExVat: 1000,
+      vatAmount: 140,
+      execGuaranteeAmount: 50,
+      whtAmount: 10,
+      labourInsuranceAmount: 0,
+      manpowerLevyAmount: 0,
+      advancePaymentRecovery: 0,
+      netPayable: 1080,
+      previousPayments: 100,
+    });
+    const doc = buildIpcCertificateDocument({
+      data,
+      printId: 'billing_ipc',
+      language: 'ar',
+      company: {
+        ...company,
+        headerLogoLeft: '/branding/left.png',
+        headerLogoRight: '/branding/right.png',
+      },
+      formatMoney: (n) => n.toFixed(2),
+    });
+    expect(doc.coverPage?.isolate).toBe(true);
+    expect(doc.coverPage?.hideFooter).toBe(true);
+    expect(doc.coverPage?.headerVariant).toBe('tripleLogo');
+    expect(doc.coverPage?.titleLines).toEqual([
+      'Cairo Gate Project',
+      'CONSTRUCTION CONTRACT',
+      'Interim Payment Certificate No.06',
+    ]);
+    const kinds = (doc.sections || []).map((s) => s.kind);
+    expect(kinds[0]).toBe('twoColumn');
+    expect(kinds).toContain('summary');
+    expect(kinds).toContain('ipcCoverMain');
+    expect(kinds.filter((k) => k === 'table').length).toBeGreaterThanOrEqual(1);
+    const two = (doc.sections || []).find((s) => s.kind === 'twoColumn');
+    expect(two?.kind).toBe('twoColumn');
+    if (two?.kind === 'twoColumn') {
+      expect(two.left.some((i) => i.label.includes('الأصلية'))).toBe(true);
+      expect(two.right.some((i) => i.label.includes('LOA') || i.label.includes('الترسية'))).toBe(true);
+    }
+    const coverMain = (doc.sections || []).find((s) => s.kind === 'ipcCoverMain');
+    expect(coverMain?.kind).toBe('ipcCoverMain');
+    if (coverMain?.kind === 'ipcCoverMain') {
+      expect(coverMain.deductionColumns.map((c) => c.key)).toEqual(['item', 'base', 'pct', 'amount']);
+      expect(coverMain.deductionRows.some((r) => String(r.item).includes('حجز ضمان'))).toBe(true);
+      expect(coverMain.deductionRows.some((r) => String(r.item).includes('إجمالي الدفعة المقدمة') || String(r.item).includes('Total Advance'))).toBe(true);
+      expect(coverMain.worksItems.some((i) => String(i.label).includes('Sub - Total'))).toBe(true);
+    }
+    const html = renderReportDocumentHtml(doc, (n) => n.toFixed(2));
+    expect(html).toContain('sheet-cover');
+    expect(html).toContain('triple-logo-row');
+    expect(html).toContain('cover-title-block');
+    expect(html).toContain('Cairo Gate Project');
+    expect(html).toContain('CONSTRUCTION CONTRACT');
+    expect(html).toContain('Interim Payment Certificate No.06');
+    expect(html).toContain('cover-two-col');
+    expect(html).toContain('cover-main-body');
+    expect(html).toContain('summary-wide');
+    expect(html).toContain('sec-table-bare');
+    expect(html).toContain('Sub - Total');
+    expect(html).toContain('إجمالي الدفعة المقدمة');
+    expect(html).toContain('خصم وإضافة');
+    expect(html).toContain('deduction-neg');
+    expect(html).toContain('cover-closing');
+    expect(html).toContain('IN WORDS:');
+    expect(html).toContain('Funds to be Paid to the Contractor');
+    expect(html).toContain('DISTRIBUTION');
+    expect(html).toContain('JLL Misr LLC');
+    expect((doc.sections || []).some((s) => s.kind === 'ipcCoverClosing')).toBe(true);
+    const closing = (doc.sections || []).find((s) => s.kind === 'ipcCoverClosing');
+    expect(closing?.kind).toBe('ipcCoverClosing');
+    if (closing?.kind === 'ipcCoverClosing') {
+      expect(closing.signatureSpaceRows).toBe(11);
+      expect(closing.contractorSpaceRows).toBe(3);
+    }
+    expect(doc.pageSize).toBe('A4');
+    expect(doc.orientation).toBe('portrait');
+    expect(html).toContain('height:44mm'); // 11 × 4.0mm portrait signature space
+    expect(html).toContain('height:12mm'); // 3 × 4.0mm contractor space
+    expect(html).toContain('خصومات ومبالغ محتجزة');
+    expect(html).toContain('مدفوعات سابقة');
+    expect(html).toContain('cover-frame');
+    expect(html).toContain('cover-in-words');
+    const coverSection = html.split('sheet-cover')[1]?.split('</section>')[0] ?? '';
+    expect(coverSection).not.toContain('aria-label="footer"');
+  });
+
+  it('builds cover-only IPC print as a single A4 portrait page without qty table', () => {
+    const data = buildBillingIpcPrintData({
+      billingNumber: '06',
+      dateLabel: '2026-08-01',
+      projectName: 'Cairo Gate Project',
+      items: [
+        {
+          itemCode: '1.1',
+          description: 'بند',
+          unit: 'م',
+          rate: 100,
+          previousQty: 0,
+          currentQty: 10,
+          totalQty: 10,
+          amount: 1000,
+        },
+      ],
+      coverWorks: {
+        basic: { previousValue: 0, currentValue: 1000, toDateValue: 1000 },
+        additional: { previousValue: 0, currentValue: 0, toDateValue: 0 },
+        periodWorksTotal: 1000,
+        toDateWorksTotal: 1000,
+      },
+      worksValueExVat: 1000,
+      vatAmount: 140,
+      execGuaranteeAmount: 50,
+      whtAmount: 0,
+      labourInsuranceAmount: 0,
+      manpowerLevyAmount: 0,
+      advancePaymentRecovery: 0,
+      netPayable: 1090,
+    });
+    const doc = buildIpcCertificateDocument({
+      data,
+      printId: 'billing_ipc',
+      language: 'en',
+      company,
+      formatMoney: (n) => n.toFixed(2),
+      coverOnly: true,
+    });
+    expect(doc.pageSize).toBe('A4');
+    expect(doc.orientation).toBe('portrait');
+    expect(doc.showFooter).toBe(false);
+    expect(doc.coverPage?.isolate).toBe(true);
+    expect(doc.coverPage?.hideFooter).toBe(true);
+    expect(doc.coverPage?.headerVariant).toBe('tripleLogo');
+    expect(doc.coverPage?.titleLines).toEqual([
+      'Cairo Gate Project',
+      'CONSTRUCTION CONTRACT',
+      'Interim Payment Certificate No.06',
+    ]);
+    expect(doc.sections?.some((s) => s.kind === 'table' && s.flow === true)).toBe(false);
+    expect(doc.sections?.some((s) => s.kind === 'ipcCoverClosing')).toBe(true);
+    const html = renderReportDocumentHtml(doc, (n) => n.toFixed(2));
+    expect(html).toContain('sheet-cover');
+    expect(html).toContain('hdr-cover');
+    expect(html).toContain('triple-logo-row');
+    expect(html).toContain('cover-title-block');
+    expect(html).toContain('Cairo Gate Project');
+    expect(html).toContain('CONSTRUCTION CONTRACT');
+    expect(html).toContain('Interim Payment Certificate No.06');
+    expect(html).toContain('cover-closing');
+    expect(html).toContain('cover-frame');
+    expect(html).toContain('Back Charge &amp; Withheld Amounts');
+    expect(html).toContain('Previous Payments');
+    expect(html).not.toContain('IPC line items');
+    expect(html).not.toContain('aria-label="footer"');
+    // One physical sheet only (`sheet-cover` must not double-count)
+    expect(html.match(/<section class="sheet\b/g)?.length).toBe(1);
+  });
+
+  it('always prints Back Charge and Previous Payments rows even when zero', () => {
+    const data = buildBillingIpcPrintData({
+      billingNumber: '06',
+      dateLabel: '2026-08-01',
+      projectName: 'Cairo Gate Project',
+      items: [],
+      worksValueExVat: 1000,
+      vatAmount: 0,
+      execGuaranteeAmount: 0,
+      whtAmount: 0,
+      labourInsuranceAmount: 0,
+      manpowerLevyAmount: 0,
+      advancePaymentRecovery: 0,
+      netPayable: 1000,
+      backChargeAmount: 0,
+      previousPayments: 0,
+      coverWorks: {
+        basic: { previousValue: 0, currentValue: 1000, toDateValue: 1000 },
+        additional: { previousValue: 0, currentValue: 0, toDateValue: 0 },
+        periodWorksTotal: 1000,
+        toDateWorksTotal: 1000,
+      },
+    });
+    const doc = buildIpcCertificateDocument({
+      data,
+      printId: 'billing_ipc',
+      language: 'en',
+      company,
+      formatMoney: (n) => n.toFixed(2),
+      coverOnly: true,
+    });
+    const html = renderReportDocumentHtml(doc, (n) => n.toFixed(2));
+    expect(html).toContain('Back Charge &amp; Withheld Amounts');
+    expect(html).toContain('Previous Payments');
+    expect(html).toContain('Total Advance Payment');
+    expect(html).toContain('Less : Recovery to Date (AP)');
+    expect(html).toContain('Less Withholding Taxes');
+    expect(html).toContain('cover-main-body');
+    expect(html).toContain('sec-table-bare');
+  });
+
+  it('uses editable coverContractLabel from company print settings', () => {
+    const data = buildBillingIpcPrintData({
+      billingNumber: '06',
+      dateLabel: '2026-08-01',
+      projectName: 'Cairo Gate Project',
+      items: [],
+      worksValueExVat: 1000,
+      vatAmount: 0,
+      execGuaranteeAmount: 0,
+      whtAmount: 0,
+      labourInsuranceAmount: 0,
+      manpowerLevyAmount: 0,
+      advancePaymentRecovery: 0,
+      netPayable: 1000,
+      coverWorks: {
+        basic: { previousValue: 0, currentValue: 1000, toDateValue: 1000 },
+        additional: { previousValue: 0, currentValue: 0, toDateValue: 0 },
+        periodWorksTotal: 1000,
+        toDateWorksTotal: 1000,
+      },
+    });
+    const doc = buildIpcCertificateDocument({
+      data,
+      printId: 'billing_ipc',
+      language: 'en',
+      company: { ...company, coverContractLabel: 'MAIN WORKS CONTRACT' },
+      formatMoney: (n) => n.toFixed(2),
+      coverOnly: true,
+    });
+    expect(doc.coverPage?.titleLines?.[1]).toBe('MAIN WORKS CONTRACT');
+    const html = renderReportDocumentHtml(doc, (n) => n.toFixed(2));
+    expect(html).toContain('MAIN WORKS CONTRACT');
   });
 });

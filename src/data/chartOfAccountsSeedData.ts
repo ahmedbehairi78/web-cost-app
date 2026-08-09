@@ -62,6 +62,7 @@ export const CHART_OF_ACCOUNTS_SEED: SeedAccount[] = [
   { accountCode: '12201', accountName: 'العملاء - مستخلصات تحت التحصيل', accountNameEn: 'Clients - IPCs Under Collection', parentCode: '122', type: 'asset', isGroup: true, status: 'active' },
   { accountCode: '12202', accountName: 'محتجزات الضمان - عملاء',          accountNameEn: 'Retention Guarantee - Clients',   parentCode: '122', type: 'asset', isGroup: true, status: 'active' },
   { accountCode: '12203', accountName: 'شيكات برسم التحصيل',              accountNameEn: 'Cheques Under Collection',        parentCode: '122', type: 'asset', isGroup: true, status: 'active' },
+  { accountCode: '12204', accountName: 'مبالغ محتجزة أخرى - عملاء',       accountNameEn: 'Other Client Withholdings',       parentCode: '122', type: 'asset', isGroup: true, status: 'active' },
 
   // Level 4 — 123 Prepayments
   { accountCode: '12301', accountName: 'مقدمات للموردين',        accountNameEn: 'Advances to Suppliers',       parentCode: '123', type: 'asset', isGroup: true, status: 'active' },
@@ -72,6 +73,7 @@ export const CHART_OF_ACCOUNTS_SEED: SeedAccount[] = [
   { accountCode: '12401', accountName: 'مصلحة الضرائب - خصم وإضافة',   accountNameEn: 'WHT & VAT Input',              parentCode: '124', type: 'asset', isGroup: true, status: 'active' },
   { accountCode: '12402', accountName: 'التأمينات الاجتماعية',         accountNameEn: 'Social Insurance Receivable',  parentCode: '124', type: 'asset', isGroup: true, status: 'active' },
   { accountCode: '12403', accountName: 'القوى العاملة',                accountNameEn: 'Manpower Levy Receivable',     parentCode: '124', type: 'asset', isGroup: true, status: 'active' },
+  { accountCode: '12404', accountName: 'دمغة نقابة المهندسين',         accountNameEn: 'Engineering Syndicate Stamp',  parentCode: '124', type: 'asset', isGroup: true, status: 'active' },
 
   // Level 4 — Other Current Assets
   { accountCode: '12501', accountName: 'حسابات مدينة متنوعة',       accountNameEn: 'Miscellaneous Receivables', parentCode: '125', type: 'asset', isGroup: true, status: 'active' },
@@ -85,7 +87,9 @@ export const CHART_OF_ACCOUNTS_SEED: SeedAccount[] = [
   { accountCode: '12102001', accountName: 'صندوق الشركة',                                    accountNameEn: 'Company Cash Fund',                       parentCode: '12102', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12201001', accountName: 'عملاء - مستخلصات تحت التحصيل',                    accountNameEn: 'Clients - IPCs Under Collection',         parentCode: '12201', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12202001', accountName: 'محتجزات الضمان - عملاء',                          accountNameEn: 'Retention Guarantee - Clients',           parentCode: '12202', type: 'asset', isGroup: false, status: 'active' },
+  { accountCode: '12202002', accountName: 'ضمان أداء - محتجز عملاء',                         accountNameEn: 'Performance Security Receivable',         parentCode: '12202', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12203001', accountName: 'شيكات واردة برسم التحصيل',                        accountNameEn: 'Received Cheques Clearing',               parentCode: '12203', type: 'asset', isGroup: false, status: 'active' },
+  { accountCode: '12204001', accountName: 'مبالغ محتجزة وخصومات أخرى - عملاء',               accountNameEn: 'Back Charge & Other Withholdings',        parentCode: '12204', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12301001', accountName: 'مقدمات للموردين',                                 accountNameEn: 'Advances to Suppliers',                   parentCode: '12301', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12302001', accountName: 'مقدمات لمقاولي الباطن',                           accountNameEn: 'Advances to Subcontractors',              parentCode: '12302', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12303001', accountName: 'سلف العاملين',                                    accountNameEn: 'Employee Advances',                       parentCode: '12303', type: 'asset', isGroup: false, status: 'active' },
@@ -94,6 +98,7 @@ export const CHART_OF_ACCOUNTS_SEED: SeedAccount[] = [
   { accountCode: '12402001', accountName: 'دفعات تحت حساب تأمينات عمالة منتظمة',            accountNameEn: 'Social Insurance - Regular Labour',       parentCode: '12402', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12402002', accountName: 'دفعات تحت حساب تأمينات عمالة قطاعية',            accountNameEn: 'Social Insurance - Casual Labour',        parentCode: '12402', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12403001', accountName: 'دفعات تحت حساب مستحقات القوى العاملة',           accountNameEn: 'Manpower Levy Receivable',                parentCode: '12403', type: 'asset', isGroup: false, status: 'active' },
+  { accountCode: '12404001', accountName: 'دمغة نقابة المهندسين - مدين',                     accountNameEn: 'Engineering Syndicate Stamp Receivable',  parentCode: '12404', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12501001', accountName: 'حسابات مدينة متنوعة أخرى',                       accountNameEn: 'Miscellaneous Receivables',               parentCode: '12501', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12601001', accountName: 'أعمال تحت التنفيذ - عقد رقم 001',                accountNameEn: 'Work In Progress - Contract 001',         parentCode: '12601', type: 'asset', isGroup: false, status: 'active' },
   { accountCode: '12701001', accountName: 'مخزون مشروع — نموذج',                            accountNameEn: 'Project Inventory — Sample',              parentCode: '127', type: 'asset', isGroup: false, status: 'active' },

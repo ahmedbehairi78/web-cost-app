@@ -99,6 +99,11 @@ model Project {
 
   inventoryAccountCode String? @map("inventory_account_code")
 
+  /** IPC Cover-JLL letterhead — override company print logos per project. */
+  coverLogoLeft   String? @map("cover_logo_left")
+  coverLogoCenter String? @map("cover_logo_center")
+  coverLogoRight  String? @map("cover_logo_right")
+
   contracts            Contract[]
   boqItems             BoqItem[]
   billings             Billing[]
@@ -320,6 +325,11 @@ model Billing {
   whtAmount              Decimal  @default(0) @map("wht_amount") @db.Decimal(18, 3)
   labourInsuranceAmount  Decimal  @default(0) @map("labour_insurance_amount") @db.Decimal(18, 3)
   manpowerLevyAmount     Decimal  @default(0) @map("manpower_levy_amount") @db.Decimal(18, 3)
+  performanceSecurityAmount Decimal @default(0) @map("performance_security_amount") @db.Decimal(18, 3)
+  syndicateStampAmount   Decimal  @default(0) @map("syndicate_stamp_amount") @db.Decimal(18, 3)
+  backChargeAmount       Decimal  @default(0) @map("back_charge_amount") @db.Decimal(18, 3)
+  /** Cover-JLL Total Advance Payment (informational; recovery is separate). */
+  advancePaymentTotal    Decimal  @default(0) @map("advance_payment_total") @db.Decimal(18, 3)
   advancePaymentRecovery Decimal  @default(0) @map("advance_payment_recovery") @db.Decimal(18, 3)
   netPayable             Decimal  @default(0) @map("net_payable") @db.Decimal(18, 3)
   status                 String   @default("draft")

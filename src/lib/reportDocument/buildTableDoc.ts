@@ -27,6 +27,10 @@ export type BuildTableDocInput = {
   totalsLabel?: string;
   footerNote?: string;
   filename: string;
+  /** Client IPC Cover-JLL first sheet. */
+  coverPage?: ReportDocument['coverPage'];
+  /** Applied after profile defaults (e.g. force A4 portrait for IPC cover). */
+  layoutOverrides?: Partial<ReturnType<typeof profileToDocLayout>>;
 };
 
 /** Build a ReportDocument from tabular data + company print profile. */
@@ -47,6 +51,8 @@ export function buildTableReportDocument(input: BuildTableDocInput): ReportDocum
     totalsLabel: input.totalsLabel,
     footerNote: input.footerNote,
     filename: input.filename,
+    coverPage: input.coverPage,
     ...profileToDocLayout(profile),
+    ...input.layoutOverrides,
   };
 }

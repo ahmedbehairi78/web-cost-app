@@ -66,6 +66,9 @@ export async function syncBillingJournal(
     labourInsurance: Number(body.labourInsuranceAmount || 0),
     manpowerLevy: Number(body.manpowerLevyAmount || 0),
     advancePaymentRecovery: Number(body.advancePaymentRecovery || 0),
+    performanceSecurity: Number(body.performanceSecurityAmount || 0),
+    syndicateStamp: Number(body.syndicateStampAmount || 0),
+    backCharge: Number(body.backChargeAmount || 0),
     contractName,
   });
 

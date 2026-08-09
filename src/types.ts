@@ -179,6 +179,9 @@ export interface Project {
   status: 'active' | 'completed' | 'suspended' | 'cancelled';
   createdAt: string;
   inventoryAccountCode?: string;
+  coverLogoLeft?: string | null;
+  coverLogoCenter?: string | null;
+  coverLogoRight?: string | null;
   isDeleted?: boolean;
 }
 

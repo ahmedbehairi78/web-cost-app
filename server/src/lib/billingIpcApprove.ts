@@ -17,6 +17,9 @@ function billingToWriteBody(row: {
   labourInsuranceAmount: unknown;
   manpowerLevyAmount: unknown;
   advancePaymentRecovery: unknown;
+  performanceSecurityAmount?: unknown;
+  syndicateStampAmount?: unknown;
+  backChargeAmount?: unknown;
   netPayable: unknown;
   description?: string | null;
 }): BillingWriteBody {
@@ -32,6 +35,9 @@ function billingToWriteBody(row: {
     labourInsuranceAmount: Number(row.labourInsuranceAmount),
     manpowerLevyAmount: Number(row.manpowerLevyAmount),
     advancePaymentRecovery: Number(row.advancePaymentRecovery),
+    performanceSecurityAmount: Number(row.performanceSecurityAmount ?? 0),
+    syndicateStampAmount: Number(row.syndicateStampAmount ?? 0),
+    backChargeAmount: Number(row.backChargeAmount ?? 0),
     netPayable: Number(row.netPayable),
     status: 'approved',
     description: row.description ?? `IPC No ${row.billingNumber}`,
@@ -51,6 +57,9 @@ export function buildBillingIpcPreviewEntries(
     labourInsurance: Number(row.labourInsuranceAmount),
     manpowerLevy: Number(row.manpowerLevyAmount),
     advancePaymentRecovery: Number(row.advancePaymentRecovery),
+    performanceSecurity: Number(row.performanceSecurityAmount ?? 0),
+    syndicateStamp: Number(row.syndicateStampAmount ?? 0),
+    backCharge: Number(row.backChargeAmount ?? 0),
     contractName,
   });
 }

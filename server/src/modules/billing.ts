@@ -83,6 +83,10 @@ billingRouter.post(
           whtAmount: Number(body.whtAmount || 0),
           labourInsuranceAmount: Number(body.labourInsuranceAmount || 0),
           manpowerLevyAmount: Number(body.manpowerLevyAmount || 0),
+          performanceSecurityAmount: Number(body.performanceSecurityAmount || 0),
+          syndicateStampAmount: Number(body.syndicateStampAmount || 0),
+          backChargeAmount: Number(body.backChargeAmount || 0),
+          advancePaymentTotal: Number(body.advancePaymentTotal || 0),
           advancePaymentRecovery: Number(body.advancePaymentRecovery || 0),
           netPayable: Number(body.netPayable || 0),
           status: String(body.status || 'submitted'),
@@ -152,6 +156,18 @@ billingRouter.put(
           whtAmount: Number(body.whtAmount ?? existing.whtAmount),
           labourInsuranceAmount: Number(body.labourInsuranceAmount ?? existing.labourInsuranceAmount),
           manpowerLevyAmount: Number(body.manpowerLevyAmount ?? existing.manpowerLevyAmount),
+          performanceSecurityAmount: Number(
+            body.performanceSecurityAmount ?? (existing as { performanceSecurityAmount?: unknown }).performanceSecurityAmount ?? 0,
+          ),
+          syndicateStampAmount: Number(
+            body.syndicateStampAmount ?? (existing as { syndicateStampAmount?: unknown }).syndicateStampAmount ?? 0,
+          ),
+          backChargeAmount: Number(
+            body.backChargeAmount ?? (existing as { backChargeAmount?: unknown }).backChargeAmount ?? 0,
+          ),
+          advancePaymentTotal: Number(
+            body.advancePaymentTotal ?? (existing as { advancePaymentTotal?: unknown }).advancePaymentTotal ?? 0,
+          ),
           advancePaymentRecovery: Number(body.advancePaymentRecovery ?? existing.advancePaymentRecovery),
           netPayable: Number(body.netPayable ?? existing.netPayable),
           status: String(body.status ?? existing.status),

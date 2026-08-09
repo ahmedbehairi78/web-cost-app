@@ -1,10 +1,25 @@
 import { IPC_KIND, type IpcKind } from '../constants/billingDefaults';
+import type { IpcCoverWorksSplit } from './ipcCoverFromQtyList';
+import type { IpcCoverSchedule } from './ipcCoverSchedule';
+import type { IpcCoverContractSums } from './ipcCoverContractSums';
 import { roundMoney } from './money';
 
 export interface CompanyPrintInfo {
   companyName: string;
   companyNameEn?: string;
+  /** Center letterhead logo (also used as single-logo fallback). */
   headerLogo?: string;
+  /** Optional left / right logos for IPC cover triple letterhead. */
+  headerLogoLeft?: string;
+  headerLogoRight?: string;
+  /**
+   * Middle line under center logo on IPC cover (default: CONSTRUCTION CONTRACT).
+   * Project name and certificate number come from the IPC / project.
+   */
+  coverContractLabel?: string;
+  /** Cover-JLL “Prepared By” / “Approved By” overrides. */
+  coverPreparedBy?: string;
+  coverApprovedBy?: string;
   taxId?: string;
   address?: string;
   addressEn?: string;
@@ -25,6 +40,7 @@ export interface IpcPrintItem {
   currentQty: number;
   totalQty: number;
   amount: number;
+  boqItemId?: string;
 }
 
 export interface IpcPrintData {
@@ -34,15 +50,36 @@ export interface IpcPrintData {
   dateLabel: string;
   projectName?: string;
   contractName?: string;
+  /** Contractor / company performing the works (cover header). */
+  contractorName?: string;
   subcontractorName?: string;
   statusLabel?: string;
   items: IpcPrintItem[];
+  /** Cover split: basic vs VO-additional from the same qty list. */
+  coverWorks?: IpcCoverWorksSplit;
+  /** Cover-JLL schedule block (LOA / commencement / duration / extension / completion). */
+  coverSchedule?: IpcCoverSchedule;
+  /** Cover-JLL contract sums (original / VO / adjusted). */
+  coverContractSums?: IpcCoverContractSums;
+  materialsOnSite?: number;
+  priceAdjustment?: number;
+  /** Cumulative net of prior approved/paid IPCs (cover Previous Payments). */
+  previousPayments?: number;
   worksValueExVat: number;
+  /** Explicit VAT % for cover (BOQ rates are VAT-inclusive; do not derive from vat/works). */
+  vatPct?: number;
+  /** Cover-JLL % rates — must match on-screen IpcCoverPanel. */
+  coverRates?: Partial<import('./ipcCoverSheet').IpcCoverSheetRates>;
   vatAmount: number;
   execGuaranteeAmount: number;
   whtAmount: number;
   labourInsuranceAmount: number;
   manpowerLevyAmount: number;
+  performanceSecurityAmount?: number;
+  syndicateStampAmount?: number;
+  backChargeAmount?: number;
+  /** Total advance payment (cover); recovery is separate. */
+  advancePaymentTotal?: number;
   advancePaymentRecovery: number;
   netPayable: number;
 }
@@ -76,9 +113,12 @@ export function groupIpcItemsByChapter(
 export function totalIpcDeductions(data: IpcPrintData): number {
   return roundMoney(
     data.execGuaranteeAmount +
+      (data.performanceSecurityAmount || 0) +
       (data.whtAmount || 0) +
       data.labourInsuranceAmount +
       data.manpowerLevyAmount +
+      (data.syndicateStampAmount || 0) +
+      (data.backChargeAmount || 0) +
       (data.advancePaymentRecovery || 0),
   );
 }
@@ -88,8 +128,20 @@ export function deductionPctLabel(amount: number, works: number, decimals = 1): 
   return `${((amount / works) * 100).toFixed(decimals)}%`;
 }
 
+/** Excel-style: "5% × base 1,000.00" for deduction lines. */
+export function deductionPctAndBaseLabel(
+  amount: number,
+  works: number,
+  formatMoney: (n: number) => string,
+  decimals = 1,
+): string {
+  if (works <= 0) return '—';
+  return `${deductionPctLabel(amount, works, decimals)} × ${formatMoney(works)}`;
+}
+
 export function mapToIpcPrintItems<
   T extends {
+    boqItemId?: string;
     chapterName?: string;
     sectionName?: string;
     itemCode: string;
@@ -104,6 +156,7 @@ export function mapToIpcPrintItems<
   },
 >(items: T[]): IpcPrintItem[] {
   return items.map((item) => ({
+    boqItemId: item.boqItemId,
     chapterName: item.chapterName,
     sectionName: item.sectionName,
     itemCode: item.itemCode,
@@ -124,14 +177,27 @@ export function buildBillingIpcPrintData(input: {
   dateLabel: string;
   projectName?: string;
   contractName?: string;
+  contractorName?: string;
   statusLabel?: string;
   items: IpcPrintItem[];
+  coverWorks?: IpcCoverWorksSplit;
+  coverSchedule?: IpcCoverSchedule;
+  coverContractSums?: IpcCoverContractSums;
+  materialsOnSite?: number;
+  priceAdjustment?: number;
+  previousPayments?: number;
   worksValueExVat: number;
+  vatPct?: number;
+  coverRates?: Partial<import('./ipcCoverSheet').IpcCoverSheetRates>;
   vatAmount: number;
   execGuaranteeAmount: number;
   whtAmount: number;
   labourInsuranceAmount: number;
   manpowerLevyAmount: number;
+  performanceSecurityAmount?: number;
+  syndicateStampAmount?: number;
+  backChargeAmount?: number;
+  advancePaymentTotal?: number;
   advancePaymentRecovery: number;
   netPayable: number;
 }): IpcPrintData {
@@ -142,14 +208,27 @@ export function buildBillingIpcPrintData(input: {
     dateLabel: input.dateLabel,
     projectName: input.projectName,
     contractName: input.contractName,
+    contractorName: input.contractorName,
     statusLabel: input.statusLabel,
     items: input.items,
+    coverWorks: input.coverWorks,
+    coverSchedule: input.coverSchedule,
+    coverContractSums: input.coverContractSums,
+    materialsOnSite: input.materialsOnSite,
+    priceAdjustment: input.priceAdjustment,
+    previousPayments: input.previousPayments,
     worksValueExVat: input.worksValueExVat,
+    vatPct: input.vatPct,
+    coverRates: input.coverRates,
     vatAmount: input.vatAmount,
     execGuaranteeAmount: input.execGuaranteeAmount,
     whtAmount: input.whtAmount,
     labourInsuranceAmount: input.labourInsuranceAmount,
     manpowerLevyAmount: input.manpowerLevyAmount,
+    performanceSecurityAmount: input.performanceSecurityAmount,
+    syndicateStampAmount: input.syndicateStampAmount,
+    backChargeAmount: input.backChargeAmount,
+    advancePaymentTotal: input.advancePaymentTotal,
     advancePaymentRecovery: input.advancePaymentRecovery,
     netPayable: input.netPayable,
   };

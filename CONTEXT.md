@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-08 (تفكيك ActualCosts/Inventory عرضي · اعتماد IPC موازنة قيد · تخفيف lag Electron · إدخال شبيه بإكسل)
+**آخر تحديث:** 2026-08-09 (شعارات كفر المستخلص لكل مشروع · Cover-JLL)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -174,7 +174,7 @@ web-cost-app/
 
 | الموديول | Firestore | SQLite (محلي) |
 |---|---|---|
-| **المشاريع** | `projects` | بطاقات: `boqValue`/`budget`+`voValue` (لا تحميل كل BOQ)؛ GL cap 2000؛ `ProjectCard`/`ProjectFormModal` |
+| **المشاريع** | `projects` | بطاقات: `boqValue`/`budget`+`voValue` (لا تحميل كل BOQ)؛ GL cap 2000؛ `ProjectCard`/`ProjectFormModal`؛ شعارات كفر IPC اختيارية (`coverLogoLeft|Center|Right` تتجاوز إعدادات الشركة عند الطباعة) |
 | **BOQ** | `boq_items`, `billing` | state النماذج داخل المودالات؛ `BoqItemRow`+`boqRowViewModel`؛ rates · VO · مواد |
 | **التكاليف الفعلية** | `purchase_transactions`, … | فاتورة → مخزن مشروع + GL `12701001` (لا مصروف 511 من الفاتورة) |
 | **المخازن** | `chart_of_accounts` (ربط 127…) | أصناف · رصيد مشروع · **تحويل مشاريع** · صرف/إرجاع · legacy عقود (معلّق فقط) |

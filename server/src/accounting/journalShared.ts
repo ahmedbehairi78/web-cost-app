@@ -46,12 +46,7 @@ export function assertBalanced(entries: JournalEntryInput[]) {
   }
 }
 
-/**
- * Client IPC journal — round each leg to 2dp, then set receivables (net) as residual
- * so Dr === Cr (independent rounding of net/VAT/retention used to fail by 0.01 EGP).
- * `params.netPayable` is advisory; GL uses the derived residual.
- */
-export function buildIpcEntries(params: {
+export type IpcJournalParams = {
   worksValue: number;
   vatAmount: number;
   netPayable: number;
@@ -60,8 +55,19 @@ export function buildIpcEntries(params: {
   labourInsurance: number;
   manpowerLevy: number;
   advancePaymentRecovery: number;
+  performanceSecurity?: number;
+  syndicateStamp?: number;
+  backCharge?: number;
   contractName: string;
-}): JournalEntryInput[] {
+};
+
+/**
+ * Client IPC journal — round each leg to 2dp, then set receivables (net) as residual
+ * so Dr === Cr. Cover-JLL deductions: retention, performance security, WHT, insurance,
+ * labour force, syndicate stamp, back charge, advance recovery.
+ * `params.netPayable` is advisory; GL uses the derived residual.
+ */
+export function buildIpcEntries(params: IpcJournalParams): JournalEntryInput[] {
   const worksValue = roundMoney(params.worksValue);
   const vatAmount = roundMoney(params.vatAmount);
   const execGuarantee = roundMoney(params.execGuarantee);
@@ -69,19 +75,32 @@ export function buildIpcEntries(params: {
   const labourInsurance = roundMoney(params.labourInsurance);
   const manpowerLevy = roundMoney(params.manpowerLevy);
   const advancePaymentRecovery = roundMoney(params.advancePaymentRecovery);
+  const performanceSecurity = roundMoney(params.performanceSecurity ?? 0);
+  const syndicateStamp = roundMoney(params.syndicateStamp ?? 0);
+  const backCharge = roundMoney(params.backCharge ?? 0);
 
   const creditTotal = roundMoney(worksValue + vatAmount);
   const otherDebits = roundMoney(
-    execGuarantee + whtAmount + labourInsurance + manpowerLevy + advancePaymentRecovery,
+    execGuarantee +
+      performanceSecurity +
+      whtAmount +
+      labourInsurance +
+      manpowerLevy +
+      syndicateStamp +
+      backCharge +
+      advancePaymentRecovery,
   );
   const netPayable = roundMoney(creditTotal - otherDebits);
 
   const entries: JournalEntryInput[] = [
     { accountCode: AccountCodes.RECEIVABLES, accountName: `ح/ عملاء عقود المقاولات - ${params.contractName}`, debit: netPayable, credit: 0 },
     { accountCode: AccountCodes.RETENTION_GUARANTEE, accountName: 'ح/ محتجز ضمان الأعمال', debit: execGuarantee, credit: 0 },
+    { accountCode: AccountCodes.PERFORMANCE_SECURITY_RECEIVABLE, accountName: 'ح/ ضمان أداء - محتجز عملاء', debit: performanceSecurity, credit: 0 },
     { accountCode: AccountCodes.WHT_RECEIVABLE, accountName: 'ح/ مصلحة الضرائب - خصم وإضافة (مدين)', debit: whtAmount, credit: 0 },
     { accountCode: AccountCodes.SOCIAL_INSURANCE_RECEIVABLE, accountName: 'ح/ التأمينات الاجتماعية - مدين', debit: labourInsurance, credit: 0 },
     { accountCode: AccountCodes.MANPOWER_LEVY_RECEIVABLE, accountName: 'ح/ القوى العاملة (مدين)', debit: manpowerLevy, credit: 0 },
+    { accountCode: AccountCodes.SYNDICATE_STAMP_RECEIVABLE, accountName: 'ح/ دمغة نقابة المهندسين (مدين)', debit: syndicateStamp, credit: 0 },
+    { accountCode: AccountCodes.BACK_CHARGE_RECEIVABLE, accountName: 'ح/ مبالغ محتجزة وخصومات أخرى', debit: backCharge, credit: 0 },
   ];
   if (advancePaymentRecovery > 0) {
     entries.push({

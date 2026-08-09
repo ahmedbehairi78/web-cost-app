@@ -7,6 +7,7 @@ export type {
   ReportDocSection,
   ReportDocKeyValueItem,
   ReportDocSignatureBox,
+  ReportCoverPage,
 } from './types';
 export { profileToDocLayout, formatDocCell, isNumericReportColumn } from './types';
 export { buildTableReportDocument } from './buildTableDoc';

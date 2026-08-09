@@ -158,7 +158,7 @@ const { t } = useLanguage();
 ### 3.6 الطباعة
 
 - **كل الطباعة موحّدة عبر منصة `reportDocument`** (`src/lib/reportDocument/`): يُبنى **`ReportDocument`** (جداول أو أقسام شهادات `keyValue`/`table`/`summary`/`signatures`/`note`) ثم يُعرض في **`ReportPreviewDialog`** (معاينة iframe + طباعة + PDF + حفظ التصميم) عبر hook **`useReportDocumentPreview`**.
-- بناة المستندات: **`buildTableReportDocument`** للكشوف الجدولية · **`buildCertificateDocs.ts`** لشهادات IPC / MOS / أوامر التغيير / تسوية العهدة.
+- بناة المستندات: **`buildTableReportDocument`** للكشوف الجدولية · **`buildCertificateDocs.ts`** لشهادات IPC / MOS / أوامر التغيير / تسوية العهدة. طباعة مستخلص العميل: **صفحة كفر** (`coverPage.isolate`) بثلاثة شعارات + عنوان تحت الأوسط + الأقسام الثلاثة بدون فوتر؛ ثم قائمة الكميات في الصفحات التالية. شعارات الترويسة: افتراضي من `company_info`؛ تجاوز لكل مشروع عبر `projects.coverLogoLeft|Center|Right` (`mergeCompanyPrintInfoWithProject`).
 - تصاميم الطباعة لكل تقرير في **`src/lib/reportPrintProfiles.ts`** وتُحفَظ عبر **`reportPrintProfilesPersistence.ts`** (local backend أو Firestore) — التحرير من شريط التنسيق داخل حوار المعاينة؛ `PrintSettingsPanel` في إعدادات العرض = بيانات الشركة فقط.
 - **المسار القديم أُزيل** (2026-07-31): لا `printReport.ts` / `triggerReportPrint` / استنساخ DOM، ولا `html2pdf.js` / `jspdf`. لا تستدعِ `window.print()` مباشرة على DOM النافذة — ابنِ `ReportDocument` وافتح المعاينة.
 

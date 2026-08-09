@@ -12,6 +12,8 @@ type PendingPrint = {
   companyInfo: CompanyPrintInfo;
   printReportDate: string;
   scopeLabel?: string;
+  /** Cover sheet only (single A4 portrait) — no quantities. */
+  coverOnly?: boolean;
 };
 
 type PrintLabels = {
@@ -19,6 +21,10 @@ type PrintLabels = {
   hint: string;
   print: string;
   cancel: string;
+};
+
+export type IpcPrintRequestOptions = {
+  coverOnly?: boolean;
 };
 
 /** IPC certificate print — opens the unified report preview dialog. */
@@ -38,8 +44,16 @@ export function useIpcPrintPreview(
       companyInfo: CompanyPrintInfo,
       printReportDate: string,
       scopeLabel?: string,
+      options?: IpcPrintRequestOptions,
     ) => {
-      setPending({ data, printId, companyInfo, printReportDate, scopeLabel });
+      setPending({
+        data,
+        printId,
+        companyInfo,
+        printReportDate,
+        scopeLabel,
+        coverOnly: options?.coverOnly === true,
+      });
     },
     [],
   );
@@ -56,6 +70,7 @@ export function useIpcPrintPreview(
         formatMoney,
         dateLabel: pending.printReportDate,
         scopeLabel: pending.scopeLabel,
+        coverOnly: pending.coverOnly,
       });
     },
     [pending, language, formatMoney],

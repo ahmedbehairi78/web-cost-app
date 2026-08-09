@@ -18,7 +18,8 @@ import { collection, query, where, orderBy, addDoc, updateDoc, writeBatch, doc, 
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService, buildIpcEntries } from '../services/accountingService';
 import { JournalPreviewModal, type JournalPreviewEntry } from './gl/JournalPreviewModal';
-import { cn, normalizeDate } from '../lib/utils';
+import { cn, normalizeDate, roundMoney2 } from '../lib/utils';
+import { coverWhtAmount } from '../lib/ipcCoverMath';
 import { LISTENER_PURCHASE_TX_CAP } from '../constants/dataLimits';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
@@ -26,6 +27,9 @@ import { displayLocale } from '../lib/numberLocale';
 import { usePermissions } from '../context/PermissionsContext';
 import toast from 'react-hot-toast';
 import { IPCFormModal } from './billing/IPCFormModal';
+import { IpcCoverPanel } from './billing/IpcCoverPanel';
+import { buildIpcCoverContractSums } from '../lib/ipcCoverContractSums';
+import { buildIpcCoverSchedule } from '../lib/ipcCoverSchedule';
 import { ManualHelpButton } from './help/ManualHelpButton';
 import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
 import { isLocalBackend } from '../lib/dataBackend';
@@ -38,7 +42,13 @@ import {
   projectsApi,
   purchaseTransactionsApi,
   settingsApi,
+  variationOrdersApi,
 } from '../services/local/modulesApi';
+import {
+  buildIpcCoverWorksSplit,
+  collectVoCreatedBoqItemIds,
+} from '../lib/ipcCoverFromQtyList';
+import type { VariationOrder } from '../types';
 import { useIpcPrintPreview } from '../hooks/useIpcPrintPreview';
 import { useMosPrintPreview } from '../hooks/useMosPrintPreview';
 import { buildMosPrintData } from '../lib/mosPrintData';
@@ -47,24 +57,26 @@ import { findIpcItemsExceedingTender } from '../lib/ipcBoqValidation';
 import { ipcApproveErrorToastMessage } from '../lib/ipcApproveErrorMessage';
 import {
   buildBillingIpcPrintData,
-  deductionPctLabel,
   groupIpcItemsByChapter,
   mapToIpcPrintItems,
-  totalIpcDeductions,
   type CompanyPrintInfo,
 } from '../lib/ipcPrintData';
+import { mergeCompanyPrintInfoWithProject } from '../lib/projectCoverLogos';
 import { formatQuantity } from '../lib/formatQuantity';
 import type { StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { MosExtractModal } from './billing/MosExtractModal';
 import { MosExtractDetail } from './billing/MosExtractDetail';
 import type { MosCertificate } from '../types';
-import { PackageCheck, ChevronDown } from 'lucide-react';
+import { PackageCheck, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Project {
   id: string;
   projectName: string;
   projectCode: string;
+  coverLogoLeft?: string | null;
+  coverLogoCenter?: string | null;
+  coverLogoRight?: string | null;
 }
 
 interface Contract {
@@ -72,6 +84,9 @@ interface Contract {
   contractName: string;
   contractNumber: string;
   projectId: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  contractValue?: number | null;
 }
 
 interface BOQItem {
@@ -128,6 +143,10 @@ interface BillingIPC {
   whtAmount: number;
   labourInsuranceAmount: number;
   manpowerLevyAmount: number;
+  performanceSecurityAmount?: number;
+  syndicateStampAmount?: number;
+  backChargeAmount?: number;
+  advancePaymentTotal?: number;
   advancePaymentRecovery: number;
   netPayable: number;
   status: 'draft' | 'review' | 'submitted' | 'approved' | 'paid';
@@ -221,6 +240,10 @@ function normalizeBilling(row: Record<string, unknown>): BillingIPC {
     whtAmount: Number(row.whtAmount ?? 0),
     labourInsuranceAmount: Number(row.labourInsuranceAmount ?? 0),
     manpowerLevyAmount: Number(row.manpowerLevyAmount ?? 0),
+    performanceSecurityAmount: Number(row.performanceSecurityAmount ?? 0),
+    syndicateStampAmount: Number(row.syndicateStampAmount ?? 0),
+    backChargeAmount: Number(row.backChargeAmount ?? 0),
+    advancePaymentTotal: Number(row.advancePaymentTotal ?? 0),
     advancePaymentRecovery: Number(row.advancePaymentRecovery ?? 0),
     netPayable: Number(row.netPayable ?? 0),
     status: String(row.status ?? 'draft') as BillingIPC['status'],
@@ -259,6 +282,7 @@ function buildBillingPayload(
     date: string;
     items: BillingItem[];
     ipcKind: IpcKind;
+    advancePaymentTotal?: number;
   },
   selectedProjectId: string,
   selectedContractId: string,
@@ -270,6 +294,9 @@ function buildBillingPayload(
     wht: number;
     insurance: number;
     levy: number;
+    performanceSecurity: number;
+    syndicateStamp: number;
+    backCharge: number;
     advance: number;
     net: number;
   },
@@ -288,6 +315,10 @@ function buildBillingPayload(
     whtAmount: amounts.wht,
     labourInsuranceAmount: amounts.insurance,
     manpowerLevyAmount: amounts.levy,
+    performanceSecurityAmount: amounts.performanceSecurity,
+    syndicateStampAmount: amounts.syndicateStamp,
+    backChargeAmount: amounts.backCharge,
+    advancePaymentTotal: Number(formData.advancePaymentTotal || 0),
     advancePaymentRecovery: amounts.advance,
     netPayable: amounts.net,
     status: finalStatus,
@@ -389,6 +420,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const [mosListLoading, setMosListLoading] = useState(false);
   const [approvingMosId, setApprovingMosId] = useState<string | null>(null);
   const [newExtractMenuOpen, setNewExtractMenuOpen] = useState(false);
+  const [showIpcQtyItems, setShowIpcQtyItems] = useState(false);
   const [formData, setFormData] = useState({
     billingNumber: '',
     date: new Date().toISOString().split('T')[0],
@@ -398,6 +430,10 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     whtPct: BILLING_DEFAULTS.WHT_PCT,
     labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
     manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+    performanceSecurityPct: BILLING_DEFAULTS.PERFORMANCE_SECURITY_PCT,
+    syndicateStampPct: BILLING_DEFAULTS.SYNDICATE_STAMP_PCT,
+    backChargeAmount: 0,
+    advancePaymentTotal: 0,
     advancePaymentRecovery: 0,
     ipcKind: IPC_KIND.INTERIM as IpcKind,
   });
@@ -502,6 +538,37 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     { enabled: isLocalBackend && !!selectedContractId, refreshKey: dataRefreshKey },
   );
   const boqItemsRaw = isLocalBackend ? apiBoqItemsRaw : fsBoqItemsRaw;
+
+  const { data: apiApprovedVos } = useApiQuery<VariationOrder>(
+    async () => {
+      if (!selectedContractId) return [];
+      return variationOrdersApi.list({
+        contractId: selectedContractId,
+        status: 'approved',
+      });
+    },
+    [selectedContractId],
+    { enabled: isLocalBackend && !!selectedContractId, refreshKey: dataRefreshKey },
+  );
+
+  const voCreatedBoqItemIds = useMemo(
+    () => collectVoCreatedBoqItemIds(isLocalBackend ? apiApprovedVos : []),
+    [isLocalBackend, apiApprovedVos],
+  );
+
+  const materialsOnSiteTotal = useMemo(() => {
+    if (!selectedContractId) return 0;
+    return mosCertificates
+      .filter((m) => m.status === 'approved' && m.contractId === selectedContractId)
+      .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
+  }, [mosCertificates, selectedContractId]);
+
+  const previousPaymentsTotal = useMemo(() => {
+    return billings
+      .filter((b) => b.status === 'approved' || b.status === 'paid')
+      .filter((b) => !editingIPC || b.id !== editingIPC.id)
+      .reduce((sum, b) => sum + Number(b.netPayable || 0), 0);
+  }, [billings, editingIPC]);
 
   useEffect(() => {
     if (apiProjectsError) apiLoadErrorToast(apiProjectsError, language, language === 'ar' ? 'المشاريع' : 'projects');
@@ -700,20 +767,61 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   }, [purchaseTransactions, selectedContractId]);
 
   const worksValueExVat = useMemo(
-    () => formData.items.reduce((sum, item) => sum + item.amount, 0),
-    [formData.items]
+    () =>
+      formData.items.reduce(
+        (sum, item) => sum + roundMoney2(Number(item.currentQty || 0) * Number(item.rate || 0)),
+        0,
+      ),
+    [formData.items],
   );
 
   const calculateDeductions = useMemo(() => {
-    const vat = worksValueExVat * (formData.vatPct / 100);
-    const exec = worksValueExVat * (formData.execGuaranteePct / 100);
-    const wht = worksValueExVat * (formData.whtPct / 100);
-    const insurance = worksValueExVat * (formData.labourInsurancePct / 100);
-    const levy = worksValueExVat * (formData.manpowerLevyPct / 100);
+    // BOQ rates already include VAT — never add VAT on top of works.
+    const worksInclVat = worksValueExVat;
+    const vatDivisor = 100 + Number(formData.vatPct || 0);
+    const vat =
+      vatDivisor > 0
+        ? roundMoney2((worksInclVat * Number(formData.vatPct || 0)) / vatDivisor)
+        : 0;
+    const exec = worksInclVat * (formData.execGuaranteePct / 100);
+    // Cover-JLL WHT: (Sub − MOS) / (1+VAT%) × WHT% — strip embedded VAT only.
+    const periodSubIncl = worksInclVat + Number(materialsOnSiteTotal || 0);
+    const wht = coverWhtAmount(
+      periodSubIncl,
+      Number(materialsOnSiteTotal || 0),
+      formData.vatPct,
+      formData.whtPct,
+    );
+    const insurance = worksInclVat * (formData.labourInsurancePct / 100);
+    const levy = worksInclVat * (formData.manpowerLevyPct / 100);
+    const performanceSecurity = worksInclVat * (formData.performanceSecurityPct / 100);
+    const syndicateStamp = worksInclVat * (formData.syndicateStampPct / 100);
+    const backCharge = formData.backChargeAmount;
     const advance = formData.advancePaymentRecovery;
-    const net = worksValueExVat + vat - exec - wht - insurance - levy - advance;
-    return { vat, exec, wht, insurance, levy, advance, net };
-  }, [worksValueExVat, formData.vatPct, formData.execGuaranteePct, formData.whtPct, formData.labourInsurancePct, formData.manpowerLevyPct, formData.advancePaymentRecovery]);
+    const net =
+      worksInclVat -
+      exec -
+      performanceSecurity -
+      wht -
+      insurance -
+      levy -
+      syndicateStamp -
+      backCharge -
+      advance;
+    return { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net };
+  }, [
+    worksValueExVat,
+    materialsOnSiteTotal,
+    formData.vatPct,
+    formData.execGuaranteePct,
+    formData.whtPct,
+    formData.labourInsurancePct,
+    formData.manpowerLevyPct,
+    formData.performanceSecurityPct,
+    formData.syndicateStampPct,
+    formData.backChargeAmount,
+    formData.advancePaymentRecovery,
+  ]);
 
   const ipcBoqExceedRows = useMemo(
     () => findIpcItemsExceedingTender(formData.items),
@@ -807,9 +915,10 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     });
 
     // Add Summary Section
-    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions;
-    const totalRetentions = exec + wht + insurance + levy;
-    const totalDeductions = totalRetentions + advance;
+    const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
+      calculateDeductions;
+    const totalDeductions =
+      exec + performanceSecurity + wht + insurance + levy + syndicateStamp + backCharge + advance;
     
     aoa.push([]);
     aoa.push([isAr ? 'الملخص المالي' : 'Financial Summary']);
@@ -824,11 +933,16 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
       isAr ? 'قيمة الأعمال الخاضعة' : 'Base Amount',
       isAr ? 'قيمة المحتجز' : 'Retention Amount'
     ]);
-    aoa.push([isAr ? 'حجز ضمان أعمال' : 'Execution Guarantee', `${formData.execGuaranteePct}%`, totalWorksValue, exec]);
+    aoa.push([isAr ? 'حجز ضمان أعمال' : 'Retention', `${formData.execGuaranteePct}%`, totalWorksValue, exec]);
+    aoa.push([isAr ? 'ضمان أداء' : 'Performance Security', `${formData.performanceSecurityPct}%`, totalWorksValue, performanceSecurity]);
     aoa.push([isAr ? 'مصلحة الضرائب - خصم وإضافة' : 'WHT', `${formData.whtPct}%`, totalWorksValue, wht]);
-    aoa.push([isAr ? 'حجز تحت حساب التأمينات' : 'Labour Insurance', `${formData.labourInsurancePct}%`, totalWorksValue, insurance]);
-    aoa.push([isAr ? 'حجز تحت حساب القوى العاملة' : 'Manpower Levy', `${formData.manpowerLevyPct}%`, totalWorksValue, levy]);
-    aoa.push([isAr ? 'إجمالي المبالغ المحتجزة' : 'Total Retentions', '', '', totalRetentions]);
+    aoa.push([isAr ? 'حجز تحت حساب التأمينات' : 'Social Insurance', `${formData.labourInsurancePct}%`, totalWorksValue, insurance]);
+    aoa.push([isAr ? 'القوى العاملة' : 'Labour Force', `${formData.manpowerLevyPct}%`, totalWorksValue, levy]);
+    aoa.push([isAr ? 'دمغة نقابة المهندسين' : 'Syndicate Stamp', `${formData.syndicateStampPct}%`, totalWorksValue, syndicateStamp]);
+    if (backCharge > 0) {
+      aoa.push([isAr ? 'خصومات ومبالغ محتجزة' : 'Back Charge', '', '', backCharge]);
+    }
+    aoa.push([isAr ? 'إجمالي المبالغ المحتجزة' : 'Total Retentions', '', '', totalDeductions - advance]);
 
     if (advance > 0) {
       aoa.push([isAr ? 'استرداد دفعة مقدمة:' : 'Advance Recovery:', '', '', '', '', '', '', '', '', '', '', advance]);
@@ -868,7 +982,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
               ...item,
               currentQty: currQty,
               totalQty: totalQty,
-              amount: totalQty * item.rate
+              amount: currQty * item.rate,
             };
           }
         }
@@ -894,18 +1008,43 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     }
     if (ipc) {
       setEditingIPC(ipc);
+      const periodBase = (() => {
+        const period = ipc.items.reduce(
+          (s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)),
+          0,
+        );
+        return period > 0 ? period : ipc.worksValueExVat;
+      })();
       setFormData({
         billingNumber: ipc.billingNumber,
         date: normalizeDate(ipc.date),
         items: ipc.items.map(item => {
           const boq = boqItems.find(b => b.id === item.boqItemId);
-          return { ...item, tenderQty: boq?.tenderQty ?? item.tenderQty };
+          const currentQty = Number(item.currentQty || 0);
+          const rate = Number(item.rate || 0);
+          return {
+            ...item,
+            tenderQty: boq?.tenderQty ?? item.tenderQty,
+            amount: roundMoney2(currentQty * rate),
+          };
         }),
-        vatPct: safePct(ipc.vatAmount, ipc.worksValueExVat, BILLING_DEFAULTS.VAT_PCT),
-        execGuaranteePct: safePct(ipc.execGuaranteeAmount, ipc.worksValueExVat, BILLING_DEFAULTS.EXEC_GUARANTEE_PCT),
-        whtPct: safePct(ipc.whtAmount, ipc.worksValueExVat, BILLING_DEFAULTS.WHT_PCT),
-        labourInsurancePct: safePct(ipc.labourInsuranceAmount, ipc.worksValueExVat, BILLING_DEFAULTS.LABOUR_INSURANCE_PCT),
-        manpowerLevyPct: safePct(ipc.manpowerLevyAmount, ipc.worksValueExVat, BILLING_DEFAULTS.MANPOWER_LEVY_PCT),
+        vatPct: safePct(ipc.vatAmount, ipc.worksValueExVat || periodBase, BILLING_DEFAULTS.VAT_PCT),
+        execGuaranteePct: safePct(ipc.execGuaranteeAmount, periodBase, BILLING_DEFAULTS.EXEC_GUARANTEE_PCT),
+        whtPct: safePct(ipc.whtAmount, periodBase, BILLING_DEFAULTS.WHT_PCT),
+        labourInsurancePct: safePct(ipc.labourInsuranceAmount, periodBase, BILLING_DEFAULTS.LABOUR_INSURANCE_PCT),
+        manpowerLevyPct: safePct(ipc.manpowerLevyAmount, periodBase, BILLING_DEFAULTS.MANPOWER_LEVY_PCT),
+        performanceSecurityPct: safePct(
+          ipc.performanceSecurityAmount || 0,
+          periodBase,
+          BILLING_DEFAULTS.PERFORMANCE_SECURITY_PCT,
+        ),
+        syndicateStampPct: safePct(
+          ipc.syndicateStampAmount || 0,
+          periodBase,
+          BILLING_DEFAULTS.SYNDICATE_STAMP_PCT,
+        ),
+        backChargeAmount: ipc.backChargeAmount || 0,
+        advancePaymentTotal: ipc.advancePaymentTotal || 0,
         advancePaymentRecovery: ipc.advancePaymentRecovery || 0,
         ipcKind: ipc.ipcKind === IPC_KIND.FINAL ? IPC_KIND.FINAL : IPC_KIND.INTERIM,
       });
@@ -950,6 +1089,10 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
         whtPct: BILLING_DEFAULTS.WHT_PCT,
         labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
         manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+        performanceSecurityPct: BILLING_DEFAULTS.PERFORMANCE_SECURITY_PCT,
+        syndicateStampPct: BILLING_DEFAULTS.SYNDICATE_STAMP_PCT,
+        backChargeAmount: 0,
+        advancePaymentTotal: 0,
         advancePaymentRecovery: 0,
         ipcKind: defaultKind,
       });
@@ -978,7 +1121,8 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     if (e) e.preventDefault();
     if (!selectedContractId) return;
     setIsSubmitting(true);
-    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions;
+    const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
+      calculateDeductions;
     const contract = contracts.find(c => c.id === selectedContractId);
     
     // Determine the status: if forcedStatus is provided (from Draft button), use it. 
@@ -987,12 +1131,16 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
 
     try {
       const amounts = {
-        worksValueExVat,
+        // Journal expects ex-VAT works + separate VAT (rates on lines are VAT-inclusive).
+        worksValueExVat: roundMoney2(worksValueExVat - vat),
         vat,
         exec,
         wht,
         insurance,
         levy,
+        performanceSecurity,
+        syndicateStamp,
+        backCharge,
         advance,
         net,
       };
@@ -1040,14 +1188,18 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
 
         if (finalStatus !== 'draft') {
           transactionId = await accountingService.recordIPC({
-            worksValue: worksValueExVat,
+            worksValue: roundMoney2(worksValueExVat - vat),
             vatAmount: vat,
             netPayable: net,
             execGuarantee: exec,
             whtAmount: wht,
             labourInsurance: insurance,
             manpowerLevy: levy,
-            advancePaymentRecovery: advance,
+            advancePaymentTotal: formData.advancePaymentTotal || 0,
+      advancePaymentRecovery: advance,
+            performanceSecurity,
+            syndicateStamp,
+            backCharge,
             description: payload.description,
             projectId: selectedProjectId,
             contractId: selectedContractId,
@@ -1107,7 +1259,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     const d = calculateDeductions;
     const contract = contracts.find((c) => c.id === selectedContractId);
     const entries = buildIpcEntries({
-      worksValue: worksValueExVat,
+      worksValue: roundMoney2(worksValueExVat - d.vat),
       vatAmount: d.vat,
       netPayable: d.net,
       execGuarantee: d.exec,
@@ -1115,6 +1267,9 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
       labourInsurance: d.insurance,
       manpowerLevy: d.levy,
       advancePaymentRecovery: d.advance,
+      performanceSecurity: d.performanceSecurity,
+      syndicateStamp: d.syndicateStamp,
+      backCharge: d.backCharge,
       contractName: contract?.contractName || 'N/A',
     });
     setIpcPreview({
@@ -1213,29 +1368,135 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const handlePrintIPC = (ipc: BillingIPC) => {
     const project = projects?.find((p) => p.id === ipc.projectId);
     const contract = contracts.find((c) => c.id === ipc.contractId);
+    const coverWorks = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds);
+    const coverSchedule = buildIpcCoverSchedule({
+      startDate: contract?.startDate,
+      endDate: contract?.endDate,
+      language,
+    });
+    const coverContractSums = buildIpcCoverContractSums({
+      originalContractSum: contract?.contractValue,
+      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
+    });
+    const materialsOnSite = mosCertificates
+      .filter((m) => m.status === 'approved' && m.contractId === ipc.contractId)
+      .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
+    const previousPayments = billings
+      .filter((b) => (b.status === 'approved' || b.status === 'paid') && b.id !== ipc.id)
+      .reduce((sum, b) => sum + Number(b.netPayable || 0), 0);
+    const periodWorks =
+      coverWorks.periodWorksTotal > 0 ? coverWorks.periodWorksTotal : ipc.worksValueExVat;
     const data = buildBillingIpcPrintData({
       ipcKind: ipc.ipcKind,
       billingNumber: ipc.billingNumber,
       dateLabel: formatDate(ipc.date),
       projectName: project?.projectName,
       contractName: contract?.contractName || contract?.contractNumber,
+      contractorName: companyInfo.companyName || companyInfo.companyNameEn,
       statusLabel: ipcStatusLabel(ipc.status, language),
       items: mapToIpcPrintItems(ipc.items || []),
-      worksValueExVat: ipc.worksValueExVat,
+      coverWorks,
+      coverSchedule,
+      coverContractSums,
+      materialsOnSite,
+      previousPayments,
+      worksValueExVat: periodWorks,
+      vatPct: BILLING_DEFAULTS.VAT_PCT,
+      coverRates: {
+        vatPct: BILLING_DEFAULTS.VAT_PCT,
+        whtPct: BILLING_DEFAULTS.WHT_PCT,
+        retentionPct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+        performancePct: BILLING_DEFAULTS.PERFORMANCE_SECURITY_PCT,
+        insurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+        manpowerPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+        syndicatePct: BILLING_DEFAULTS.SYNDICATE_STAMP_PCT,
+      },
       vatAmount: ipc.vatAmount,
       execGuaranteeAmount: ipc.execGuaranteeAmount,
       whtAmount: ipc.whtAmount || 0,
       labourInsuranceAmount: ipc.labourInsuranceAmount,
       manpowerLevyAmount: ipc.manpowerLevyAmount,
+      performanceSecurityAmount: ipc.performanceSecurityAmount || 0,
+      syndicateStampAmount: ipc.syndicateStampAmount || 0,
+      backChargeAmount: ipc.backChargeAmount || 0,
+      advancePaymentTotal: ipc.advancePaymentTotal || 0,
       advancePaymentRecovery: ipc.advancePaymentRecovery || 0,
       netPayable: ipc.netPayable,
     });
     requestPrint(
       data,
       'billing_ipc',
-      companyInfo,
+      mergeCompanyPrintInfoWithProject(companyInfo, project),
       new Date().toLocaleDateString(displayLocale(language)),
       contractScopeLabel(contract),
+    );
+  };
+
+  const handlePrintIPCCover = (ipc: BillingIPC) => {
+    const project = projects?.find((p) => p.id === ipc.projectId);
+    const contract = contracts.find((c) => c.id === ipc.contractId);
+    const coverWorks = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds);
+    const coverSchedule = buildIpcCoverSchedule({
+      startDate: contract?.startDate,
+      endDate: contract?.endDate,
+      language,
+    });
+    const coverContractSums = buildIpcCoverContractSums({
+      originalContractSum: contract?.contractValue,
+      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
+    });
+    const materialsOnSite = mosCertificates
+      .filter((m) => m.status === 'approved' && m.contractId === ipc.contractId)
+      .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
+    const previousPayments = billings
+      .filter((b) => (b.status === 'approved' || b.status === 'paid') && b.id !== ipc.id)
+      .reduce((sum, b) => sum + Number(b.netPayable || 0), 0);
+    const periodWorks =
+      coverWorks.periodWorksTotal > 0 ? coverWorks.periodWorksTotal : ipc.worksValueExVat;
+    const data = buildBillingIpcPrintData({
+      ipcKind: ipc.ipcKind,
+      billingNumber: ipc.billingNumber,
+      dateLabel: formatDate(ipc.date),
+      projectName: project?.projectName,
+      contractName: contract?.contractName || contract?.contractNumber,
+      contractorName: companyInfo.companyName || companyInfo.companyNameEn,
+      statusLabel: ipcStatusLabel(ipc.status, language),
+      items: mapToIpcPrintItems(ipc.items || []),
+      coverWorks,
+      coverSchedule,
+      coverContractSums,
+      materialsOnSite,
+      previousPayments,
+      worksValueExVat: periodWorks,
+      vatPct: BILLING_DEFAULTS.VAT_PCT,
+      coverRates: {
+        vatPct: BILLING_DEFAULTS.VAT_PCT,
+        whtPct: BILLING_DEFAULTS.WHT_PCT,
+        retentionPct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+        performancePct: BILLING_DEFAULTS.PERFORMANCE_SECURITY_PCT,
+        insurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+        manpowerPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+        syndicatePct: BILLING_DEFAULTS.SYNDICATE_STAMP_PCT,
+      },
+      vatAmount: ipc.vatAmount,
+      execGuaranteeAmount: ipc.execGuaranteeAmount,
+      whtAmount: ipc.whtAmount || 0,
+      labourInsuranceAmount: ipc.labourInsuranceAmount,
+      manpowerLevyAmount: ipc.manpowerLevyAmount,
+      performanceSecurityAmount: ipc.performanceSecurityAmount || 0,
+      syndicateStampAmount: ipc.syndicateStampAmount || 0,
+      backChargeAmount: ipc.backChargeAmount || 0,
+      advancePaymentTotal: ipc.advancePaymentTotal || 0,
+      advancePaymentRecovery: ipc.advancePaymentRecovery || 0,
+      netPayable: ipc.netPayable,
+    });
+    requestPrint(
+      data,
+      'billing_ipc',
+      mergeCompanyPrintInfoWithProject(companyInfo, project),
+      new Date().toLocaleDateString(displayLocale(language)),
+      contractScopeLabel(contract),
+      { coverOnly: true },
     );
   };
 
@@ -1243,30 +1504,124 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     if (!editingIPC) return;
     const project = projects?.find((p) => p.id === selectedProjectId);
     const contract = contracts.find((c) => c.id === selectedContractId);
-    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions;
+    const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
+      calculateDeductions;
+    const coverWorks = buildIpcCoverWorksSplit(formData.items, voCreatedBoqItemIds);
+    const coverSchedule = buildIpcCoverSchedule({
+      startDate: contract?.startDate,
+      endDate: contract?.endDate,
+      language,
+    });
+    const coverContractSums = buildIpcCoverContractSums({
+      originalContractSum: contract?.contractValue,
+      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
+    });
     const data = buildBillingIpcPrintData({
       ipcKind: formData.ipcKind,
       billingNumber: formData.billingNumber || editingIPC.billingNumber,
       dateLabel: formatDate(formData.date),
       projectName: project?.projectName,
       contractName: contract?.contractName || contract?.contractNumber,
+      contractorName: companyInfo.companyName || companyInfo.companyNameEn,
       statusLabel: ipcStatusLabel(editingIPC.status, language),
       items: mapToIpcPrintItems(formData.items),
+      coverWorks,
+      coverSchedule,
+      coverContractSums,
+      materialsOnSite: materialsOnSiteTotal,
+      previousPayments: previousPaymentsTotal,
       worksValueExVat: worksValueExVat,
+      vatPct: formData.vatPct,
+      coverRates: {
+        vatPct: formData.vatPct,
+        whtPct: formData.whtPct,
+        retentionPct: formData.execGuaranteePct,
+        performancePct: formData.performanceSecurityPct,
+        insurancePct: formData.labourInsurancePct,
+        manpowerPct: formData.manpowerLevyPct,
+        syndicatePct: formData.syndicateStampPct,
+      },
       vatAmount: vat,
       execGuaranteeAmount: exec,
       whtAmount: wht,
       labourInsuranceAmount: insurance,
       manpowerLevyAmount: levy,
+      performanceSecurityAmount: performanceSecurity,
+      syndicateStampAmount: syndicateStamp,
+      backChargeAmount: backCharge,
+      advancePaymentTotal: formData.advancePaymentTotal || 0,
       advancePaymentRecovery: advance,
       netPayable: net,
     });
     requestPrint(
       data,
       'billing_ipc',
-      companyInfo,
+      mergeCompanyPrintInfoWithProject(companyInfo, project),
       new Date().toLocaleDateString(displayLocale(language)),
       contractScopeLabel(contract),
+    );
+  };
+
+  const handlePrintIPCCoverFromModal = () => {
+    if (!editingIPC) return;
+    const project = projects?.find((p) => p.id === selectedProjectId);
+    const contract = contracts.find((c) => c.id === selectedContractId);
+    const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
+      calculateDeductions;
+    const coverWorks = buildIpcCoverWorksSplit(formData.items, voCreatedBoqItemIds);
+    const coverSchedule = buildIpcCoverSchedule({
+      startDate: contract?.startDate,
+      endDate: contract?.endDate,
+      language,
+    });
+    const coverContractSums = buildIpcCoverContractSums({
+      originalContractSum: contract?.contractValue,
+      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
+    });
+    const data = buildBillingIpcPrintData({
+      ipcKind: formData.ipcKind,
+      billingNumber: formData.billingNumber || editingIPC.billingNumber,
+      dateLabel: formatDate(formData.date),
+      projectName: project?.projectName,
+      contractName: contract?.contractName || contract?.contractNumber,
+      contractorName: companyInfo.companyName || companyInfo.companyNameEn,
+      statusLabel: ipcStatusLabel(editingIPC.status, language),
+      items: mapToIpcPrintItems(formData.items),
+      coverWorks,
+      coverSchedule,
+      coverContractSums,
+      materialsOnSite: materialsOnSiteTotal,
+      previousPayments: previousPaymentsTotal,
+      worksValueExVat: worksValueExVat,
+      vatPct: formData.vatPct,
+      coverRates: {
+        vatPct: formData.vatPct,
+        whtPct: formData.whtPct,
+        retentionPct: formData.execGuaranteePct,
+        performancePct: formData.performanceSecurityPct,
+        insurancePct: formData.labourInsurancePct,
+        manpowerPct: formData.manpowerLevyPct,
+        syndicatePct: formData.syndicateStampPct,
+      },
+      vatAmount: vat,
+      execGuaranteeAmount: exec,
+      whtAmount: wht,
+      labourInsuranceAmount: insurance,
+      manpowerLevyAmount: levy,
+      performanceSecurityAmount: performanceSecurity,
+      syndicateStampAmount: syndicateStamp,
+      backChargeAmount: backCharge,
+      advancePaymentTotal: formData.advancePaymentTotal || 0,
+      advancePaymentRecovery: advance,
+      netPayable: net,
+    });
+    requestPrint(
+      data,
+      'billing_ipc',
+      mergeCompanyPrintInfoWithProject(companyInfo, project),
+      new Date().toLocaleDateString(displayLocale(language)),
+      contractScopeLabel(contract),
+      { coverOnly: true },
     );
   };
 
@@ -1310,6 +1665,9 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
             labourInsurance: ipc.labourInsuranceAmount,
             manpowerLevy: ipc.manpowerLevyAmount,
             advancePaymentRecovery: ipc.advancePaymentRecovery,
+            performanceSecurity: ipc.performanceSecurityAmount || 0,
+            syndicateStamp: ipc.syndicateStampAmount || 0,
+            backCharge: ipc.backChargeAmount || 0,
             contractName: contract?.contractName || 'N/A',
           });
           description =
@@ -1446,27 +1804,38 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const renderIpcDetail = (ipc: BillingIPC) => {
     const printItems = mapToIpcPrintItems(ipc.items || []);
     const chapters = groupIpcItemsByChapter(printItems, language as 'ar' | 'en');
-    const works = ipc.worksValueExVat;
-    const totalDeductions = totalIpcDeductions({
-      variant: 'billing',
-      documentNumber: ipc.billingNumber,
-      dateLabel: formatDate(ipc.date),
-      items: printItems,
-      worksValueExVat: works,
-      vatAmount: ipc.vatAmount,
-      execGuaranteeAmount: ipc.execGuaranteeAmount,
-      whtAmount: ipc.whtAmount || 0,
-      labourInsuranceAmount: ipc.labourInsuranceAmount,
-      manpowerLevyAmount: ipc.manpowerLevyAmount,
-      advancePaymentRecovery: ipc.advancePaymentRecovery || 0,
-      netPayable: ipc.netPayable,
+    const coverSplit = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds);
+    const contract = contracts.find((c) => c.id === ipc.contractId);
+    const coverSchedule = buildIpcCoverSchedule({
+      startDate: contract?.startDate,
+      endDate: contract?.endDate,
+      language,
     });
+    const previousPayments = billings
+      .filter((b) => (b.status === 'approved' || b.status === 'paid') && b.id !== ipc.id)
+      .reduce((sum, b) => sum + Number(b.netPayable || 0), 0);
+    const coverContractSums = buildIpcCoverContractSums({
+      originalContractSum: contract?.contractValue,
+      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
+    });
+    const materialsOnSite = mosCertificates
+      .filter((m) => m.status === 'approved' && m.contractId === ipc.contractId)
+      .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
     const isAr = language === 'ar';
     const tableHeadCls = cn(
       'p-2 whitespace-nowrap',
       theme === 'dark' ? 'border-b border-gray-800 bg-gray-900/50 text-gray-500' : 'border-b border-gray-200 bg-gray-50 text-gray-600',
     );
     const tableCellCls = cn('p-2', theme === 'dark' ? 'text-gray-200' : 'text-gray-700');
+    const coverRates = {
+      vatPct: BILLING_DEFAULTS.VAT_PCT,
+      whtPct: BILLING_DEFAULTS.WHT_PCT,
+      retentionPct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+      performancePct: BILLING_DEFAULTS.PERFORMANCE_SECURITY_PCT,
+      insurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+      manpowerPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+      syndicatePct: BILLING_DEFAULTS.SYNDICATE_STAMP_PCT,
+    };
 
     return (
     <>
@@ -1530,30 +1899,49 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
         </div>
       </div>
 
-      <div className={cn('grid grid-cols-2 md:grid-cols-4 gap-4 py-4 border-t', theme === 'dark' ? 'border-gray-800/50' : 'border-gray-100')}>
-        <div>
-          <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'قيمة الأعمال' : 'Work Value'}</p>
-          <p className="text-sm font-bold">{formatMoney(ipc.worksValueExVat)} <span className="text-[10px] font-normal opacity-50">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-        </div>
-        <div>
-          <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'ضريبة القيمة المضافة' : 'VAT'}</p>
-          <p className="text-sm font-bold text-blue-400">+{formatMoney(ipc.vatAmount)} <span className="text-[10px] font-normal opacity-50">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-        </div>
-        <div>
-          <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'إجمالي الاستقطاعات' : 'Total Deductions'}</p>
-          <p className="text-sm font-bold text-red-400">-{formatMoney((ipc.execGuaranteeAmount + (ipc.whtAmount || 0) + ipc.labourInsuranceAmount + ipc.manpowerLevyAmount + (ipc.advancePaymentRecovery || 0)))} <span className="text-[10px] font-normal opacity-50">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-        </div>
-        <div>
-          <p className="text-[10px] text-gray-500 font-bold uppercase mb-1">{language === 'ar' ? 'صافي المستحق' : 'Net Payable'}</p>
-          <p className="text-lg font-bold text-green-500">{formatMoney(ipc.netPayable)} <span className="text-[10px] font-normal opacity-50">{language === 'ar' ? 'ج.م' : 'EGP'}</span></p>
-        </div>
+      <div className="mb-4">
+        <IpcCoverPanel
+          cover={coverSplit}
+          schedule={coverSchedule}
+          contractSums={coverContractSums}
+          formatMoney={formatMoney}
+          language={language}
+          theme={theme}
+          dir={dir === 'rtl' ? 'rtl' : 'ltr'}
+          asOfDate={formatDate(ipc.date)}
+          materialsOnSite={materialsOnSite}
+          rates={coverRates}
+          advancePaymentTotal={ipc.advancePaymentTotal || 0}
+          advanceRecovery={ipc.advancePaymentRecovery || 0}
+          backCharge={ipc.backChargeAmount || 0}
+          previousPayments={previousPayments}
+          netPayable={ipc.netPayable}
+          preparedBy={companyInfo.coverPreparedBy}
+          approvedBy={companyInfo.coverApprovedBy}
+        />
       </div>
 
       <div className={cn('mt-4 pt-4 border-t space-y-3', theme === 'dark' ? 'border-gray-800/50' : 'border-gray-100')}>
-        <h4 className={sectionTitleCls}>{isAr ? 'بنود الأعمال' : 'Work Items'}</h4>
-        {printItems.length === 0 ? (
-          <p className="text-xs text-gray-500">{isAr ? 'لا توجد بنود في هذا المستخلص.' : 'No line items in this IPC.'}</p>
-        ) : (
+        <button
+          type="button"
+          onClick={() => setShowIpcQtyItems((v) => !v)}
+          className={cn(
+            'w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border text-sm font-bold transition-colors',
+            theme === 'dark'
+              ? 'border-gray-800 bg-gray-900/40 text-blue-300 hover:bg-gray-900'
+              : 'border-gray-200 bg-gray-50 text-blue-700 hover:bg-gray-100',
+          )}
+        >
+          <span>
+            {isAr ? 'بنود المستخلص (قائمة الكميات)' : 'IPC line items (quantities)'}
+            <span className="ms-2 text-[10px] font-normal opacity-70">({printItems.length})</span>
+          </span>
+          {showIpcQtyItems ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+        {showIpcQtyItems ? (
+          printItems.length === 0 ? (
+            <p className="text-xs text-gray-500">{isAr ? 'لا توجد بنود في هذا المستخلص.' : 'No line items in this IPC.'}</p>
+          ) : (
           <div className={cn('overflow-x-auto border rounded-xl', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
             <table className={cn('w-full text-right text-[10px] min-w-[720px]', theme === 'dark' ? 'bg-transparent' : 'bg-white')}>
               <thead>
@@ -1573,13 +1961,17 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
               </thead>
               <tbody className={cn('divide-y', theme === 'dark' ? 'divide-gray-800' : 'divide-gray-100')}>
                 {chapters.map(({ chapterName, items }) => {
-                  const chapterTotal = items.reduce((s, i) => s + i.amount, 0);
+                  const chapterTotal = items.reduce(
+                    (s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)),
+                    0,
+                  );
                   return (
                     <Fragment key={chapterName}>
                       {items.map((item, rowIdx) => {
                         const execPct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
                         const boqItemId = ipc.items.find((row) => row.itemCode === item.itemCode)?.boqItemId;
                         const costLinked = boqItemId ? boqItemIdsWithCost.has(boqItemId) : false;
+                        const periodAmount = roundMoney2(Number(item.currentQty || 0) * Number(item.rate || 0));
                         return (
                           <tr
                             key={`${chapterName}-${item.itemCode}-${rowIdx}`}
@@ -1604,7 +1996,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
                                 {execPct.toFixed(1)}%
                               </span>
                             </td>
-                            <td className={cn(tableCellCls, 'text-center font-mono font-bold text-blue-400')}>{formatMoney(item.amount)}</td>
+                            <td className={cn(tableCellCls, 'text-center font-mono font-bold text-blue-400')}>{formatMoney(periodAmount)}</td>
                           </tr>
                         );
                       })}
@@ -1620,67 +2012,8 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      <div className={cn('mt-4 pt-4 border-t space-y-2', theme === 'dark' ? 'border-gray-800/50' : 'border-gray-100')}>
-        <h4 className={sectionTitleCls}>{isAr ? 'الاستقطاعات بالتفصيل' : 'Deductions Detail'}</h4>
-        <div className={cn('rounded-xl border p-4 space-y-2 text-sm', theme === 'dark' ? 'border-gray-800 bg-gray-900/30' : 'border-gray-200 bg-gray-50')}>
-          <div className="flex justify-between gap-4">
-            <span className="text-gray-500">{isAr ? 'قيمة الأعمال (بدون ضريبة):' : 'Work Value (Excl. VAT):'}</span>
-            <span className="font-bold">{formatMoney(works)}</span>
-          </div>
-          <div className="flex justify-between gap-4">
-            <span className="text-gray-500">{isAr ? 'قيمة الضريبة المضافة:' : 'VAT Amount:'}</span>
-            <span className="font-bold text-blue-400">{formatMoney(ipc.vatAmount)}</span>
-          </div>
-          {ipc.execGuaranteeAmount > 0 && (
-            <div className="flex justify-between gap-4 text-xs">
-              <span className="text-gray-500">
-                {isAr ? 'حجز ضمان أعمال' : 'Execution Guarantee'} ({deductionPctLabel(ipc.execGuaranteeAmount, works)}):
-              </span>
-              <span>{formatMoney(ipc.execGuaranteeAmount)}</span>
-            </div>
-          )}
-          {(ipc.whtAmount || 0) > 0 && (
-            <div className="flex justify-between gap-4 text-xs">
-              <span className="text-gray-500">
-                {isAr ? 'خصم وإضافة' : 'WHT'} ({deductionPctLabel(ipc.whtAmount || 0, works)}):
-              </span>
-              <span>{formatMoney(ipc.whtAmount || 0)}</span>
-            </div>
-          )}
-          {ipc.labourInsuranceAmount > 0 && (
-            <div className="flex justify-between gap-4 text-xs">
-              <span className="text-gray-500">
-                {isAr ? 'التأمينات' : 'Labour Insurance'} ({deductionPctLabel(ipc.labourInsuranceAmount, works)}):
-              </span>
-              <span>{formatMoney(ipc.labourInsuranceAmount)}</span>
-            </div>
-          )}
-          {ipc.manpowerLevyAmount > 0 && (
-            <div className="flex justify-between gap-4 text-xs">
-              <span className="text-gray-500">
-                {isAr ? 'القوى العاملة' : 'Manpower Levy'} ({deductionPctLabel(ipc.manpowerLevyAmount, works, 3)}):
-              </span>
-              <span>{formatMoney(ipc.manpowerLevyAmount)}</span>
-            </div>
-          )}
-          {(ipc.advancePaymentRecovery || 0) > 0 && (
-            <div className="flex justify-between gap-4 text-xs">
-              <span className="text-gray-500">{isAr ? 'استرداد دفعة مقدمة:' : 'Advance Recovery:'}</span>
-              <span>{formatMoney(ipc.advancePaymentRecovery || 0)}</span>
-            </div>
-          )}
-          <div className={cn('flex justify-between gap-4 pt-2 border-t font-bold', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-            <span className="text-red-400">{isAr ? 'إجمالي الاستقطاعات:' : 'Total Deductions:'}</span>
-            <span className="text-red-400">{formatMoney(totalDeductions)}</span>
-          </div>
-          <div className={cn('flex justify-between gap-4 pt-2 border-t', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-            <span className="font-bold text-green-500">{isAr ? 'صافي المستحق الصرف:' : 'Net Payable:'}</span>
-            <span className="font-bold text-green-500 text-lg">{formatMoney(ipc.netPayable)}</span>
-          </div>
-        </div>
+          )
+        ) : null}
       </div>
 
       <div className={cn('mt-4 pt-4 border-t flex flex-wrap justify-between items-center gap-3', theme === 'dark' ? 'border-gray-800/50' : 'border-gray-100')}>
@@ -1694,14 +2027,24 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
             <span>{language === 'ar' ? 'في انتظار تحويل البنك' : 'Awaiting Bank Transfer'}</span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={() => handlePrintIPC(ipc)}
-          className="text-blue-500 hover:text-blue-400 text-xs font-bold flex items-center gap-1 bg-blue-500/10 px-3 py-1.5 rounded-lg transition-colors"
-        >
-          <Printer size={14} />
-          {language === 'ar' ? 'معاينة وطباعة' : 'Preview & Print'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => handlePrintIPCCover(ipc)}
+            className="text-indigo-500 hover:text-indigo-400 text-xs font-bold flex items-center gap-1 bg-indigo-500/10 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Printer size={14} />
+            {t('ipc_print_cover_only')}
+          </button>
+          <button
+            type="button"
+            onClick={() => handlePrintIPC(ipc)}
+            className="text-blue-500 hover:text-blue-400 text-xs font-bold flex items-center gap-1 bg-blue-500/10 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <Printer size={14} />
+            {t('ipc_print_full')}
+          </button>
+        </div>
       </div>
     </>
     );
@@ -2022,7 +2365,12 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
           boqItemIdsWithCost={boqItemIdsWithCost}
           ipcKindReadOnly={!!editingIPC && editingIPC.status !== 'draft'}
           onPrintPreview={editingIPC ? handlePrintIPCFromModal : undefined}
+          onPrintCoverPreview={editingIPC ? handlePrintIPCCoverFromModal : undefined}
           boqExceedCount={ipcBoqExceedRows.length}
+          voCreatedBoqItemIds={voCreatedBoqItemIds}
+          approvedVariationOrders={isLocalBackend ? (apiApprovedVos ?? []) : []}
+          materialsOnSiteTotal={materialsOnSiteTotal}
+          previousPayments={previousPaymentsTotal}
         />
 
       </AnimatePresence>

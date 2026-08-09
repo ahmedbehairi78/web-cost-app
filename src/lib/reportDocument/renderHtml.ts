@@ -157,7 +157,9 @@ function renderCellInner(text: string, col: ReportDocColumn, emphasize = false):
   if (text === '' || text === '—') {
     return `<span class="num-val num-empty">${body}</span>`;
   }
-  return `<span class="num-val" dir="ltr">${body}</span>`;
+  const danger =
+    text.trimStart().startsWith('(') && text.trimEnd().endsWith(')') ? ' deduction-neg' : '';
+  return `<span class="num-val${danger}" dir="ltr">${body}</span>`;
 }
 
 function renderBodyRows(
@@ -233,12 +235,20 @@ function renderHeadCellsFor(columns: ReportDocColumn[]): string {
 
 function renderKeyValueItems(items: ReportDocKeyValueItem[]): string {
   return items
-    .map(
-      (it) => `<div class="kv-item${it.emphasize ? ' kv-strong' : ''}">
+    .map((it) => {
+      const strong = it.emphasize ? ' kv-strong' : '';
+      const tone = it.tone === 'danger' ? ' deduction-neg' : '';
+      if (it.amountFirst) {
+        return `<div class="kv-item kv-amount-first${strong}">
+        <span class="kv-value${tone}">${esc(it.value)}</span>
         <span class="kv-label">${esc(it.label)}</span>
-        <span class="kv-value">${esc(it.value)}</span>
-      </div>`,
-    )
+      </div>`;
+      }
+      return `<div class="kv-item${strong}">
+        <span class="kv-label">${esc(it.label)}</span>
+        <span class="kv-value${tone}">${esc(it.value)}</span>
+      </div>`;
+    })
     .join('');
 }
 
@@ -252,14 +262,16 @@ function renderTableSectionHtml(
   includeTotals: boolean,
   language: 'ar' | 'en',
   formatMoney: (n: number) => string,
+  opts?: { hideHeader?: boolean },
 ): string {
   const headCells = renderHeadCellsFor(section.columns);
   const bodyRows = renderBodyRows(rows, section.columns, formatMoney, language);
   const totalsHtml = includeTotals
     ? renderTotalsRowGeneric(section.columns, section.totals, section.totalsLabel, language, formatMoney)
     : '';
-  return `${renderSectionTitle(section.title)}<table class="sec-table">
-    <thead><tr>${headCells}</tr></thead>
+  const thead = opts?.hideHeader ? '' : `<thead><tr>${headCells}</tr></thead>`;
+  return `${renderSectionTitle(section.title)}<table class="sec-table${opts?.hideHeader ? ' sec-table-bare' : ''}">
+    ${thead}
     <tbody>${bodyRows}</tbody>
     ${totalsHtml ? `<tfoot>${totalsHtml}</tfoot>` : ''}
   </table>`;
@@ -270,13 +282,41 @@ function renderStaticSectionHtml(
   language: 'ar' | 'en',
   formatMoney: (n: number) => string,
 ): string {
+  const frame = (inner: string) => `<div class="cover-frame">${inner}</div>`;
   switch (section.kind) {
     case 'keyValue': {
       const cols = Math.max(1, Math.min(section.columnsPerRow ?? 2, 4));
       return `${renderSectionTitle(section.title)}<div class="kv-grid" style="grid-template-columns: repeat(${cols}, 1fr)">${renderKeyValueItems(section.items)}</div>`;
     }
-    case 'summary':
-      return `${renderSectionTitle(section.title)}<div class="summary-box">${renderKeyValueItems(section.items)}</div>`;
+    case 'summary': {
+      const wide = section.width === 'wide';
+      const body = `${renderSectionTitle(section.title)}<div class="summary-box${wide ? ' summary-wide' : ''}">${renderKeyValueItems(section.items)}</div>`;
+      return wide ? frame(body) : body;
+    }
+    case 'twoColumn': {
+      return frame(`${renderSectionTitle(section.title)}<div class="cover-two-col">
+        <div class="cover-col">${renderKeyValueItems(section.left)}</div>
+        <div class="cover-col">${renderKeyValueItems(section.right)}</div>
+      </div>`);
+    }
+    case 'ipcCoverMain': {
+      const works = `${renderSectionTitle(section.worksTitle)}<div class="summary-box summary-wide">${renderKeyValueItems(section.worksItems)}</div>`;
+      const dedTable = renderTableSectionHtml(
+        {
+          kind: 'table',
+          title: section.deductionsTitle,
+          columns: section.deductionColumns,
+          rows: section.deductionRows,
+          flow: false,
+        },
+        section.deductionRows,
+        false,
+        language,
+        formatMoney,
+        { hideHeader: true },
+      );
+      return frame(`<div class="cover-main-body">${works}${dedTable}</div>`);
+    }
     case 'signatures': {
       const boxes = section.signatures
         .map(
@@ -288,10 +328,52 @@ function renderStaticSectionHtml(
         .join('');
       return `${renderSectionTitle(section.title)}<div class="sign-row">${boxes}</div>`;
     }
+    case 'ipcCoverClosing': {
+      const rowMm = section.rowHeightMm ?? 4.2;
+      const signRows = section.signatureSpaceRows ?? 11;
+      const contractorRows = section.contractorSpaceRows ?? 3;
+      const signH = Math.round(signRows * rowMm * 10) / 10;
+      const contractorH = Math.round(contractorRows * rowMm * 10) / 10;
+      const signs = section.signatories
+        .map(
+          (role) => `<div class="cover-sign-col">
+            <div class="cover-sign-space" style="height:${signH}mm"></div>
+            <p class="cover-sign-line"></p>
+            <p class="cover-sign-role">${esc(role)}</p>
+          </div>`,
+        )
+        .join('');
+      const dist = section.distribution
+        .map((d) => `<li>${esc(d)}</li>`)
+        .join('');
+      return frame(`<div class="cover-closing" dir="ltr">
+        <p class="cover-in-words"><strong>IN WORDS:</strong> ${esc(section.amountInWords)}</p>
+        <p class="cover-funds">${esc(section.fundsLabel)}</p>
+        <div class="cover-prep-row">
+          <span><strong>${esc(section.preparedByLabel)}</strong> ${esc(section.preparedBy)}</span>
+          <span><strong>${esc(section.approvedByLabel)}</strong> ${esc(section.approvedBy)}</span>
+        </div>
+        <div class="cover-sign-row">${signs}</div>
+        <div class="cover-dist-accept">
+          <div class="cover-dist">
+            <p class="cover-dist-title">${esc(section.distributionTitle)}</p>
+            <ul>${dist}</ul>
+          </div>
+          <div class="cover-accept">
+            <p class="cover-accept-text">${esc(section.acceptanceText)}</p>
+            <div class="cover-contractor-space" style="height:${contractorH}mm"></div>
+            <div class="cover-contractor">
+              <p class="cover-sign-line"></p>
+              <p class="cover-sign-role">${esc(section.contractorLabel)}</p>
+            </div>
+          </div>
+        </div>
+      </div>`);
+    }
     case 'note':
       return `<p class="note">${esc(section.text)}</p>`;
     case 'table':
-      return renderTableSectionHtml(section, section.rows, true, language, formatMoney);
+      return frame(renderTableSectionHtml(section, section.rows, true, language, formatMoney));
   }
 }
 
@@ -304,10 +386,23 @@ function sectionWeightRows(section: ReportDocSection): number {
     }
     case 'summary':
       return 2 + section.items.length * 1.2 + (section.title ? 1 : 0);
+    case 'twoColumn': {
+      const n = Math.max(section.left.length, section.right.length);
+      return 2.5 + n * 1.2 + (section.title ? 1 : 0);
+    }
+    case 'ipcCoverMain':
+      return (
+        3 +
+        section.worksItems.length * 1.2 +
+        section.deductionRows.length +
+        2
+      );
     case 'table':
       return 3 + section.rows.length + (section.totals ? 1.5 : 0) + (section.title ? 1 : 0);
     case 'signatures':
       return 8;
+    case 'ipcCoverClosing':
+      return 14;
     case 'note':
       return 2;
   }
@@ -317,6 +412,7 @@ function sectionWeightRows(section: ReportDocSection): number {
  * Build one body-HTML string per sheet from `doc.sections`.
  * Sections before the flowing table render on the first sheet, sections after it
  * on the last sheet; the flowing table is chunked across sheets in between.
+ * When `coverPage.isolate` is set, pre-flow sections alone occupy sheet 1.
  */
 function buildSectionSheetBodies(
   doc: ReportDocument,
@@ -324,6 +420,7 @@ function buildSectionSheetBodies(
 ): string[] {
   const sections = doc.sections ?? [];
   const flowIdx = sections.findIndex((s) => s.kind === 'table' && s.flow === true);
+  const isolateCover = !!doc.coverPage?.isolate;
 
   if (flowIdx === -1) {
     return [sections.map((s) => renderStaticSectionHtml(s, doc.language, formatMoney)).join('\n')];
@@ -338,11 +435,10 @@ function buildSectionSheetBodies(
   let chunks: ReportDocRow[][];
 
   if (fitPerPage != null) {
-    // User-chosen page count: distribute the flowing table evenly.
     chunks = chunkReportRows(rows, fitPerPage);
   } else {
     const perPage = defaultPrintRowsPerPage(doc);
-    const headCost = head.reduce((a, s) => a + sectionWeightRows(s), 0);
+    const headCost = isolateCover ? 0 : head.reduce((a, s) => a + sectionWeightRows(s), 0);
     const tailCost = tail.reduce((a, s) => a + sectionWeightRows(s), 0) + (flow.totals ? 2 : 0);
     chunks = [];
     let i = 0;
@@ -351,7 +447,6 @@ function buildSectionSheetBodies(
       const base = Math.max(5, Math.floor(first ? perPage - headCost : perPage));
       const remaining = rows.length - i;
       let take = Math.min(base, Math.max(remaining, 0));
-      // Reserve room for tail sections + totals when this would be the final sheet.
       if (remaining <= base && remaining > base - Math.ceil(tailCost)) {
         take = Math.max(1, base - Math.ceil(tailCost));
         if (take > remaining) take = remaining;
@@ -362,9 +457,22 @@ function buildSectionSheetBodies(
     } while (i < rows.length);
   }
 
+  if (chunks.length === 0) chunks = [[]];
+
   const headHtml = head.map((s) => renderStaticSectionHtml(s, doc.language, formatMoney)).join('\n');
   const tailHtml = tail.map((s) => renderStaticSectionHtml(s, doc.language, formatMoney)).join('\n');
   const lastIdx = chunks.length - 1;
+
+  if (isolateCover) {
+    const coverBody = headHtml || '<p class="note">—</p>';
+    const dataSheets = chunks.map((chunkRows, idx) => {
+      const parts: string[] = [];
+      parts.push(renderTableSectionHtml(flow, chunkRows, idx === lastIdx, doc.language, formatMoney));
+      if (idx === lastIdx && tailHtml) parts.push(tailHtml);
+      return parts.join('\n');
+    });
+    return [coverBody, ...dataSheets];
+  }
 
   return chunks.map((chunkRows, idx) => {
     const parts: string[] = [];
@@ -373,6 +481,38 @@ function buildSectionSheetBodies(
     if (idx === lastIdx && tailHtml) parts.push(tailHtml);
     return parts.join('\n');
   });
+}
+
+function renderLogoImg(url: string, expanded: boolean): string {
+  return `<div class="logo${expanded ? ' logo-lg' : ''}"><img src="${esc(url)}" alt="" /></div>`;
+}
+
+/** Physical left / center / right logos (always LTR slot order). */
+function renderTripleLogoRow(doc: ReportDocument, expanded: boolean): string {
+  const leftUrl = doc.company.headerLogoLeft?.trim();
+  const centerUrl = resolveHeaderLogo(doc.company.headerLogo);
+  const rightUrl = doc.company.headerLogoRight?.trim();
+  const left = leftUrl
+    ? `<div class="triple-logo-slot triple-start">${renderLogoImg(resolveHeaderLogo(leftUrl), expanded)}</div>`
+    : `<div class="triple-logo-slot triple-start"></div>`;
+  const center = `<div class="triple-logo-slot triple-center">${renderLogoImg(centerUrl, expanded)}</div>`;
+  const right = rightUrl
+    ? `<div class="triple-logo-slot triple-end">${renderLogoImg(resolveHeaderLogo(rightUrl), expanded)}</div>`
+    : `<div class="triple-logo-slot triple-end"></div>`;
+  return `<div class="triple-logo-row" dir="ltr">${left}${center}${right}</div>`;
+}
+
+function renderCoverTitleLines(lines: string[], accent: string): string {
+  if (!lines.length) return '';
+  const body = lines
+    .map((line, i) => {
+      const cls =
+        i === 0 ? 'cover-title-main' : i === lines.length - 1 ? 'cover-title-cert' : 'cover-title-sub';
+      const style = i === lines.length - 1 ? ` style="color:${esc(accent)}"` : '';
+      return `<p class="cover-title-line ${cls}"${style}>${esc(line)}</p>`;
+    })
+    .join('');
+  return `<div class="cover-title-block" dir="ltr">${body}</div>`;
 }
 
 /**
@@ -415,6 +555,8 @@ export function renderReportDocumentHtml(
   const showMeta = doc.headerShowMeta !== false;
   const headerExtra = (doc.headerExtraText || '').trim();
   const footerExtra = (doc.footerExtraText || '').trim();
+  const coverCfg = doc.coverPage;
+  const useTripleLogo = coverCfg?.headerVariant === 'tripleLogo' && doc.showLogo !== false;
 
   const headCells = doc.columns
     .map((c) => {
@@ -444,7 +586,7 @@ export function renderReportDocumentHtml(
       : logoAlign === 'end'
         ? `${logoHtml}${brandTextHtml}`
         : `${brandTextHtml}${logoHtml}`;
-  const brandRow =
+  const defaultBrandRow =
     brandTextHtml || logoHtml
       ? `<div class="brand" data-logo-align="${esc(logoAlign)}" style="justify-content:${logoJustify}${
           logoAlign === 'center' ? ';flex-direction:column;align-items:center' : ''
@@ -464,27 +606,46 @@ export function renderReportDocumentHtml(
         ${totalsHtml ? `<tfoot>${totalsHtml}</tfoot>` : ''}
       </table>`;
       });
-  const pageCount = pageBodies.length;
+      const pageCount = pageBodies.length;
+  const coverIsolated = !!coverCfg?.isolate && pageCount > 0;
 
   const sheetsHtml = pageBodies
     .map((pageBodyHtml, pageIndex) => {
       const pageNo = pageIndex + 1;
       const isLast = pageIndex === pageCount - 1;
+      // Cover letterhead (triple logos + titles + no footer) on sheet 1 when isolate is set.
+      const isCoverSheet = !!coverCfg && coverIsolated && pageIndex === 0;
       const pageLabel =
         doc.language === 'ar' ? `صفحة ${pageNo} من ${pageCount}` : `Page ${pageNo} of ${pageCount}`;
 
-      const titleHtml = showTitle
-        ? `<h1 style="color:${esc(doc.accent)}">${esc(doc.title)}</h1>`
-        : '';
-      // Keep meta on one line with title area — avoid a second tall block.
-      const metaLine = [metaParts, pageCount > 1 ? pageLabel : ''].filter(Boolean).join(' · ');
-      const metaHtml = showMeta && metaLine ? `<p class="scope">${esc(metaLine)}</p>` : '';
-      const headerExtraHtml = headerExtra ? `<p class="hdr-extra">${esc(headerExtra)}</p>` : '';
+      const titleHtml =
+        showTitle && !isCoverSheet
+          ? `<h1 style="color:${esc(doc.accent)}">${esc(doc.title)}</h1>`
+          : '';
+      const metaLine = [metaParts, pageCount > 1 && !isCoverSheet ? pageLabel : '']
+        .filter(Boolean)
+        .join(' · ');
+      const metaHtml =
+        showMeta && metaLine && !isCoverSheet ? `<p class="scope">${esc(metaLine)}</p>` : '';
+      const headerExtraHtml =
+        headerExtra && !isCoverSheet ? `<p class="hdr-extra">${esc(headerExtra)}</p>` : '';
+
+      let brandRow = defaultBrandRow;
+      let coverTitles = '';
+      if (useTripleLogo) {
+        brandRow = renderTripleLogoRow(doc, isCoverSheet);
+        if (isCoverSheet) {
+          coverTitles = renderCoverTitleLines(coverCfg?.titleLines ?? [], doc.accent);
+        }
+      } else if (isCoverSheet && (coverCfg?.titleLines?.length ?? 0) > 0) {
+        coverTitles = renderCoverTitleLines(coverCfg!.titleLines, doc.accent);
+      }
 
       const headerBlock = doc.showHeader
-        ? `<header class="hdr">
+        ? `<header class="hdr${isCoverSheet ? ' hdr-cover' : ''}">
         <div class="accent" style="background:${esc(doc.accent)}"></div>
         ${brandRow}
+        ${coverTitles}
         <div class="hdr-title-block">
           ${titleHtml}
           ${metaHtml}
@@ -492,6 +653,7 @@ export function renderReportDocumentHtml(
         </div>
       </header>`
         : `<header class="hdr hdr-min">
+        ${coverTitles}
         <div class="hdr-title-block">
           ${titleHtml}
           ${metaHtml}
@@ -499,8 +661,9 @@ export function renderReportDocumentHtml(
         </div>
       </header>`;
 
+      const hideFooter = isCoverSheet && coverCfg?.hideFooter !== false;
       const footerParts =
-        doc.showFooter !== false
+        !hideFooter && doc.showFooter !== false
           ? buildFooterParts(doc, pageLabel, isLast, footerExtra)
           : { company: '', center: '', page: '' };
       const hasFooter =
@@ -513,7 +676,7 @@ export function renderReportDocumentHtml(
       </footer>`
         : '';
 
-      return `<section class="sheet${isLast ? ' sheet-last' : ''}">
+      return `<section class="sheet${isLast ? ' sheet-last' : ''}${isCoverSheet ? ' sheet-cover' : ''}">
     ${headerBlock}
     <div class="sheet-body">
       ${pageBodyHtml}
@@ -559,6 +722,11 @@ export function renderReportDocumentHtml(
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* Cover: exact A4 portrait box; body flex distributes so closing stays fully visible. */
+  .sheet-cover {
+    height: ${sheetBox.height};
+    max-height: ${sheetBox.height};
+  }
   .sheet-last {
     break-after: auto;
     page-break-after: auto;
@@ -569,7 +737,9 @@ export function renderReportDocumentHtml(
     padding: 0;
     text-align: ${titleAlign};
   }
+  .hdr.hdr-cover { margin: 0 0 4px; }
   .hdr .accent { height: 2px; margin: 0 0 4px; }
+  .hdr-cover .accent { height: 3px; margin: 0 0 4px; }
   .brand {
     display: flex;
     justify-content: space-between;
@@ -578,9 +748,48 @@ export function renderReportDocumentHtml(
     margin-bottom: 2px;
     text-align: start;
   }
+  .triple-logo-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 4px;
+    min-height: 12mm;
+  }
+  .triple-logo-slot { display: flex; align-items: center; min-width: 0; }
+  .triple-start { justify-content: flex-start; }
+  .triple-center { justify-content: center; }
+  .triple-end { justify-content: flex-end; }
+  .cover-title-block {
+    text-align: center;
+    margin: 2px 0 6px;
+    padding: 0 4px;
+  }
+  .cover-title-line { margin: 0; line-height: 1.2; }
+  .cover-title-main {
+    font-size: 12pt;
+    font-weight: 800;
+    color: #0f172a;
+    margin-bottom: 1px;
+  }
+  .cover-title-sub {
+    font-size: 8.5pt;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #334155;
+    margin-bottom: 1px;
+  }
+  .cover-title-cert {
+    font-size: 10pt;
+    font-weight: 800;
+    margin-top: 1px;
+  }
   .co { margin: 0; font-weight: 700; font-size: ${sizes.co}; line-height: 1.2; }
   .meta { margin: 1px 0 0; font-size: 7pt; color: #64748b; line-height: 1.2; }
   .logo img { height: 8mm; max-width: 36mm; object-fit: contain; }
+  .logo.logo-lg img { height: 14mm; max-width: 48mm; }
+  .sheet-cover .logo img { height: 14mm; max-width: 48mm; }
   .hdr-title-block { margin: 0; }
   h1 {
     margin: 2px 0 0;
@@ -601,6 +810,49 @@ export function renderReportDocumentHtml(
     flex: 0 1 auto;
     min-height: 0;
     overflow: hidden;
+  }
+  .sheet-cover .sheet-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    gap: 5px;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .sheet-cover .sheet-body > .cover-frame {
+    flex: 0 1 auto;
+    min-height: 0;
+  }
+  .sheet-cover .sheet-body > .cover-frame:last-child {
+    flex: 0 0 auto;
+  }
+  .cover-frame {
+    border: 1.25px solid #0f172a;
+    border-radius: 0;
+    padding: 3px 5px 4px;
+    background: #fff;
+  }
+  .cover-frame .cover-two-col,
+  .cover-frame .summary-box,
+  .cover-frame .cover-closing {
+    border: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+  .cover-frame .sec-title {
+    margin: 1px 0 3px;
+  }
+  .cover-frame .sec-table {
+    margin-bottom: 0;
+  }
+  .sheet-cover .kv-item {
+    padding: 3.5px 0;
+  }
+  .sheet-cover th, .sheet-cover td {
+    padding: 3.5px 4px;
   }
   table { width: 100%; border-collapse: collapse; table-layout: fixed; }
   thead { display: table-header-group; }
@@ -676,6 +928,31 @@ export function renderReportDocumentHtml(
     text-align: end;
   }
   .kv-strong .kv-value, .kv-strong .kv-label { font-weight: 800; color: #0f172a; }
+  .kv-amount-first {
+    flex-direction: row;
+    justify-content: flex-start;
+    gap: 14px;
+  }
+  .kv-amount-first .kv-value {
+    margin-inline-start: 0;
+    text-align: start;
+    min-width: 28mm;
+    font-variant-numeric: tabular-nums;
+  }
+  .kv-amount-first .kv-label {
+    margin-inline-start: 0;
+    white-space: normal;
+  }
+  .cover-main-body .sec-title {
+    margin-top: 6px;
+  }
+  .cover-main-body .sec-title:first-child {
+    margin-top: 0;
+  }
+  .sec-table-bare th { display: none; }
+  .sec-table-bare td {
+    border-bottom: 1px solid #e2e8f0;
+  }
   .summary-box {
     margin: 6px 0;
     margin-inline-start: auto;
@@ -685,8 +962,118 @@ export function renderReportDocumentHtml(
     background: #f8fafc;
     max-width: 95mm;
   }
+  .summary-box.summary-wide {
+    margin-inline-start: 0;
+    max-width: none;
+    width: 100%;
+    border: none;
+    background: transparent;
+    padding: 0;
+  }
   .summary-box .kv-item { border-bottom: 1px solid #e2e8f0; }
   .summary-box .kv-item:last-child { border-bottom: none; }
+  .cover-two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    overflow: hidden;
+    background: transparent;
+  }
+  .cover-col {
+    padding: 2px 8px;
+    min-width: 0;
+  }
+  .cover-col + .cover-col {
+    border-inline-start: 1px solid #e2e8f0;
+  }
+  .cover-col .kv-item { border-bottom: 1px solid #e2e8f0; }
+  .cover-col .kv-item:last-child { border-bottom: none; }
+  .deduction-neg { color: #dc2626; font-weight: 700; }
+  .cover-closing {
+    margin-top: 0;
+    border: none;
+    border-radius: 0;
+    padding: 2px 0 0;
+    font-size: 7.5pt;
+    color: #0f172a;
+  }
+  .cover-in-words {
+    margin: 0 0 5px;
+    line-height: 1.4;
+    font-size: 11pt;
+    font-weight: 600;
+  }
+  .cover-in-words strong {
+    font-weight: 800;
+    font-size: 11pt;
+  }
+  .cover-funds {
+    margin: 0 0 6px;
+    text-align: center;
+    font-weight: 800;
+    font-size: 9pt;
+  }
+  .cover-prep-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 6px;
+    font-size: 8.5pt;
+  }
+  .cover-sign-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin: 2px 0 6px;
+  }
+  .cover-sign-col { text-align: center; min-width: 0; }
+  .cover-sign-space { flex: 0 0 auto; }
+  .cover-contractor-space { flex: 0 0 auto; }
+  .cover-sign-line {
+    margin: 0;
+    border-top: 1px solid #0f172a;
+    height: 0;
+  }
+  .cover-sign-role {
+    margin: 2px 0 0;
+    font-size: 7pt;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  .cover-dist-accept {
+    display: grid;
+    grid-template-columns: 1.1fr 1.4fr;
+    gap: 8px;
+    align-items: start;
+  }
+  .cover-dist-title {
+    margin: 0 0 2px;
+    font-weight: 800;
+    font-size: 7.5pt;
+    letter-spacing: 0.04em;
+  }
+  .cover-dist ul {
+    margin: 0;
+    padding-inline-start: 1.1em;
+    font-size: 7pt;
+    line-height: 1.3;
+  }
+  .cover-accept-text {
+    margin: 0 0 6px;
+    font-size: 7pt;
+    font-weight: 700;
+    text-transform: uppercase;
+    line-height: 1.3;
+    text-align: start;
+  }
+  .cover-contractor {
+    margin-inline-start: auto;
+    width: min(55%, 70mm);
+    text-align: center;
+  }
   .sign-row {
     display: flex;
     gap: 8mm;

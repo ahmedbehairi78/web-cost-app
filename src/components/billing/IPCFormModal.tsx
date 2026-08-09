@@ -1,15 +1,21 @@
 import { formatNumber } from '../../lib/numberLocale';
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Plus, Download, Calculator, X, Loader2, Printer } from 'lucide-react';
+import { Plus, Download, Calculator, X, Loader2, Printer, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn, roundMoney2 } from '../../lib/utils';
 import { IPC_KIND, type IpcKind } from '../../constants/billingDefaults';
+import { buildIpcCoverWorksSplit } from '../../lib/ipcCoverFromQtyList';
+import { coverWhtAmount } from '../../lib/ipcCoverMath';
+import { buildIpcCoverSchedule } from '../../lib/ipcCoverSchedule';
+import { buildIpcCoverContractSums } from '../../lib/ipcCoverContractSums';
+import type { VariationOrder } from '../../types';
 import { ManualHelpButton } from '../help/ManualHelpButton';
 import { motion, AnimatePresence } from 'motion/react';
 import * as XLSX from 'xlsx';
 import { useLanguage } from '../../context/LanguageContext';
+import { IpcCoverPanel } from './IpcCoverPanel';
 
 const ipcSchema = z.object({
   billingNumber: z.string().min(1),
@@ -59,13 +65,22 @@ interface BillingIPC {
   whtAmount: number;
   labourInsuranceAmount: number;
   manpowerLevyAmount: number;
+  advancePaymentTotal: number;
   advancePaymentRecovery: number;
   netPayable: number;
   status: string;
   transactionId?: string;
 }
 
-interface Contract { id: string; contractName: string; contractNumber: string; projectId: string }
+interface Contract {
+  id: string;
+  contractName: string;
+  contractNumber: string;
+  projectId: string;
+  startDate?: string | null;
+  endDate?: string | null;
+  contractValue?: number | null;
+}
 
 interface FormData {
   billingNumber: string;
@@ -76,6 +91,10 @@ interface FormData {
   whtPct: number;
   labourInsurancePct: number;
   manpowerLevyPct: number;
+  performanceSecurityPct: number;
+  syndicateStampPct: number;
+  backChargeAmount: number;
+  advancePaymentTotal: number;
   advancePaymentRecovery: number;
   ipcKind: IpcKind;
 }
@@ -99,9 +118,21 @@ interface Props {
   /** بعد اعتماد/إرسال المستخلص لا يُغيّر نوعه من الواجهة */
   ipcKindReadOnly?: boolean;
   onPrintPreview?: () => void;
+  /** Preview Cover-JLL page only (A4 landscape, no qty list). */
+  onPrintCoverPreview?: () => void;
   /** Count of IPC lines where totalQty > tenderQty (BOQ / VO sync). */
   boqExceedCount?: number;
+  /** BOQ ids created by approved VOs — marks additional works on cover + row badge. */
+  voCreatedBoqItemIds?: ReadonlySet<string>;
+  /** Approved VOs for Cover-JLL contract sums. */
+  approvedVariationOrders?: VariationOrder[];
+  /** Approved MOS total claimed (materials on site). */
+  materialsOnSiteTotal?: number;
+  /** Σ netPayable of prior approved/paid IPCs for cover. */
+  previousPayments?: number;
 }
+
+const EMPTY_VO_IDS: ReadonlySet<string> = new Set();
 
 export function IPCFormModal({
   isOpen, editingIPC, formData, setFormData, isSubmitting,
@@ -110,16 +141,48 @@ export function IPCFormModal({
   boqItemIdsWithCost,
   ipcKindReadOnly = false,
   onPrintPreview,
+  onPrintCoverPreview,
   boqExceedCount = 0,
+  voCreatedBoqItemIds,
+  approvedVariationOrders = [],
+  materialsOnSiteTotal = 0,
+  previousPayments = 0,
 }: Props) {
-  const { t } = useLanguage();
+  const { t, formatMoney } = useLanguage();
+  const voIds = voCreatedBoqItemIds ?? EMPTY_VO_IDS;
+  const [showQtyItems, setShowQtyItems] = useState(false);
+  const coverWorks = useMemo(
+    () => buildIpcCoverWorksSplit(formData.items, voIds),
+    [formData.items, voIds],
+  );
+  const selectedContract = contracts.find((c) => c.id === selectedContractId);
+  const coverSchedule = useMemo(
+    () =>
+      buildIpcCoverSchedule({
+        startDate: selectedContract?.startDate,
+        endDate: selectedContract?.endDate,
+        language,
+      }),
+    [selectedContract?.startDate, selectedContract?.endDate, language],
+  );
+  const coverContractSums = useMemo(
+    () =>
+      buildIpcCoverContractSums({
+        originalContractSum: selectedContract?.contractValue,
+        approvedVos: approvedVariationOrders,
+      }),
+    [selectedContract?.contractValue, approvedVariationOrders],
+  );
   const { formState: { errors }, trigger, setValue, reset } = useForm({
     resolver: zodResolver(ipcSchema),
     defaultValues: { billingNumber: formData.billingNumber, date: formData.date },
   });
 
   useEffect(() => {
-    if (isOpen) reset({ billingNumber: formData.billingNumber, date: formData.date });
+    if (isOpen) {
+      reset({ billingNumber: formData.billingNumber, date: formData.date });
+      setShowQtyItems(false);
+    }
   }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSubmitClick = async (status: 'draft' | 'submitted') => {
@@ -128,24 +191,64 @@ export function IPCFormModal({
     onSubmit(status);
   };
 
-  const worksValueExVat = formData.items.reduce((s, i) => s + i.amount, 0);
+  /** Period works only — never previousQty×rate or totalQty×rate. */
+  const worksValueExVat = formData.items.reduce(
+    (s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)),
+    0,
+  );
 
   const calculateDeductions = () => {
-    const vat = worksValueExVat * (formData.vatPct / 100);
-    const exec = worksValueExVat * (formData.execGuaranteePct / 100);
-    const wht = worksValueExVat * (formData.whtPct / 100);
-    const insurance = worksValueExVat * (formData.labourInsurancePct / 100);
-    const levy = worksValueExVat * (formData.manpowerLevyPct / 100);
+    // BOQ rates already include VAT — never add VAT on top of works.
+    const worksInclVat = worksValueExVat;
+    const vatDivisor = 100 + Number(formData.vatPct || 0);
+    const vat =
+      vatDivisor > 0
+        ? roundMoney2((worksInclVat * Number(formData.vatPct || 0)) / vatDivisor)
+        : 0;
+    const exec = worksInclVat * (formData.execGuaranteePct / 100);
+    const periodSubIncl = worksInclVat + Number(materialsOnSiteTotal || 0);
+    const wht = coverWhtAmount(
+      periodSubIncl,
+      Number(materialsOnSiteTotal || 0),
+      formData.vatPct,
+      formData.whtPct,
+    );
+    const insurance = worksInclVat * (formData.labourInsurancePct / 100);
+    const levy = worksInclVat * (formData.manpowerLevyPct / 100);
+    const performanceSecurity = worksInclVat * (formData.performanceSecurityPct / 100);
+    const syndicateStamp = worksInclVat * (formData.syndicateStampPct / 100);
+    const backCharge = formData.backChargeAmount;
     const advance = formData.advancePaymentRecovery;
-    return { vat, exec, wht, insurance, levy, advance, net: worksValueExVat + vat - exec - wht - insurance - levy - advance };
+    return {
+      vat,
+      exec,
+      wht,
+      insurance,
+      levy,
+      performanceSecurity,
+      syndicateStamp,
+      backCharge,
+      advance,
+      net:
+        worksInclVat -
+        exec -
+        performanceSecurity -
+        wht -
+        insurance -
+        levy -
+        syndicateStamp -
+        backCharge -
+        advance,
+    };
   };
 
   const handleExportExcel = () => {
     const isAr = language === 'ar';
     const aoa: any[][] = [[isAr ? 'الفصل' : 'Chapter', isAr ? 'القسم' : 'Section', isAr ? 'كود البند' : 'Item Code', isAr ? 'البيان' : 'Description', isAr ? 'الوحدة' : 'Unit', isAr ? 'الكمية التعاقدية' : 'Tender Qty', isAr ? 'الفئة' : 'Rate', isAr ? 'الكمية السابقة' : 'Prev Qty', isAr ? 'الكمية الحالية' : 'Curr Qty', isAr ? 'إجمالي الكمية' : 'Total Qty', isAr ? 'نسبة التنفيذ' : 'Comp %', isAr ? 'القيمة' : 'Amount']];
-    const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
-    const totalRetentions = exec + wht + insurance + levy;
-    const totalDeductions = totalRetentions + advance;
+    const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
+      calculateDeductions();
+    const totalDeductions =
+      exec + performanceSecurity + wht + insurance + levy + syndicateStamp + backCharge + advance;
 
     const chapters: { [k: string]: BillingItem[] } = {};
     formData.items.forEach(item => {
@@ -174,12 +277,17 @@ export function IPCFormModal({
         isAr ? 'قيمة الأعمال الخاضعة' : 'Base Amount',
         isAr ? 'قيمة المحتجز' : 'Retention Amount'
       ],
-      [isAr ? 'حجز ضمان أعمال' : 'Execution Guarantee', `${formData.execGuaranteePct}%`, worksValueExVat, exec],
+      [isAr ? 'حجز ضمان أعمال' : 'Retention', `${formData.execGuaranteePct}%`, worksValueExVat, exec],
+      [isAr ? 'ضمان أداء' : 'Performance Security', `${formData.performanceSecurityPct}%`, worksValueExVat, performanceSecurity],
       [isAr ? 'مصلحة الضرائب - خصم وإضافة' : 'WHT', `${formData.whtPct}%`, worksValueExVat, wht],
       [isAr ? 'حجز تحت حساب التأمينات' : 'Labour Insurance', `${formData.labourInsurancePct}%`, worksValueExVat, insurance],
-      [isAr ? 'حجز تحت حساب القوى العاملة' : 'Manpower Levy', `${formData.manpowerLevyPct}%`, worksValueExVat, levy],
-      [isAr ? 'إجمالي المبالغ المحتجزة' : 'Total Retentions', '', '', totalRetentions],
+      [isAr ? 'القوى العاملة' : 'Labour Force', `${formData.manpowerLevyPct}%`, worksValueExVat, levy],
+      [isAr ? 'دمغة نقابة المهندسين' : 'Syndicate Stamp', `${formData.syndicateStampPct}%`, worksValueExVat, syndicateStamp],
+      [isAr ? 'إجمالي المبالغ المحتجزة' : 'Total Retentions', '', '', totalDeductions - advance],
     );
+    if (backCharge > 0) {
+      aoa.push([isAr ? 'خصومات ومبالغ محتجزة' : 'Back Charge', '', '', backCharge]);
+    }
     if (advance > 0) {
       aoa.push([isAr ? 'استرداد دفعة مقدمة' : 'Advance Recovery', '', worksValueExVat, advance]);
     }
@@ -210,7 +318,12 @@ export function IPCFormModal({
           if (idx !== -1) {
             const item = updated[idx];
             const totalQty = item.previousQty + currQty;
-            updated[idx] = { ...item, currentQty: currQty, totalQty, amount: totalQty * item.rate };
+            updated[idx] = {
+              ...item,
+              currentQty: currQty,
+              totalQty,
+              amount: currQty * item.rate,
+            };
           }
         }
       });
@@ -222,8 +335,22 @@ export function IPCFormModal({
   const handlePrintIPC = () => {
     onPrintPreview?.();
   };
+  const handlePrintCover = () => {
+    onPrintCoverPreview?.();
+  };
 
-  const { vat, exec, wht, insurance, levy, advance, net } = calculateDeductions();
+  const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
+    calculateDeductions();
+
+  const coverRates = {
+    vatPct: formData.vatPct,
+    whtPct: formData.whtPct,
+    retentionPct: formData.execGuaranteePct,
+    performancePct: formData.performanceSecurityPct,
+    insurancePct: formData.labourInsurancePct,
+    manpowerPct: formData.manpowerLevyPct,
+    syndicatePct: formData.syndicateStampPct,
+  };
 
   const inputCls = cn('w-full border rounded-lg py-2 px-4 text-sm outline-none focus:border-blue-500 transition-colors', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200');
 
@@ -359,9 +486,64 @@ export function IPCFormModal({
                 </p>
               </div>
 
-              {/* Items table */}
-              <div className="space-y-4">
-                <h4 className="text-sm font-bold text-blue-400 uppercase tracking-wider">{language === 'ar' ? 'بنود الأعمال' : 'Work Items'}</h4>
+              {/* Percentages (edit rates) */}
+              <div className={cn('grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 p-4 rounded-xl border', theme === 'dark' ? 'bg-gray-900/30 border-gray-800/50' : 'bg-gray-50 border-gray-200')}>
+                {[
+                  { label: 'VAT %', field: 'vatPct' as const, value: formData.vatPct },
+                  { label: language === 'ar' ? 'حجز ضمان %' : 'Retention %', field: 'execGuaranteePct' as const, value: formData.execGuaranteePct },
+                  { label: language === 'ar' ? 'ضمان أداء %' : 'Perf. Security %', field: 'performanceSecurityPct' as const, value: formData.performanceSecurityPct },
+                  { label: language === 'ar' ? 'خصم وإضافة %' : 'WHT %', field: 'whtPct' as const, value: formData.whtPct },
+                  { label: language === 'ar' ? 'تأمينات %' : 'Insurance %', field: 'labourInsurancePct' as const, value: formData.labourInsurancePct },
+                  { label: language === 'ar' ? 'قوى عاملة %' : 'Labour Force %', field: 'manpowerLevyPct' as const, value: formData.manpowerLevyPct },
+                  { label: language === 'ar' ? 'دمغة نقابة %' : 'Syndicate %', field: 'syndicateStampPct' as const, value: formData.syndicateStampPct },
+                  { label: language === 'ar' ? 'Back Charge' : 'Back Charge', field: 'backChargeAmount' as const, value: formData.backChargeAmount },
+                  { label: language === 'ar' ? 'إجمالي المقدمة' : 'Total Advance Payment', field: 'advancePaymentTotal' as const, value: formData.advancePaymentTotal },
+                  { label: language === 'ar' ? 'استرداد مقدمة' : 'Advance Recovery', field: 'advancePaymentRecovery' as const, value: formData.advancePaymentRecovery },
+                ].map(({ label, field, value }) => (
+                  <div key={field} className="space-y-2">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase">{label}</label>
+                    <input type="number" step="0.01" className={inputCls} value={value || ''} onChange={(e) => setFormData({ ...formData, [field]: Number(e.target.value) })} />
+                  </div>
+                ))}
+              </div>
+
+              <IpcCoverPanel
+                cover={coverWorks}
+                schedule={coverSchedule}
+                contractSums={coverContractSums}
+                formatMoney={formatMoney}
+                language={language}
+                theme={theme}
+                dir={dir === 'rtl' ? 'rtl' : 'ltr'}
+                asOfDate={formData.date}
+                materialsOnSite={materialsOnSiteTotal}
+                vatPct={formData.vatPct}
+                rates={coverRates}
+                advancePaymentTotal={formData.advancePaymentTotal || 0}
+                advanceRecovery={advance}
+                backCharge={backCharge}
+                previousPayments={previousPayments}
+                netPayable={net}
+              />
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setShowQtyItems((v) => !v)}
+                  className={cn(
+                    'w-full flex items-center justify-between gap-2 px-4 py-3 rounded-xl border text-sm font-bold transition-colors',
+                    theme === 'dark'
+                      ? 'border-gray-800 bg-gray-900/40 text-blue-300 hover:bg-gray-900'
+                      : 'border-gray-200 bg-gray-50 text-blue-700 hover:bg-gray-100',
+                  )}
+                >
+                  <span>
+                    {language === 'ar' ? 'بنود المستخلص (قائمة الكميات)' : 'IPC line items (quantities)'}
+                    <span className="ms-2 text-[10px] font-normal opacity-70">({formData.items.length})</span>
+                  </span>
+                  {showQtyItems ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                </button>
+                {showQtyItems ? (
                 <div className="overflow-x-auto border border-gray-800 rounded-xl">
                   <table className={cn('w-full text-right text-[10px] transition-colors', theme === 'dark' ? 'bg-transparent' : 'bg-white')}>
                     <thead>
@@ -381,7 +563,7 @@ export function IPCFormModal({
                     </thead>
                     <tbody className="divide-y divide-gray-800">
                       {Object.entries(chapters).map(([chapterName, items], chapterIdx) => {
-                        const chapterTotal = items.reduce((s, i) => s + i.amount, 0);
+                        const chapterTotal = items.reduce((s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)), 0);
                         return (
                           <React.Fragment key={`ipc-ch-${chapterIdx}-${chapterName || '—'}`}>
                             {items.map((item, rowIdx) => {
@@ -389,6 +571,7 @@ export function IPCFormModal({
                               const pct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
                               const rateNum = Number(item.rate);
                               const costLinked = boqItemIdsWithCost?.has(item.boqItemId);
+                              const isVoAdditional = voIds.has(item.boqItemId);
                               return (
                                 <tr
                                   key={`ipc-row-${chapterIdx}-${rowIdx}-${item.boqItemId || item.itemCode || 'x'}`}
@@ -403,6 +586,17 @@ export function IPCFormModal({
                                   <td className="p-2"><div>{item.sectionName}</div><div className="text-[8px] opacity-50">{item.sectionCode}</div></td>
                                   <td className="p-2">
                                     <div className="max-w-[150px] truncate font-medium flex items-center gap-1">
+                                      {isVoAdditional ? (
+                                        <span
+                                          className={cn(
+                                            'shrink-0 rounded px-1 py-px text-[7px] font-bold uppercase',
+                                            theme === 'dark' ? 'bg-violet-600/40 text-violet-200' : 'bg-violet-100 text-violet-800',
+                                          )}
+                                          title={language === 'ar' ? 'بند أمر تغيير' : 'Variation order item'}
+                                        >
+                                          {language === 'ar' ? 'إضافي' : 'VO'}
+                                        </span>
+                                      ) : null}
                                       {costLinked ? (
                                         <span
                                           className={cn(
@@ -434,7 +628,7 @@ export function IPCFormModal({
                                       <span className={cn('text-[8px] font-mono', pct > 100 ? 'text-red-500' : 'text-gray-400')}>{pct.toFixed(1)}%</span>
                                     </div>
                                   </td>
-                                  <td className="p-2 font-mono font-bold text-blue-400">{formatNumber(item.amount)}</td>
+                                  <td className="p-2 font-mono font-bold text-blue-400">{formatNumber(roundMoney2(Number(item.currentQty || 0) * Number(item.rate || 0)))}</td>
                                 </tr>
                               );
                             })}
@@ -448,34 +642,7 @@ export function IPCFormModal({
                     </tbody>
                   </table>
                 </div>
-              </div>
-
-              {/* Percentages */}
-              <div className={cn('grid grid-cols-3 md:grid-cols-6 gap-4 p-4 rounded-xl border', theme === 'dark' ? 'bg-gray-900/30 border-gray-800/50' : 'bg-gray-50 border-gray-200')}>
-                {[
-                  { label: 'VAT %', field: 'vatPct', value: formData.vatPct },
-                  { label: language === 'ar' ? 'ضمان أعمال %' : 'Guarantee %', field: 'execGuaranteePct', value: formData.execGuaranteePct },
-                  { label: language === 'ar' ? 'خصم وإضافة %' : 'WHT %', field: 'whtPct', value: formData.whtPct },
-                  { label: language === 'ar' ? 'تأمينات %' : 'Insurance %', field: 'labourInsurancePct', value: formData.labourInsurancePct },
-                  { label: language === 'ar' ? 'قوى عاملة %' : 'Manpower %', field: 'manpowerLevyPct', value: formData.manpowerLevyPct },
-                  { label: language === 'ar' ? 'استرداد دفعة مقدمة' : 'Advance Recovery', field: 'advancePaymentRecovery', value: formData.advancePaymentRecovery },
-                ].map(({ label, field, value }) => (
-                  <div key={field} className="space-y-2">
-                    <label className="text-[10px] font-bold text-gray-400 uppercase">{label}</label>
-                    <input type="number" className={inputCls} value={value || ''} onChange={(e) => setFormData({ ...formData, [field]: Number(e.target.value) })} />
-                  </div>
-                ))}
-              </div>
-
-              {/* Summary */}
-              <div className={cn('rounded-xl p-6 space-y-3 border', theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-gray-50 border-gray-200')}>
-                <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'قيمة الأعمال:' : 'Work Value:'}</span><span className="font-bold">{formatNumber(worksValueExVat)} {language === 'ar' ? 'ج.م' : 'EGP'}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'ضريبة القيمة المضافة (+):' : 'VAT (+):'}</span><span className="font-bold text-blue-400">{formatNumber(vat)} {language === 'ar' ? 'ج.م' : 'EGP'}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'إجمالي الاستقطاعات (-):' : 'Total Deductions (-):'}</span><span className="font-bold text-red-400">{formatNumber((exec + wht + insurance + levy + advance))} {language === 'ar' ? 'ج.م' : 'EGP'}</span></div>
-                <div className={cn('pt-3 border-t flex justify-between items-center', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
-                  <span className="text-lg font-bold">{language === 'ar' ? 'صافي المستحق للتحصيل:' : 'Net Payable:'}</span>
-                  <span className="text-2xl font-black text-green-500">{formatNumber(net)} {language === 'ar' ? 'ج.م' : 'EGP'}</span>
-                </div>
+                ) : null}
               </div>
 
               </div>
@@ -487,8 +654,29 @@ export function IPCFormModal({
                   theme === 'dark' ? 'bg-[#151619] border-gray-800' : 'bg-white border-gray-200',
                 )}
               >
-                {editingIPC && onPrintPreview && (
-                  <button type="button" onClick={handlePrintIPC} className="px-6 bg-green-600 hover:bg-green-500 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"><Printer size={18} />{language === 'ar' ? 'معاينة وطباعة' : 'Preview & Print'}</button>
+                {editingIPC && (onPrintCoverPreview || onPrintPreview) && (
+                  <>
+                    {onPrintCoverPreview && (
+                      <button
+                        type="button"
+                        onClick={handlePrintCover}
+                        className="px-5 bg-indigo-600 hover:bg-indigo-500 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
+                      >
+                        <Printer size={18} />
+                        {t('ipc_print_cover_only')}
+                      </button>
+                    )}
+                    {onPrintPreview && (
+                      <button
+                        type="button"
+                        onClick={handlePrintIPC}
+                        className="px-5 bg-green-600 hover:bg-green-500 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-white"
+                      >
+                        <Printer size={18} />
+                        {t('ipc_print_full')}
+                      </button>
+                    )}
+                  </>
                 )}
                 <button type="button" onClick={() => handleSubmitClick('draft')} disabled={isSubmitting} className={cn('flex-1 min-w-[8rem] py-3 rounded-xl font-bold transition-all border', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-white border-gray-700' : 'bg-white hover:bg-gray-50 text-gray-700 border-gray-200')}>
                   {isSubmitting ? '...' : (language === 'ar' ? 'حفظ كمسودة' : 'Save as Draft')}

@@ -288,13 +288,16 @@ The chart of accounts uses **5 levels**. Only level-5 accounts (8-digit codes) a
 | `CASH` | 12102001 | عهدة نقدية |
 | `RECEIVABLES` | 12201001 | العملاء - مستخلصات تحت التحصيل |
 | `RETENTION_GUARANTEE` | 12202001 | محتجزات الضمان - عملاء |
+| `PERFORMANCE_SECURITY_RECEIVABLE` | 12202002 | ضمان أداء - محتجز عملاء |
 | `RECEIVED_CHEQUES_CLEARING` | 12203001 | شيكات واردة برسم التحصيل (وسيط — Dr عند ISS، Cr عند CLR) |
+| `BACK_CHARGE_RECEIVABLE` | 12204001 | مبالغ محتجزة / Back charge |
 | `ADVANCE_TO_SUPPLIERS` | 12301001 | مقدمات للموردين |
 | `ADVANCE_TO_SUBCONTRACTORS` | 12302001 | مقدمات لمقاولي الباطن |
 | `VAT_INPUT` | 12401001 | ضريبة القيمة المضافة - مدخلات (مشتريات) |
 | `WHT_RECEIVABLE` | 12401002 | ضريبة الخصم والإضافة - مدين (محتجز من العميل) |
 | `SOCIAL_INSURANCE_RECEIVABLE` | 12402001 | التأمينات الاجتماعية - مدين |
 | `MANPOWER_LEVY_RECEIVABLE` | 12403001 | القوى العاملة - مدين |
+| `SYNDICATE_STAMP_RECEIVABLE` | 12404001 | دمغة نقابة المهندسين - مدين |
 | `SUPPLIERS` | 21101001 | الموردون |
 | `SUBCONTRACTORS` | 21102001 | مقاولو الباطن |
 | `RETENTION_PAYABLE` | 21201001 | محتجزات الضمان - مقاولون |
@@ -968,6 +971,149 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — قيد IPC بخصومات كفر Cover-JLL ✅ (2026-08-09)
+
+> **جلسة 2026-08-09:** تحديث قيد اعتماد مستخلص العميل ليشمل خصومات الكفر (حجز ضمان 5% · ضمان أداء 5% · خصم 1% · تأمينات 5% · قوى عاملة 1% · دمغة نقابة 0.3% · Back charge · استرداد مقدمة) مع حسابات COA جديدة.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **نسب افتراضية** | `BILLING_DEFAULTS`: retention 5 · performance 5 · manpower 1 · syndicate 0.3 |
+| **DB** | `performance_security_amount` · `syndicate_stamp_amount` · `back_charge_amount` |
+| **قيد** | `buildIpcEntries` (خادم+عميل) — مدين لكل خصم؛ المستحقات = الباقي |
+| **حسابات** | `12202002` ضمان أداء · `12204001` back charge · `12404001` دمغة نقابة |
+| **UI/طباعة** | حقول النسب في النموذج + تفصيل الاستقطاعات + ملخص الشهادة |
+
+### لا تراجع
+
+- باقي المستحقات بعد تقريب كل أرجل الخصم (لا تستخدم `netPayable` المخزّن في القيد).
+- Previous Payments على الكفر للعرض فقط — **ليست** بند قيد.
+- مستخلص باطن منفصل — لا تخلط `buildSubcontractorIpcEntries`.
+
+### تحقق
+
+```powershell
+npx prisma migrate deploy
+npm run test -- server/src/accounting/journalShared.test.ts
+# أعد تشغيل API → مستخلص → نسب الكفر → معاينة قيد → اعتماد
+```
+
+---
+
+## 🔴 HANDOFF — كفر مستخلص IPC من قائمة كميات واحدة ✅ (2026-08-09)
+
+> **جلسة 2026-08-09:** كفر المستخلص يجمّع أعمالاً **أساسية** (بنود العقد) و**إضافية** (بنود VO معتمدة) — سابق/حالي/إلى تاريخ — من **قائمة كميات واحدة** (نفس جدول المستخلص). بدون تغيير قيد الاعتماد.
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **تجميع** | `buildIpcCoverWorksSplit` · `collectVoCreatedBoqItemIds` | `src/lib/ipcCoverFromQtyList.ts` (+ test) |
+| **UI** | لوحة كفر في النموذج + تفاصيل المستخلص · شارة «إضافي» على بنود VO | `IpcCoverPanel.tsx` · `IPCFormModal.tsx` · `Billing.tsx` |
+| **طباعة** | قسم كفر قبل جدول الكميات | `buildCertificateDocs.ts` · `ipcPrintData.ts` |
+
+### لا تراجع
+
+- مصدر الإدخال = جدول الكميات الحالي فقط (لا قائمة ثانية لـ VO).
+- قيد GL عند الاعتماد كما هو (`buildIpcEntries` + باقي المستحقات).
+- خصومات Cover-JLL الكاملة (ضمان أداء / دمغة / نسب مختلفة) **مرحلة لاحقة**.
+
+### تحقق
+
+```powershell
+npm run test -- src/lib/ipcCoverFromQtyList.test.ts
+# مستخلصات → جديد/عرض → كفر أساسي/إضافي · طباعة تظهر قسم الكفر
+```
+
+---
+
+## 🔴 HANDOFF — كفر Cover-JLL مطابق Excel (مقدمة + إطار + WHT) ✅ (2026-08-09)
+
+> **جلسة 2026-08-09 مساءً:** صفوف الدفعة المقدمة دائماً · إطار واحد لـ Work Done + Additions · بدون هيدر أعمدة تحت ADDITIONS · Sub-Total بمبلغ أولاً · WHT = `(Sub−MOS)/1.14×1%`.
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **مقدمة** | `advancePaymentTotal` + Recovery + صافي فارغ دائماً (حتى صفر) | Prisma · `billing.ts` · `IpcCoverPanel` · `buildCertificateDocs` |
+| **إطار واحد** | `ipcCoverMain` · بلا `thead` (`sec-table-bare`) | `renderHtml.ts` · `types.ts` |
+| **Sub-Total** | `amountFirst` / مبلغ بجانب التسمية | لوحة + طباعة |
+| **WHT** | `coverWhtAmount` — بدون ضريبة على ضريبة | `ipcCoverMath.ts` |
+
+### لا تراجع
+
+- لا هيدر أعمدة تحت ADDITIONS / OMISSIONS.
+- WHT على الكفر من `(Sub-Total − MOS) / (1+VAT%) × WHT%` — أسعار البنود **شاملة الضريبة**؛ Sub-Total = مجموع الصفوف بدون ×1.14 إضافي.
+- أرقام الكفر (شاشة + معاينة طباعة) من مصدر واحد: `buildIpcCoverSheetModel` — نسب الاستقطاعات على **Sub-Total** (Cover-JLL).
+- صفوف Total Advance / Recovery تظهر دائماً.
+
+### تحقق
+
+```powershell
+npx prisma migrate deploy
+npm run test -- src/lib/ipcCoverMath.test.ts src/lib/reportDocument/reportDocument.test.ts
+# مستخلصات → إجمالي المقدمة · معاينة الكفر = إطار واحد + Sub-Total + خصم وإضافة بالمعادلة
+```
+
+---
+
+## 🔴 HANDOFF — شعارات كفر المستخلص لكل مشروع ✅ (2026-08-09)
+
+> **جلسة 2026-08-09:** التحكم في شعارات كفر Cover-JLL (يسار · وسط · يمين) على مستوى **كل مشروع**، مع الإبقاء على إعدادات الشركة كافتراضي.
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **DB** | `cover_logo_left` · `cover_logo_center` · `cover_logo_right` على `projects` | migration `20260809190000_project_cover_logos` · Prisma |
+| **UI** | حقول الشعارات في نموذج المشروع + معاينة مصغّرة | `ProjectFormModal.tsx` · `Projects.tsx` |
+| **طباعة** | `mergeCompanyPrintInfoWithProject` — حقل المشروع غير الفارغ يتجاوز شعار الشركة | `projectCoverLogos.ts` · `Billing.tsx` |
+| **إعدادات** | تلميح أن الشركة = افتراضي ويمكن التجاوز من المشروع | `LanguageContext` `print_logos_triple_hint` |
+
+### لا تراجع
+
+- فارغ على المشروع = شعار الشركة (أو Concord الافتراضي).
+- لا تغيّر شعارات التقارير الأخرى عبر حقول المشروع — فقط ترويسة كفر المستخلص عبر الدمج عند الطباعة.
+
+### تحقق
+
+```powershell
+npx prisma migrate deploy
+npm run test -- src/lib/projectCoverLogos.test.ts
+# مشاريع → تعديل → املأ يسار/وسط/يمين → مستخلصات → معاينة الكفر
+```
+
+---
+
+## 🔴 HANDOFF — كفر مستخلص العميل كـ Cover-JLL ✅ (2026-08-09)
+
+> **جلسة 2026-08-09:** كفر Cover-JLL كامل + **معاينة الكفر فقط** (A4 عمودي صفحة واحدة) · ارتفاع توقيعات مضغوط للبورتريه (11×3.5مم + 3×3.5مم).
+
+### ما تم
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **معاينة الكفر** | زر «معاينة الكفر» · `coverOnly` بدون قائمة كميات · **A4 portrait** · بلا فوتر · **`isolate: true` دائماً** (هيدر ثلاثي موسّع + titleLines) · flex يدفع قسم الختام للأسفل كاملاً | `useIpcPrintPreview` · `Billing` · `IPCFormModal` |
+| **هيدر ثلاثي** | شعارات يسار/وسط/يمين من إعدادات الطباعة · تحت الوسط: اسم المشروع · `coverContractLabel` (قابل للتعديل) · رقم المستخلص | `PrintSettingsPanel` · `CompanyPrintInfo` |
+| **ختام الكفر** | IN WORDS · Prepared/Approved · **11 صف توقيع** · DISTRIBUTION · **3 صفوف** ثم Contractor | `ipcCoverClosing.ts` · `amountInWordsEn.ts` |
+| **طباعة كاملة** | صفحة 1 = كفر · صفحة 2+ = بنود | `buildCertificateDocs.ts` |
+
+### تحقق
+
+```powershell
+npm run test -- src/lib/amountInWordsEn.test.ts src/lib/reportDocument/reportDocument.test.ts
+# مستخلصات → «معاينة الكفر» = صفحة A4 عمودية واحدة · «معاينة وطباعة كاملة» = كفر + بنود
+```
+
+---
+
+## 🔴 HANDOFF — كفر مستخلص العميل كـ Cover-JLL ✅ (2026-08-09) [أرشيف تفاصيل]
+
+> التفاصيل الكاملة للتخطيط والثلاث شعارات في القسم أعلاه «معاينة الكفر».
 
 ---
 

@@ -20,6 +20,12 @@ type PrintSettingsState = {
   address: string;
   addressEn: string;
   headerLogo: string;
+  headerLogoLeft: string;
+  headerLogoRight: string;
+  /** IPC cover middle line under center logo. */
+  coverContractLabel: string;
+  coverPreparedBy: string;
+  coverApprovedBy: string;
   footerText: string;
   footerTextEn: string;
   /** Preserved on save — edited from Reports format toolbar, not here. */
@@ -33,6 +39,11 @@ const DEFAULTS: PrintSettingsState = {
   address: 'القاهرة، مصر',
   addressEn: 'Cairo, Egypt',
   headerLogo: DEFAULT_HEADER_LOGO,
+  headerLogoLeft: '',
+  headerLogoRight: '',
+  coverContractLabel: 'CONSTRUCTION CONTRACT',
+  coverPreparedBy: '',
+  coverApprovedBy: '',
   footerText: 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2026',
   footerTextEn: 'Cost Management System - All Rights Reserved © 2026',
 };
@@ -206,28 +217,131 @@ export function PrintSettingsPanel({ theme, cardSurface, inputCls, mutedText }: 
           </div>
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="gs-header-logo" className={cn('text-xs font-bold uppercase', mutedText)}>
-            {t('company_logo_url')}
-          </label>
-          <input
-            id="gs-header-logo"
-            type="url"
-            dir="ltr"
-            placeholder="/branding/my-logo.png"
-            className={inputCls}
-            value={printSettings.headerLogo}
-            onChange={(e) => setPrintSettings({ ...printSettings, headerLogo: e.target.value })}
-          />
-          <div className="mt-2 flex items-center gap-3">
-            <img
-              src={printSettings.headerLogo || DEFAULT_HEADER_LOGO}
-              alt=""
-              className="h-14 w-auto max-w-[160px] object-contain"
-              referrerPolicy="no-referrer"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        <div className="space-y-3">
+          <p className={cn('text-xs font-bold uppercase', mutedText)}>
+            {t('print_logos_triple')}
+          </p>
+          <p className={cn('text-[11px]', mutedText)}>{t('print_logos_triple_hint')}</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="gs-header-logo-left" className={cn('text-xs font-bold uppercase', mutedText)}>
+                {t('company_logo_left_url')}
+              </label>
+              <input
+                id="gs-header-logo-left"
+                type="url"
+                dir="ltr"
+                placeholder="/branding/logo-left.png"
+                className={inputCls}
+                value={printSettings.headerLogoLeft}
+                onChange={(e) => setPrintSettings({ ...printSettings, headerLogoLeft: e.target.value })}
+              />
+              {printSettings.headerLogoLeft ? (
+                <img
+                  src={printSettings.headerLogoLeft}
+                  alt=""
+                  className="h-12 w-auto max-w-full object-contain"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : null}
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="gs-header-logo" className={cn('text-xs font-bold uppercase', mutedText)}>
+                {t('company_logo_center_url')}
+              </label>
+              <input
+                id="gs-header-logo"
+                type="url"
+                dir="ltr"
+                placeholder="/branding/my-logo.png"
+                className={inputCls}
+                value={printSettings.headerLogo}
+                onChange={(e) => setPrintSettings({ ...printSettings, headerLogo: e.target.value })}
+              />
+              <img
+                src={printSettings.headerLogo || DEFAULT_HEADER_LOGO}
+                alt=""
+                className="h-12 w-auto max-w-full object-contain mx-auto"
+                referrerPolicy="no-referrer"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="gs-header-logo-right" className={cn('text-xs font-bold uppercase', mutedText)}>
+                {t('company_logo_right_url')}
+              </label>
+              <input
+                id="gs-header-logo-right"
+                type="url"
+                dir="ltr"
+                placeholder="/branding/logo-right.png"
+                className={inputCls}
+                value={printSettings.headerLogoRight}
+                onChange={(e) => setPrintSettings({ ...printSettings, headerLogoRight: e.target.value })}
+              />
+              {printSettings.headerLogoRight ? (
+                <img
+                  src={printSettings.headerLogoRight}
+                  alt=""
+                  className="h-12 w-auto max-w-full object-contain ms-auto"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              ) : null}
+            </div>
+          </div>
+          <p className={cn('text-[11px]', mutedText)}>{t('logo_preview_hint')}</p>
+        </div>
+
+        <div className="space-y-3">
+          <p className={cn('text-xs font-bold uppercase', mutedText)}>
+            {t('print_cover_titles')}
+          </p>
+          <p className={cn('text-[11px]', mutedText)}>{t('print_cover_titles_hint')}</p>
+          <div className="space-y-2">
+            <label htmlFor="gs-cover-contract-label" className={cn('text-xs font-bold uppercase', mutedText)}>
+              {t('cover_contract_label')}
+            </label>
+            <input
+              id="gs-cover-contract-label"
+              type="text"
+              dir="ltr"
+              className={inputCls}
+              value={printSettings.coverContractLabel}
+              onChange={(e) => setPrintSettings({ ...printSettings, coverContractLabel: e.target.value })}
+              placeholder="CONSTRUCTION CONTRACT"
             />
-            <span className={cn('text-xs', mutedText)}>{t('logo_preview_hint')}</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label htmlFor="gs-cover-prepared" className={cn('text-xs font-bold uppercase', mutedText)}>
+                {t('cover_prepared_by')}
+              </label>
+              <input
+                id="gs-cover-prepared"
+                type="text"
+                dir="ltr"
+                className={inputCls}
+                value={printSettings.coverPreparedBy}
+                onChange={(e) => setPrintSettings({ ...printSettings, coverPreparedBy: e.target.value })}
+                placeholder="JLL Misr LLC"
+              />
+            </div>
+            <div className="space-y-2">
+              <label htmlFor="gs-cover-approved" className={cn('text-xs font-bold uppercase', mutedText)}>
+                {t('cover_approved_by')}
+              </label>
+              <input
+                id="gs-cover-approved"
+                type="text"
+                dir="ltr"
+                className={inputCls}
+                value={printSettings.coverApprovedBy}
+                onChange={(e) => setPrintSettings({ ...printSettings, coverApprovedBy: e.target.value })}
+                placeholder="Emaar Misr"
+              />
+            </div>
           </div>
         </div>
 
