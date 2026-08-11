@@ -55,6 +55,11 @@ export const SHELL_MAIN_CLASS = 'shell-main';
 export const SHELL_MODAL_Z = 'z-[10050]';
 /** Verify / stacked confirm above a base Settings floating dialog. */
 export const SHELL_MODAL_STACK_Z = 'z-[10060]';
+/**
+ * Unified report print preview — must sit above journal/settings modals
+ * (SHELL_MODAL_Z / STACK) so Print from an open detail dialog is visible.
+ */
+export const SHELL_REPORT_PREVIEW_Z = 'z-[10100]';
 export const SHELL_MODAL_ROOT_CLASS = 'shell-modal-root';
 
 export function shellAppBackground(mode: AppTheme): string {

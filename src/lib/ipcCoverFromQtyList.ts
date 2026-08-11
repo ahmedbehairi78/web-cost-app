@@ -11,7 +11,7 @@ export type IpcCoverQtyLine = {
   rate: number;
   previousQty: number;
   currentQty: number;
-  /** Period amount — preferred when present (matches form `amount`). */
+  /** Period amount — optional; cover math never trusts this (uses qty×rate). */
   amount?: number;
 };
 
@@ -67,6 +67,23 @@ function linePreviousValue(line: IpcCoverQtyLine): number {
  */
 function lineCurrentValue(line: IpcCoverQtyLine): number {
   return roundMoney(Number(line.currentQty || 0) * Number(line.rate || 0));
+}
+
+/**
+ * To-date executed value for the qty list / print «القيمة» column:
+ * totalQty × rate (previous + current). Prefer explicit totalQty when set.
+ */
+export function ipcLineToDateAmount(line: {
+  rate: number;
+  previousQty?: number;
+  currentQty?: number;
+  totalQty?: number;
+}): number {
+  const total =
+    line.totalQty != null && Number.isFinite(Number(line.totalQty))
+      ? Number(line.totalQty)
+      : Number(line.previousQty || 0) + Number(line.currentQty || 0);
+  return roundMoney(total * Number(line.rate || 0));
 }
 
 function emptyBucket(): IpcCoverWorkBucket {

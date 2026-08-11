@@ -3,7 +3,7 @@ import type { IpcCoverWorksSplit } from '../../lib/ipcCoverFromQtyList';
 import type { IpcCoverSchedule } from '../../lib/ipcCoverSchedule';
 import type { IpcCoverContractSums } from '../../lib/ipcCoverContractSums';
 import { amountInWordsEgyptianPounds } from '../../lib/amountInWordsEn';
-import { buildIpcCoverClosingData, IPC_COVER_CLOSING_EXCEL } from '../../lib/ipcCoverClosing';
+import { buildIpcCoverClosingData, IPC_COVER_CLOSING_DEFAULTS } from '../../lib/ipcCoverClosing';
 import {
   buildIpcCoverSheetModel,
   defaultIpcCoverSheetRates,
@@ -36,7 +36,8 @@ type Props = {
   advanceRecovery?: number;
   backCharge?: number;
   previousPayments?: number;
-  netPayable: number;
+  /** @deprecated Ignored — NET comes from `buildIpcCoverSheetModel`. */
+  netPayable?: number;
   preparedBy?: string;
   approvedBy?: string;
   /** @deprecated Ignored — sheet model owns deduction amounts. */
@@ -165,7 +166,6 @@ export function IpcCoverPanel({
   advanceRecovery = 0,
   backCharge = 0,
   previousPayments = 0,
-  netPayable,
   preparedBy,
   approvedBy,
 }: Props) {
@@ -193,7 +193,6 @@ export function IpcCoverPanel({
     advanceRecovery,
     backCharge,
     previousPayments,
-    netPayable,
   });
 
   const sums = contractSums ?? {
@@ -450,7 +449,7 @@ export function IpcCoverPanel({
             <p className={cn('leading-snug mb-3', muted)}>{closing.acceptanceText}</p>
             <div className={cn('border-b mb-1 mt-8', lineBorder)} />
             <p className={cn('text-center text-[10px] font-semibold', muted)}>
-              {IPC_COVER_CLOSING_EXCEL.contractorLabel}
+              {IPC_COVER_CLOSING_DEFAULTS.contractorLabel}
             </p>
           </div>
         </div>

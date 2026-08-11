@@ -974,7 +974,31 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
-## 🔴 HANDOFF — قيد IPC بخصومات كفر Cover-JLL ✅ (2026-08-09)
+## 🔴 HANDOFF — صافي كفر المستخلص Cover-JLL (Sub − استقطاعات − PP) ✅ (2026-08-11)
+
+> **جلسة 2026-08-11:** صافي المستحق كان يُحسب من أعمال **الفترة** فقط دون خصم Previous Payments، بينما الكفر يعرض استقطاعات على **Sub-Total** التراكمي — عدم تطابق.
+
+### المعادلة (مصدر واحد)
+
+`NET = Sub-Total − Σ(نسب الاستقطاعات على Sub) − WHT((Sub−MOS)/(1+VAT%)×%) − استرداد مقدمة (حتى تاريخه) − Previous Payments`
+
+- جدول البنود: سابق + حالي = إلى تاريخه (للكفر)؛ قيد GL = أعمال الفترة فقط.
+- `buildIpcCoverSheetModel` يحسب `netPayable` ذاتياً (لا يُمرَّر من الخارج).
+- `computeIpcBillingAmounts` يوحّد الشاشة / الحفظ / الطباعة.
+
+### لا تراجع
+
+- لا تحسب NET من `currentQty×rate` ناقص نسب بدون Previous Payments.
+- استرداد المقدمة / Back Charge في المستند = **حتى تاريخه**؛ قيد الاعتماد يرحّل **الزيادة** فقط (`billingIpcApprove`).
+
+### تحقق
+
+```powershell
+npm run test -- src/lib/ipcCoverSheet.test.ts src/lib/ipcBillingAmounts.test.ts
+# مستخلصات → كفر: Sub − استقطاعات − PP = صافي المستحق · أعد تشغيل API بعد السحب
+```
+
+---
 
 > **جلسة 2026-08-09:** تحديث قيد اعتماد مستخلص العميل ليشمل خصومات الكفر (حجز ضمان 5% · ضمان أداء 5% · خصم 1% · تأمينات 5% · قوى عاملة 1% · دمغة نقابة 0.3% · Back charge · استرداد مقدمة) مع حسابات COA جديدة.
 

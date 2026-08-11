@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { FileDown, Printer, Save, SlidersHorizontal, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
+import { SHELL_REPORT_PREVIEW_Z } from '../../lib/shellTheme';
 import {
   resolveReportPrintProfile,
   type ReportPrintId,
@@ -169,7 +170,7 @@ export function ReportPreviewDialog({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9990] flex flex-col bg-slate-500/95"
+      className={cn('fixed inset-0 flex flex-col bg-slate-500/95', SHELL_REPORT_PREVIEW_Z)}
       role="dialog"
       aria-modal="true"
       dir={isAr ? 'rtl' : 'ltr'}

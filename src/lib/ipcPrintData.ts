@@ -1,5 +1,5 @@
 import { IPC_KIND, type IpcKind } from '../constants/billingDefaults';
-import type { IpcCoverWorksSplit } from './ipcCoverFromQtyList';
+import { ipcLineToDateAmount, type IpcCoverWorksSplit } from './ipcCoverFromQtyList';
 import type { IpcCoverSchedule } from './ipcCoverSchedule';
 import type { IpcCoverContractSums } from './ipcCoverContractSums';
 import { roundMoney } from './money';
@@ -167,7 +167,8 @@ export function mapToIpcPrintItems<
     previousQty: item.previousQty,
     currentQty: item.currentQty,
     totalQty: item.totalQty,
-    amount: item.amount,
+    // Qty list value = to-date executed (totalQty × rate), not period only.
+    amount: ipcLineToDateAmount(item),
   }));
 }
 

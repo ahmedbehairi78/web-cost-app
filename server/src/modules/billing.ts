@@ -228,7 +228,7 @@ billingRouter.get(
       where: { id: row.contractId },
       select: { contractName: true },
     });
-    const entries = buildBillingIpcPreviewEntries(row, contract?.contractName ?? '');
+    const entries = await buildBillingIpcPreviewEntries(row, contract?.contractName ?? '');
     res.json({
       entries,
       reference: `IPC-${row.billingNumber}`,

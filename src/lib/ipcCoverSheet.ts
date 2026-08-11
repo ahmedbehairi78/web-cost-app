@@ -32,8 +32,11 @@ export type IpcCoverSheetInput = {
   advanceRecovery?: number;
   backCharge?: number;
   previousPayments?: number;
-  /** NET line — pass the same value shown on screen (period net or cover net). */
-  netPayable: number;
+  /**
+   * @deprecated Ignored — NET is always computed:
+   * Sub-Total − Σ(deductions) − Advance Recovery − Previous Payments.
+   */
+  netPayable?: number;
 };
 
 export type IpcCoverSheetDeduction = {
@@ -81,6 +84,8 @@ export function defaultIpcCoverSheetRates(
 /**
  * Cover-JLL sheet model. Deduction % amounts use **Sub-Total** (Excel), not period works.
  * WHT = (Sub − MOS) / (1+VAT%) × WHT%.
+ * NET = Sub-Total − Σ(deductions) − Advance Recovery − Previous Payments
+ * (Total Advance Payment is display-only; only Recovery reduces NET).
  */
 export function buildIpcCoverSheetModel(input: IpcCoverSheetInput): IpcCoverSheetModel {
   const rates = input.rates;
@@ -166,6 +171,11 @@ export function buildIpcCoverSheetModel(input: IpcCoverSheetInput): IpcCoverShee
 
   const advancePaymentTotal = roundMoney(Number(input.advancePaymentTotal || 0));
   const advanceRecovery = roundMoney(Number(input.advanceRecovery || 0));
+  const previousPayments = roundMoney(Number(input.previousPayments || 0));
+  const deductionTotal = roundMoney(
+    deductions.reduce((sum, row) => sum + (row.isDeduction ? row.amount : 0), 0),
+  );
+  const netPayable = roundMoney(subTotal - deductionTotal - advanceRecovery - previousPayments);
 
   return {
     vatPct: workDone.vatPct,
@@ -180,7 +190,7 @@ export function buildIpcCoverSheetModel(input: IpcCoverSheetInput): IpcCoverShee
     advancePaymentTotal,
     advanceRecovery,
     advanceNet: roundMoney(advancePaymentTotal - advanceRecovery),
-    previousPayments: roundMoney(Number(input.previousPayments || 0)),
-    netPayable: roundMoney(Number(input.netPayable || 0)),
+    previousPayments,
+    netPayable,
   };
 }

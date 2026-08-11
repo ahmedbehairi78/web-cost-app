@@ -18,6 +18,7 @@ import {
   type CompanyPrintInfo,
   type IpcPrintData,
 } from '../ipcPrintData';
+import { ipcLineToDateAmount } from '../ipcCoverFromQtyList';
 import { mosPrintTitle, type MosPrintData } from '../mosPrintData';
 import { voPrintTitle, type VoPrintData } from '../voPrintData';
 import type { IpcPrintProfileId, StoredReportPrintProfiles } from '../reportPrintProfiles';
@@ -157,7 +158,6 @@ export function buildIpcCertificateDocument(
     advanceRecovery: data.advancePaymentRecovery,
     backCharge: data.backChargeAmount,
     previousPayments: data.previousPayments,
-    netPayable: data.netPayable,
   });
   const {
     grossBasic,
@@ -233,8 +233,8 @@ export function buildIpcCertificateDocument(
   for (const { chapterName, items } of groupIpcItemsByChapter(data.items, language)) {
     let chapterTotal = 0;
     for (const item of items) {
-      const periodAmount = Number(item.currentQty || 0) * Number(item.rate || 0);
-      chapterTotal += periodAmount;
+      const toDateAmount = ipcLineToDateAmount(item);
+      chapterTotal += toDateAmount;
       const execPct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
       rows.push({
         chapter: chapterName,
@@ -248,7 +248,7 @@ export function buildIpcCertificateDocument(
         curr: formatNumber(item.currentQty),
         total: formatNumber(item.totalQty),
         execPct: `${execPct.toFixed(1)}%`,
-        amount: periodAmount,
+        amount: toDateAmount,
       });
     }
     rows.push({
@@ -356,7 +356,7 @@ export function buildIpcCertificateDocument(
         },
       ],
     });
-    const closing = buildIpcCoverClosingData(amountInWordsEgyptianPounds(data.netPayable), {
+    const closing = buildIpcCoverClosingData(amountInWordsEgyptianPounds(sheet.netPayable), {
       preparedBy: input.company.coverPreparedBy,
       approvedBy: input.company.coverApprovedBy,
       rowHeightMm: 4.0,

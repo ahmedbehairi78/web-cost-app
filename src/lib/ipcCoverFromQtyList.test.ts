@@ -3,6 +3,7 @@ import {
   buildIpcCoverWorksSplit,
   classifyIpcQtyLineKind,
   collectVoCreatedBoqItemIds,
+  ipcLineToDateAmount,
 } from './ipcCoverFromQtyList';
 
 describe('collectVoCreatedBoqItemIds', () => {
@@ -83,5 +84,19 @@ describe('buildIpcCoverWorksSplit', () => {
     expect(split.basic.previousValue).toBe(50);
     expect(split.periodWorksTotal).toBe(30);
     expect(split.toDateWorksTotal).toBe(80);
+  });
+});
+
+describe('ipcLineToDateAmount', () => {
+  it('uses totalQty × rate (executed to date), not current period only', () => {
+    // Murraya example: total 262 @ 82.5 → not current 104.8 × 82.5
+    expect(
+      ipcLineToDateAmount({
+        rate: 82.5,
+        previousQty: 157.2,
+        currentQty: 104.8,
+        totalQty: 262,
+      }),
+    ).toBe(21_615);
   });
 });

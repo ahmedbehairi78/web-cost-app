@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { Plus, Download, Calculator, X, Loader2, Printer, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn, roundMoney2 } from '../../lib/utils';
 import { IPC_KIND, type IpcKind } from '../../constants/billingDefaults';
-import { buildIpcCoverWorksSplit } from '../../lib/ipcCoverFromQtyList';
-import { coverWhtAmount } from '../../lib/ipcCoverMath';
+import { buildIpcCoverWorksSplit, ipcLineToDateAmount } from '../../lib/ipcCoverFromQtyList';
+import { computeIpcBillingAmounts } from '../../lib/ipcBillingAmounts';
 import { buildIpcCoverSchedule } from '../../lib/ipcCoverSchedule';
 import { buildIpcCoverContractSums } from '../../lib/ipcCoverContractSums';
 import type { VariationOrder } from '../../types';
@@ -65,7 +65,7 @@ interface BillingIPC {
   whtAmount: number;
   labourInsuranceAmount: number;
   manpowerLevyAmount: number;
-  advancePaymentTotal: number;
+  advancePaymentTotal?: number;
   advancePaymentRecovery: number;
   netPayable: number;
   status: string;
@@ -94,7 +94,7 @@ interface FormData {
   performanceSecurityPct: number;
   syndicateStampPct: number;
   backChargeAmount: number;
-  advancePaymentTotal: number;
+  advancePaymentTotal?: number;
   advancePaymentRecovery: number;
   ipcKind: IpcKind;
 }
@@ -130,6 +130,9 @@ interface Props {
   materialsOnSiteTotal?: number;
   /** Σ netPayable of prior approved/paid IPCs for cover. */
   previousPayments?: number;
+  /** Max prior recovery / back-charge to date (Cover stores cumulative). */
+  priorAdvanceRecoveryToDate?: number;
+  priorBackChargeToDate?: number;
 }
 
 const EMPTY_VO_IDS: ReadonlySet<string> = new Set();
@@ -147,6 +150,8 @@ export function IPCFormModal({
   approvedVariationOrders = [],
   materialsOnSiteTotal = 0,
   previousPayments = 0,
+  priorAdvanceRecoveryToDate = 0,
+  priorBackChargeToDate = 0,
 }: Props) {
   const { t, formatMoney } = useLanguage();
   const voIds = voCreatedBoqItemIds ?? EMPTY_VO_IDS;
@@ -191,56 +196,63 @@ export function IPCFormModal({
     onSubmit(status);
   };
 
-  /** Period works only — never previousQty×rate or totalQty×rate. */
-  const worksValueExVat = formData.items.reduce(
-    (s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)),
-    0,
-  );
-
-  const calculateDeductions = () => {
-    // BOQ rates already include VAT — never add VAT on top of works.
-    const worksInclVat = worksValueExVat;
-    const vatDivisor = 100 + Number(formData.vatPct || 0);
-    const vat =
-      vatDivisor > 0
-        ? roundMoney2((worksInclVat * Number(formData.vatPct || 0)) / vatDivisor)
-        : 0;
-    const exec = worksInclVat * (formData.execGuaranteePct / 100);
-    const periodSubIncl = worksInclVat + Number(materialsOnSiteTotal || 0);
-    const wht = coverWhtAmount(
-      periodSubIncl,
-      Number(materialsOnSiteTotal || 0),
+  const billingAmounts = useMemo(
+    () =>
+      computeIpcBillingAmounts({
+        items: formData.items,
+        voCreatedBoqItemIds: voIds,
+        materialsOnSite: materialsOnSiteTotal,
+        rates: {
+          vatPct: formData.vatPct,
+          whtPct: formData.whtPct,
+          retentionPct: formData.execGuaranteePct,
+          performancePct: formData.performanceSecurityPct,
+          insurancePct: formData.labourInsurancePct,
+          manpowerPct: formData.manpowerLevyPct,
+          syndicatePct: formData.syndicateStampPct,
+        },
+        advancePaymentTotal: formData.advancePaymentTotal,
+        advancePaymentRecovery: formData.advancePaymentRecovery,
+        backChargeAmount: formData.backChargeAmount,
+        previousPayments,
+        priorAdvanceRecoveryToDate,
+        priorBackChargeToDate,
+      }),
+    [
+      formData.items,
       formData.vatPct,
       formData.whtPct,
-    );
-    const insurance = worksInclVat * (formData.labourInsurancePct / 100);
-    const levy = worksInclVat * (formData.manpowerLevyPct / 100);
-    const performanceSecurity = worksInclVat * (formData.performanceSecurityPct / 100);
-    const syndicateStamp = worksInclVat * (formData.syndicateStampPct / 100);
-    const backCharge = formData.backChargeAmount;
-    const advance = formData.advancePaymentRecovery;
-    return {
-      vat,
-      exec,
-      wht,
-      insurance,
-      levy,
-      performanceSecurity,
-      syndicateStamp,
-      backCharge,
-      advance,
-      net:
-        worksInclVat -
-        exec -
-        performanceSecurity -
-        wht -
-        insurance -
-        levy -
-        syndicateStamp -
-        backCharge -
-        advance,
-    };
-  };
+      formData.execGuaranteePct,
+      formData.performanceSecurityPct,
+      formData.labourInsurancePct,
+      formData.manpowerLevyPct,
+      formData.syndicateStampPct,
+      formData.advancePaymentTotal,
+      formData.advancePaymentRecovery,
+      formData.backChargeAmount,
+      voIds,
+      materialsOnSiteTotal,
+      previousPayments,
+      priorAdvanceRecoveryToDate,
+      priorBackChargeToDate,
+    ],
+  );
+
+  /** Period works (VAT-inclusive rates) — for Excel summary labels. */
+  const worksValueExVat = billingAmounts.periodWorksInclVat;
+
+  const calculateDeductions = () => ({
+    vat: billingAmounts.vat,
+    exec: billingAmounts.exec,
+    wht: billingAmounts.wht,
+    insurance: billingAmounts.insurance,
+    levy: billingAmounts.levy,
+    performanceSecurity: billingAmounts.performanceSecurity,
+    syndicateStamp: billingAmounts.syndicateStamp,
+    backCharge: formData.backChargeAmount,
+    advance: formData.advancePaymentRecovery,
+    net: billingAmounts.net,
+  });
 
   const handleExportExcel = () => {
     const isAr = language === 'ar';
@@ -520,10 +532,9 @@ export function IPCFormModal({
                 vatPct={formData.vatPct}
                 rates={coverRates}
                 advancePaymentTotal={formData.advancePaymentTotal || 0}
-                advanceRecovery={advance}
-                backCharge={backCharge}
+                advanceRecovery={formData.advancePaymentRecovery || 0}
+                backCharge={formData.backChargeAmount || 0}
                 previousPayments={previousPayments}
-                netPayable={net}
               />
 
               <div className="space-y-3">
@@ -563,7 +574,7 @@ export function IPCFormModal({
                     </thead>
                     <tbody className="divide-y divide-gray-800">
                       {Object.entries(chapters).map(([chapterName, items], chapterIdx) => {
-                        const chapterTotal = items.reduce((s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)), 0);
+                        const chapterTotal = items.reduce((s, i) => s + ipcLineToDateAmount(i), 0);
                         return (
                           <React.Fragment key={`ipc-ch-${chapterIdx}-${chapterName || '—'}`}>
                             {items.map((item, rowIdx) => {
@@ -628,7 +639,7 @@ export function IPCFormModal({
                                       <span className={cn('text-[8px] font-mono', pct > 100 ? 'text-red-500' : 'text-gray-400')}>{pct.toFixed(1)}%</span>
                                     </div>
                                   </td>
-                                  <td className="p-2 font-mono font-bold text-blue-400">{formatNumber(roundMoney2(Number(item.currentQty || 0) * Number(item.rate || 0)))}</td>
+                                  <td className="p-2 font-mono font-bold text-blue-400">{formatNumber(ipcLineToDateAmount(item))}</td>
                                 </tr>
                               );
                             })}
