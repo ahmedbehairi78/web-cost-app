@@ -7,6 +7,7 @@ import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
 import { Prisma } from '@prisma/client';
 import { roundMoney } from '../lib/money.js';
+import { businessTodayCompact, businessTodayYmd } from '../lib/businessCalendar.js';
 import { syncFixedAssetsFromGl } from '../accounting/fixedAssetGlSync.js';
 
 export const fixedAssetsRouter = Router();
@@ -22,7 +23,7 @@ const createFromCostsOrAssets = requireModuleWrite('assets' as never, 'costs' as
 
 /** Generate next asset number: FA-YYYYMMDD-NNNN */
 async function generateAssetNumber(): Promise<string> {
-  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const today = businessTodayCompact();
   const prefix = `FA-${today}-`;
   const last = await prisma.fixedAsset.findFirst({
     where: { assetNumber: { startsWith: prefix } },
@@ -318,7 +319,7 @@ fixedAssetsRouter.get(
     let bv = Number(asset.bookValue);
     const salvage = Number(asset.salvageValue);
     if (asset.status === 'active' && bv > salvage) {
-      const today = new Date().toISOString().slice(0, 10);
+      const today = businessTodayYmd();
       let { label, start, end } = quarterForDate(today);
       // Advance to next quarter if current already has an entry
       const existingLabels = new Set(asset.depreciationEntries.map((e) => e.periodLabel));
@@ -401,7 +402,7 @@ fixedAssetsRouter.post(
     const annualRate = b.annualDepreciationRate ?? (depreciationModel === 'straight_line' ? 1 / usefulLifeYears : (2 / usefulLifeYears));
 
     // Compute opening accumulated depreciation for old assets
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessTodayYmd();
     const isOld = acquisitionDate < today;
     let openingAccumulatedDepr = 0;
 
@@ -713,7 +714,7 @@ fixedAssetsRouter.post(
     const groups = await prisma.fixedAssetGroup.findMany({ where: { isDeleted: false } });
     const groupByName = new Map(groups.map((g) => [g.groupName.trim(), g]));
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessTodayYmd();
     const created: string[] = [];
     const errors: Array<{ row: number; error: string }> = [];
 

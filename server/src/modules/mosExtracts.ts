@@ -8,6 +8,7 @@ import { serialize } from '../prisma/serialize.js';
 import { createTransaction } from '../accounting/journal.js';
 import { AccountCodes } from '../accounting/accountCodes.js';
 import { notifyMosDraft, notifyMosResolved } from '../lib/notificationHooks.js';
+import { businessTodayYmd } from '../lib/businessCalendar.js';
 
 export const mosExtractsRouter = Router();
 mosExtractsRouter.use(requireAuth);
@@ -204,7 +205,7 @@ mosExtractsRouter.post(
     await prisma.$transaction(async (tx) => {
       const journal = await createTransaction(
         {
-          date: String(row.extractDate ?? new Date().toISOString().slice(0, 10)),
+            date: String(row.extractDate ?? businessTodayYmd()),
           description: `تشوين - ${boqDescription}`,
           reference: extractNumber || undefined,
           costCenterId: contractId,

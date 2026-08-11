@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Plus, Trash2, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn, listKey } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { useLanguage } from '../../context/LanguageContext';
 import { usePermissions } from '../../context/PermissionsContext';
 import { materialsApi, projectsApi, warehouseReceiptsApi } from '../../services/local/modulesApi';
@@ -70,18 +71,25 @@ export function WarehouseReceiptsPanel({
   const [saving, setSaving] = useState(false);
 
   const [projectId, setProjectId] = useState('');
-  const [receiptDate, setReceiptDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [receiptDate, setReceiptDate] = useState(() => businessTodayYmd());
   const [supplierInvoiceRef, setSupplierInvoiceRef] = useState('');
   const [notes, setNotes] = useState('');
   const [draftLines, setDraftLines] = useState<DraftLine[]>([
     { key: '1', materialCategoryId: '', quantity: '' },
   ]);
 
+  const materialsById = useMemo(() => {
+    const map = new Map<number, MaterialOption>();
+    for (const m of materials) map.set(m.id, m);
+    return map;
+  }, [materials]);
+
   const materialOptions = useMemo(
     () =>
       materials.map((m) => ({
         value: String(m.id),
-        label: `${m.code} — ${m.name} (${m.unit})`,
+        label: m.name,
+        secondary: m.code,
       })),
     [materials],
   );
@@ -94,6 +102,29 @@ export function WarehouseReceiptsPanel({
       })),
     [projects],
   );
+
+  const draftLineCount = useMemo(
+    () =>
+      draftLines.filter(
+        (l) => l.materialCategoryId && Number(l.quantity) > 0,
+      ).length,
+    [draftLines],
+  );
+
+  const updateDraftLine = useCallback((key: string, patch: Partial<DraftLine>) => {
+    setDraftLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  }, []);
+
+  const addDraftLine = useCallback(() => {
+    setDraftLines((prev) => [
+      ...prev,
+      { key: String(Date.now()), materialCategoryId: '', quantity: '' },
+    ]);
+  }, []);
+
+  const removeDraftLine = useCallback((key: string) => {
+    setDraftLines((prev) => (prev.length <= 1 ? prev : prev.filter((l) => l.key !== key)));
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -224,13 +255,20 @@ export function WarehouseReceiptsPanel({
     selected != null &&
     (selected.status === 'approved' || selected.lines.some((l) => l.unitCost != null));
 
+  const tableHeadCls = cn(
+    'text-xs font-semibold uppercase tracking-wide',
+    theme === 'dark' ? 'text-gray-400' : 'text-gray-500',
+  );
+  const tableBorder = theme === 'dark' ? 'border-gray-700' : 'border-gray-200';
+  const mutedText = theme === 'dark' ? 'text-gray-400' : 'text-gray-500';
+
   return (
-    <div className="flex flex-col gap-4 h-full" dir={dir}>
-      <div className="flex flex-wrap items-center gap-2">
+    <div className="flex flex-col gap-4 h-full min-h-0" dir={dir}>
+      <div className="flex flex-wrap items-center gap-2 shrink-0">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className={cn(inputCls, 'w-auto')}
+          className={cn(inputCls, 'w-auto min-w-[12rem]')}
         >
           <option value="pending_approval">{t('wr_filter_pending')}</option>
           <option value="approved">{t('wr_filter_approved')}</option>
@@ -242,7 +280,7 @@ export function WarehouseReceiptsPanel({
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm"
+            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium"
           >
             <Plus className="w-4 h-4" />
             {t('wr_new_receipt')}
@@ -253,7 +291,7 @@ export function WarehouseReceiptsPanel({
       <div className={cn('flex flex-1 min-h-0 gap-3', dir === 'rtl' ? 'flex-row-reverse' : 'flex-row')}>
         <div
           className={cn(
-            'w-72 shrink-0 border rounded-xl overflow-y-auto',
+            'w-80 shrink-0 border rounded-xl overflow-y-auto',
             theme === 'dark' ? 'border-gray-700' : 'border-gray-200',
           )}
         >
@@ -262,9 +300,7 @@ export function WarehouseReceiptsPanel({
               <Loader2 className="w-5 h-5 animate-spin" />
             </div>
           ) : receipts.length === 0 ? (
-            <p className={cn('p-4 text-sm', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-              {t('wr_empty')}
-            </p>
+            <p className={cn('p-4 text-sm', mutedText)}>{t('wr_empty')}</p>
           ) : (
             <ul>
               {receipts.map((r) => (
@@ -273,7 +309,7 @@ export function WarehouseReceiptsPanel({
                     type="button"
                     onClick={() => setSelectedId(r.id)}
                     className={cn(
-                      'w-full text-start px-3 py-2.5 border-b text-sm transition-colors',
+                      'w-full text-start px-3 py-3 border-b text-sm transition-colors',
                       theme === 'dark' ? 'border-gray-700' : 'border-gray-100',
                       selectedId === r.id
                         ? 'bg-blue-600 text-white'
@@ -283,10 +319,15 @@ export function WarehouseReceiptsPanel({
                     )}
                   >
                     <div className="font-medium">{r.receiptNumber}</div>
-                    <div className={cn('text-xs mt-0.5', selectedId === r.id ? 'text-blue-100' : 'opacity-70')}>
+                    <div className={cn('text-xs mt-0.5 truncate', selectedId === r.id ? 'text-blue-100' : 'opacity-70')}>
                       {r.projectName || r.projectId} · {r.supplierInvoiceRef}
                     </div>
-                    <div className="mt-1">{statusBadge(r.status)}</div>
+                    <div className="mt-1.5 flex items-center gap-2">
+                      {statusBadge(r.status)}
+                      <span className={cn('text-[10px]', selectedId === r.id ? 'text-blue-100' : mutedText)}>
+                        {r.lines?.length ?? 0} {t('wr_lines')}
+                      </span>
+                    </div>
                   </button>
                 </li>
               ))}
@@ -296,98 +337,156 @@ export function WarehouseReceiptsPanel({
 
         <div
           className={cn(
-            'flex-1 border rounded-xl p-4 overflow-y-auto',
+            'flex-1 min-w-0 border rounded-xl overflow-hidden flex flex-col',
             theme === 'dark' ? 'border-gray-700' : 'border-gray-200',
           )}
         >
           {!selected ? (
-            <p className={cn('text-sm', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-              {t('wr_select_hint')}
-            </p>
+            <p className={cn('p-6 text-sm', mutedText)}>{t('wr_select_hint')}</p>
           ) : (
-            <div className="space-y-4">
-              <div className="flex flex-wrap items-center gap-2 justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold">{selected.receiptNumber}</h3>
-                  <p className="text-sm opacity-70">
+            <>
+              <div
+                className={cn(
+                  'shrink-0 px-4 py-3 border-b flex flex-wrap items-start gap-3 justify-between',
+                  tableBorder,
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-semibold">{selected.receiptNumber}</h3>
+                    {statusBadge(selected.status)}
+                  </div>
+                  <p className={cn('text-sm mt-1', mutedText)}>
                     {selected.projectName} · {selected.receiptDate} · {selected.supplierInvoiceRef}
                   </p>
+                  {selected.notes ? (
+                    <p className={cn('text-xs mt-1', mutedText)}>{selected.notes}</p>
+                  ) : null}
                 </div>
-                {statusBadge(selected.status)}
-              </div>
-
-              {selected.status === 'pending_approval' && (
-                <p className={cn('text-sm rounded-lg px-3 py-2', theme === 'dark' ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-50 text-amber-900')}>
-                  {t('wr_pending_invoice_hint')}
-                </p>
-              )}
-
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className={theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}>
-                    <th className="text-start py-1">{t('wr_col_material')}</th>
-                    <th className="text-end py-1">{t('wr_col_qty')}</th>
-                    {showUnitCostCol && (
-                      <th className="text-end py-1">{t('wr_col_unit_cost')}</th>
-                    )}
-                  </tr>
-                </thead>
-                <tbody>
-                  {selected.lines.map((line, idx) => (
-                    <tr key={listKey(String(line.id ?? ''), idx, 'wrl')} className="border-t border-opacity-20">
-                      <td className="py-2">
-                        {line.materialCode} — {line.materialName}
-                        <span className="opacity-60 text-xs ms-1">({line.materialUnit})</span>
-                      </td>
-                      <td className="py-2 text-end">{formatQuantity(Number(line.quantity), language)}</td>
-                      {showUnitCostCol && (
-                        <td className="py-2 text-end">
-                          {line.unitCost != null ? Number(line.unitCost).toFixed(2) : '—'}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              {canReject && selected.status === 'pending_approval' && (
-                <div className="flex flex-wrap gap-2 border-t pt-3">
+                {canReject && selected.status === 'pending_approval' && (
                   <button
                     type="button"
                     disabled={saving}
                     onClick={() => void handleReject()}
-                    className="inline-flex items-center gap-1 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm disabled:opacity-50 shrink-0"
                   >
                     {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <X className="w-4 h-4" />}
                     {t('wr_reject')}
                   </button>
-                </div>
+                )}
+              </div>
+
+              {selected.status === 'pending_approval' && (
+                <p
+                  className={cn(
+                    'shrink-0 text-sm px-4 py-2 border-b',
+                    tableBorder,
+                    theme === 'dark' ? 'bg-amber-900/40 text-amber-100' : 'bg-amber-50 text-amber-900',
+                  )}
+                >
+                  {t('wr_pending_invoice_hint')}
+                </p>
               )}
 
+              <div className="flex-1 min-h-0 overflow-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead className={cn('sticky top-0 z-10', theme === 'dark' ? 'bg-gray-900' : 'bg-gray-50')}>
+                    <tr className={cn('border-b', tableBorder)}>
+                      <th className={cn('text-start px-4 py-2.5 w-12', tableHeadCls)}>{t('wr_col_line')}</th>
+                      <th className={cn('text-start px-3 py-2.5', tableHeadCls)}>{t('wr_col_material')}</th>
+                      <th className={cn('text-start px-3 py-2.5 w-24', tableHeadCls)}>{t('unit')}</th>
+                      <th className={cn('text-end px-4 py-2.5 w-28', tableHeadCls)}>{t('wr_col_qty')}</th>
+                      {showUnitCostCol && (
+                        <th className={cn('text-end px-4 py-2.5 w-32', tableHeadCls)}>{t('wr_col_unit_cost')}</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {selected.lines.map((line, idx) => (
+                      <tr
+                        key={listKey(String(line.id ?? ''), idx, 'wrl')}
+                        className={cn(
+                          'border-b',
+                          tableBorder,
+                          theme === 'dark' ? 'hover:bg-gray-800/60' : 'hover:bg-gray-50',
+                        )}
+                      >
+                        <td className={cn('px-4 py-2.5 tabular-nums', mutedText)}>{idx + 1}</td>
+                        <td className="px-3 py-2.5">
+                          <div className="font-medium">
+                            {line.materialCode ? (
+                              <>
+                                <span className={cn('font-mono text-xs me-1.5', mutedText)}>{line.materialCode}</span>
+                                {line.materialName}
+                              </>
+                            ) : (
+                              line.materialName || '—'
+                            )}
+                          </div>
+                        </td>
+                        <td className={cn('px-3 py-2.5', mutedText)}>{line.materialUnit || '—'}</td>
+                        <td className="px-4 py-2.5 text-end tabular-nums font-medium">
+                          {formatQuantity(Number(line.quantity), language)}
+                        </td>
+                        {showUnitCostCol && (
+                          <td className="px-4 py-2.5 text-end tabular-nums">
+                            {line.unitCost != null ? Number(line.unitCost).toFixed(2) : '—'}
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
               {selected.status === 'approved' && selected.supplierAccountCode && (
-                <p className="text-sm opacity-70">
+                <p className={cn('shrink-0 text-sm px-4 py-2.5 border-t', tableBorder, mutedText)}>
                   {t('wr_credited')}: {selected.supplierAccountCode} — {selected.supplierAccountName}
                 </p>
               )}
-            </div>
+            </>
           )}
         </div>
       </div>
 
       {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3 sm:p-6">
           <div
             className={cn(
-              'rounded-xl shadow-2xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto',
+              'rounded-xl shadow-2xl w-full max-w-5xl h-[min(92vh,880px)] overflow-hidden flex flex-col',
               theme === 'dark' ? 'bg-gray-900 text-gray-100' : 'bg-white text-gray-900',
             )}
             dir={dir}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="wr-create-title"
           >
-            <h3 className="text-lg font-bold mb-4">{t('wr_new_receipt')}</h3>
-            <div className="space-y-3">
+            <div className={cn('shrink-0 px-5 py-4 border-b flex items-center justify-between gap-3', tableBorder)}>
               <div>
-                <label className="text-sm font-medium">{t('wr_project')}</label>
+                <h3 id="wr-create-title" className="text-lg font-bold">
+                  {t('wr_new_receipt')}
+                </h3>
+                <p className={cn('text-xs mt-0.5', mutedText)}>{t('wr_lines_hint')}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreate(false)}
+                className={cn(
+                  'p-2 rounded-lg shrink-0',
+                  theme === 'dark' ? 'hover:bg-gray-800' : 'hover:bg-gray-100',
+                )}
+                aria-label={t('cancel')}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="shrink-0 px-5 py-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="sm:col-span-2 lg:col-span-1">
+                <label className="text-xs font-semibold mb-1 block">{t('wr_project')}</label>
                 <SearchableSelect
+                  theme={theme}
+                  dir={dir}
                   value={projectId}
                   onChange={setProjectId}
                   options={projectOptions}
@@ -395,7 +494,7 @@ export function WarehouseReceiptsPanel({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">{t('wr_date')}</label>
+                <label className="text-xs font-semibold mb-1 block">{t('wr_date')}</label>
                 <input
                   type="date"
                   value={receiptDate}
@@ -404,7 +503,7 @@ export function WarehouseReceiptsPanel({
                 />
               </div>
               <div>
-                <label className="text-sm font-medium">{t('wr_supplier_invoice')}</label>
+                <label className="text-xs font-semibold mb-1 block">{t('wr_supplier_invoice')}</label>
                 <input
                   type="text"
                   value={supplierInvoiceRef}
@@ -413,8 +512,8 @@ export function WarehouseReceiptsPanel({
                   placeholder={t('wr_supplier_invoice_placeholder')}
                 />
               </div>
-              <div>
-                <label className="text-sm font-medium">{t('wr_notes')}</label>
+              <div className="sm:col-span-2 lg:col-span-4">
+                <label className="text-xs font-semibold mb-1 block">{t('wr_notes')}</label>
                 <textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
@@ -422,78 +521,112 @@ export function WarehouseReceiptsPanel({
                   rows={2}
                 />
               </div>
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm font-medium">{t('wr_lines')}</label>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setDraftLines((prev) => [
-                        ...prev,
-                        { key: String(Date.now()), materialCategoryId: '', quantity: '' },
-                      ])
-                    }
-                    className="text-xs text-blue-600 inline-flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    {t('wr_add_line')}
-                  </button>
-                </div>
-                {draftLines.map((line, idx) => (
-                  <div key={line.key} className="flex gap-2 items-start">
-                    <div className="flex-1">
-                      <SearchableSelect
-                        value={line.materialCategoryId}
-                        onChange={(v) =>
-                          setDraftLines((prev) =>
-                            prev.map((l) =>
-                              l.key === line.key ? { ...l, materialCategoryId: v } : l,
-                            ),
-                          )
-                        }
-                        options={materialOptions}
-                        placeholder={t('wr_material_placeholder')}
-                      />
-                    </div>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      value={line.quantity}
-                      onChange={(e) =>
-                        setDraftLines((prev) =>
-                          prev.map((l) =>
-                            l.key === line.key ? { ...l, quantity: e.target.value } : l,
-                          ),
-                        )
-                      }
-                      className={cn(inputCls, 'w-24')}
-                      placeholder={t('wr_col_qty')}
-                    />
-                    {draftLines.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setDraftLines((prev) => prev.filter((l) => l.key !== line.key))
-                        }
-                        className="p-2 text-red-500"
-                        aria-label={t('wr_remove_line')}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    )}
-                    <span className="sr-only">{idx + 1}</span>
-                  </div>
-                ))}
-              </div>
             </div>
-            <div className="flex justify-end gap-2 mt-5">
+
+            <div className={cn('shrink-0 px-5 py-2.5 border-y flex flex-wrap items-center justify-between gap-2', tableBorder, theme === 'dark' ? 'bg-gray-800/40' : 'bg-gray-50')}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{t('wr_lines')}</span>
+                <span
+                  className={cn(
+                    'text-[11px] px-2 py-0.5 rounded-full',
+                    draftLineCount > 0
+                      ? 'bg-blue-600 text-white'
+                      : theme === 'dark'
+                        ? 'bg-gray-700 text-gray-300'
+                        : 'bg-gray-200 text-gray-600',
+                  )}
+                >
+                  {t('wr_lines_ready').replace('{n}', String(draftLineCount))}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={addDraftLine}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                {t('wr_add_line')}
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto pb-40">
+              <table className="w-full text-sm border-collapse min-w-[640px]">
+                <thead className={cn('sticky top-0 z-10', theme === 'dark' ? 'bg-gray-900' : 'bg-white')}>
+                  <tr className={cn('border-b', tableBorder)}>
+                    <th className={cn('text-start px-4 py-2.5 w-12', tableHeadCls)}>{t('wr_col_line')}</th>
+                    <th className={cn('text-start px-3 py-2.5', tableHeadCls)}>{t('wr_col_material')}</th>
+                    <th className={cn('text-start px-3 py-2.5 w-24', tableHeadCls)}>{t('unit')}</th>
+                    <th className={cn('text-end px-3 py-2.5 w-36', tableHeadCls)}>{t('wr_col_qty')}</th>
+                    <th className="w-12 px-2 py-2.5" aria-hidden />
+                  </tr>
+                </thead>
+                <tbody>
+                  {draftLines.map((line, idx) => {
+                    const mat = line.materialCategoryId
+                      ? materialsById.get(Number(line.materialCategoryId))
+                      : undefined;
+                    return (
+                      <tr
+                        key={line.key}
+                        className={cn(
+                          'border-b align-middle',
+                          tableBorder,
+                          theme === 'dark' ? 'hover:bg-gray-800/50' : 'hover:bg-gray-50/80',
+                        )}
+                      >
+                        <td className={cn('px-4 py-2.5 tabular-nums', mutedText)}>{idx + 1}</td>
+                        <td className="px-3 py-2 min-w-[16rem] relative z-20">
+                          <SearchableSelect
+                            theme={theme}
+                            dir={dir}
+                            value={line.materialCategoryId}
+                            onChange={(v) => updateDraftLine(line.key, { materialCategoryId: v })}
+                            options={materialOptions}
+                            placeholder={t('wr_material_placeholder')}
+                          />
+                        </td>
+                        <td className={cn('px-3 py-2.5 whitespace-nowrap', mutedText)}>
+                          {mat?.unit || '—'}
+                        </td>
+                        <td className="px-3 py-2">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={line.quantity}
+                            onChange={(e) => updateDraftLine(line.key, { quantity: e.target.value })}
+                            className={cn(inputCls, 'text-end tabular-nums')}
+                            placeholder="0"
+                          />
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {draftLines.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeDraftLine(line.key)}
+                              className="p-2 rounded-lg text-red-500 hover:bg-red-500/10"
+                              aria-label={t('wr_remove_line')}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          ) : (
+                            <span className="inline-block w-8" />
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className={cn('shrink-0 px-5 py-3 border-t flex justify-end gap-2', tableBorder)}>
               <button
                 type="button"
                 onClick={() => setShowCreate(false)}
                 className={cn(
                   'px-4 py-2 rounded-lg border text-sm',
-                  theme === 'dark' ? 'border-gray-600' : 'border-gray-300',
+                  theme === 'dark' ? 'border-gray-600 hover:bg-gray-800' : 'border-gray-300 hover:bg-gray-50',
                 )}
               >
                 {t('cancel')}
@@ -502,7 +635,7 @@ export function WarehouseReceiptsPanel({
                 type="button"
                 disabled={saving}
                 onClick={() => void handleCreate()}
-                className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50 inline-flex items-center gap-2"
+                className="px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2"
               >
                 {saving && <Loader2 className="w-4 h-4 animate-spin" />}
                 {t('wr_submit')}

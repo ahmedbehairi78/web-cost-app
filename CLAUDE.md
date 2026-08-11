@@ -402,6 +402,8 @@ Cloud Firestore security rules **cannot** reliably evaluate `permissions[variabl
 
 Use `normalizeDate(date)` from `src/lib/utils.ts` whenever reading a date field from Firestore — it handles `string | Date | Timestamp` uniformly and returns `YYYY-MM-DD`. Only convert to a locale string at display time.
 
+**Business calendar (Egypt):** all operational «today» defaults, document-number day stamps (`CON-`/`WR-`/`PR-`/`PTRF-`/`FA-`/…), and journal posting when `stampBusinessToday` or date is empty use **`Africa/Cairo`** via `businessTodayYmd` / `businessTodayCompact` (`src/lib/businessCalendar.ts` · `server/src/lib/businessCalendar.ts`). Override with env **`BUSINESS_TIMEZONE`**. **Never** use `new Date().toISOString().slice(0, 10)` for business dates — that is UTC and shifts the calendar day around Cairo midnight. GL manual JV: server stamp via `GET /api/gl/business-today`. Absolute timestamps (`createdAt`) stay ISO UTC; only the accounting calendar day is Cairo.
+
 ### Contracts as Cost Centers
 
 `transactions.costCenterId` stores the contract ID for IPC, purchase invoices, and custody settlements. Use this field to filter GL data by contract. Reports module exposes a contract selector that appears automatically when a project with multiple contracts is selected.

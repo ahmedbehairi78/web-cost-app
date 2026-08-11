@@ -16,6 +16,7 @@ import {
   notifyPurchaseRequestCreated,
   notifyPurchaseRequestResolved,
 } from '../lib/notificationHooks.js';
+import { businessTodayCompact, businessTodayYmd } from '../lib/businessCalendar.js';
 
 const ACTIVE_STATUSES = ['open', 'contacted', 'postponed', 'unavailable'] as const;
 const CLOSED_STATUSES = ['executed', 'cancelled'] as const;
@@ -45,15 +46,6 @@ function requireStatusEditor(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-function todayCairoYmd(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Cairo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
-
 function addDaysYmd(ymd: string, days: number): string {
   const [y, m, d] = ymd.split('-').map(Number);
   const dt = new Date(y, (m || 1) - 1, d || 1);
@@ -65,7 +57,7 @@ function addDaysYmd(ymd: string, days: number): string {
 }
 
 async function nextRequestNumber(): Promise<string> {
-  const day = todayCairoYmd().replace(/-/g, '');
+  const day = businessTodayCompact();
   const prefix = `PR-${day}-`;
   const latest = await prisma.purchaseRequest.findFirst({
     where: { requestNumber: { startsWith: prefix } },
@@ -228,8 +220,8 @@ purchaseRequestsRouter.post(
     }
     let neededByDate = String(body.neededByDate ?? '').trim();
     const neededPreset = String(body.neededPreset ?? '').trim();
-    if (neededPreset === 'today') neededByDate = todayCairoYmd();
-    else if (neededPreset === 'tomorrow') neededByDate = addDaysYmd(todayCairoYmd(), 1);
+    if (neededPreset === 'today') neededByDate = businessTodayYmd();
+    else if (neededPreset === 'tomorrow') neededByDate = addDaysYmd(businessTodayYmd(), 1);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(neededByDate)) {
       res.status(400).json({ error: 'neededByDate is required (YYYY-MM-DD)' });
       return;

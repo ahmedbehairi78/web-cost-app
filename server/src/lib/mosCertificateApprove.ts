@@ -4,6 +4,7 @@ import { createTransaction } from '../accounting/journal.js';
 import { AccountCodes } from '../accounting/accountCodes.js';
 import { roundMoney } from './money.js';
 import { syncMosCertificateRegistry } from './documentRegistrySync.js';
+import { businessTodayYmd } from './businessCalendar.js';
 
 function num(v: unknown): number {
   return Number(v ?? 0);
@@ -36,7 +37,7 @@ export async function approveMosCertificate(
 
     const journal = await createTransaction(
       {
-        date: String(row.extractDate ?? new Date().toISOString().slice(0, 10)),
+        date: String(row.extractDate ?? businessTodayYmd()),
         description: `تشوين - ${certNo} (${lineCount} ${lineCount === 1 ? 'بند' : 'بنود'})`,
         reference: certNo || undefined,
         costCenterId: row.contractId,

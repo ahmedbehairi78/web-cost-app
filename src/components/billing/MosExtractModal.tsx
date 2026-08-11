@@ -5,6 +5,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { mosCertificatesApi } from '../../services/local/modulesApi';
 import { formatQuantity } from '../../lib/formatQuantity';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { BILLING_DEFAULTS } from '../../constants/billingDefaults';
 import toast from 'react-hot-toast';
 
@@ -49,7 +50,7 @@ export function MosExtractModal({ contractId, boqItems, theme, dir, onClose, onC
   const [inputs, setInputs] = useState<Record<string, RowInput>>({});
   const [priorEquivalentMap, setPriorEquivalentMap] = useState<Record<string, number>>({});
   const [deliveryNoteRef, setDeliveryNoteRef] = useState('');
-  const [extractDate, setExtractDate] = useState(new Date().toISOString().slice(0, 10));
+  const [extractDate, setExtractDate] = useState(businessTodayYmd());
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 

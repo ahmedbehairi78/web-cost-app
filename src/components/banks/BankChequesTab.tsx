@@ -11,6 +11,7 @@ import { listenQuery } from '../../lib/firestoreListen';
 import toast from 'react-hot-toast';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { isLocalBackend } from '../../lib/dataBackend';
 import { contractsApi, projectsApi, costCentersApi, banksApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import type { Account } from '../../services/accountingService';
@@ -142,7 +143,7 @@ export function BankChequesTab({
     bankAccountId: '',
     chequeNo: '',
     payeeName: '',
-    issueDate: new Date().toISOString().slice(0, 10),
+    issueDate: businessTodayYmd(),
     dueDate: '',
     amount: '',
     offsetChartOfAccountId: '',
@@ -538,7 +539,7 @@ export function BankChequesTab({
       return;
     }
     setClearTarget(c);
-    setClearDate(new Date().toISOString().slice(0, 10));
+    setClearDate(businessTodayYmd());
     setClearProjectId(c.projectId?.trim() ?? '');
     setClearContractId(c.contractId?.trim() ?? '');
   };

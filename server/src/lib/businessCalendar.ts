@@ -11,7 +11,7 @@ export function resolveBusinessTimeZone(
 
 /**
  * Calendar "today" in the business timezone from a trusted clock (`now`),
- * not from a client/device local date.
+ * not from a client/device local date or UTC `toISOString().slice(0, 10)`.
  */
 export function businessTodayYmd(
   timeZone?: string | null,
@@ -25,4 +25,20 @@ export function businessTodayYmd(
     month: '2-digit',
     day: '2-digit',
   }).format(now);
+}
+
+/** YYYYMMDD for document numbers (CON-/WR-/PR-/…) — always Cairo calendar. */
+export function businessTodayCompact(
+  timeZone?: string | null,
+  now: Date = new Date(),
+): string {
+  return businessTodayYmd(timeZone, now).replace(/-/g, '');
+}
+
+/** Format an instant as YYYY-MM-DD in the business timezone (e.g. recordedAt buckets). */
+export function businessYmdFromDate(
+  date: Date,
+  timeZone?: string | null,
+): string {
+  return businessTodayYmd(timeZone, date);
 }

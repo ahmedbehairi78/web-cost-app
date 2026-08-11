@@ -4,6 +4,7 @@ import { FileDiff, Loader2, X, Plus, Trash2 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { variationOrdersApi, boqMaterialsApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import { cn, listKey } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import type { VoLineType } from '../../types';
 import toast from 'react-hot-toast';
 import { isLocalBackend } from '../../lib/dataBackend';
@@ -69,7 +70,7 @@ export function VoOrderModal({ contractId, boqItems, theme, dir, onClose, onCrea
   const { t, formatMoney } = useLanguage();
   const isDark = theme === 'dark';
 
-  const [voDate, setVoDate] = useState(new Date().toISOString().slice(0, 10));
+  const [voDate, setVoDate] = useState(businessTodayYmd());
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [lines, setLines] = useState<DraftLine[]>([]);

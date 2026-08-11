@@ -2810,7 +2810,12 @@ export default function Inventory() {
       </div>
 
       {/* ── Content ── */}
-      <div className="flex-1 overflow-auto p-6">
+      <div
+        className={cn(
+          'flex-1 min-h-0 p-6',
+          activeTab === 'receipts' ? 'overflow-hidden flex flex-col' : 'overflow-auto',
+        )}
+      >
         {activeTab === 'materials' && <MaterialsTree />}
         {activeTab === 'balance' && (
           <InventoryBalance
@@ -2822,7 +2827,9 @@ export default function Inventory() {
           />
         )}
         {activeTab === 'receipts' && (
-          <WarehouseReceiptsPanel onRefreshNeeded={handleRefreshNeeded} />
+          <div className="flex-1 min-h-0">
+            <WarehouseReceiptsPanel onRefreshNeeded={handleRefreshNeeded} />
+          </div>
         )}
         {activeTab === 'transfers' && (
           <InventoryTransfers

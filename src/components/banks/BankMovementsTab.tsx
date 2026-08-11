@@ -5,6 +5,7 @@ import { listenQuery } from '../../lib/firestoreListen';
 import toast from 'react-hot-toast';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { isLocalBackend } from '../../lib/dataBackend';
 import { contractsApi, projectsApi, banksApi, NetworkQueuedError } from '../../services/local/modulesApi';
 import type { Account } from '../../services/accountingService';
@@ -115,7 +116,7 @@ export function BankMovementsTab({
     transferDirection: 'out' as TransferDirection,
     instapayBeneficiary: '',
     instapayFee: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: businessTodayYmd(),
     amount: '',
     reference: '',
     descriptionAr: '',

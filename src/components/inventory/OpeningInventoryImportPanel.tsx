@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { FileSpreadsheet, Loader2, Upload } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { useLanguage } from '../../context/LanguageContext';
 import { inventoryApi } from '../../services/local/modulesApi';
 import {
@@ -21,7 +22,7 @@ export function OpeningInventoryImportPanel({
 }) {
   const { language, theme, t } = useLanguage();
   const ar = language === 'ar';
-  const [openingImportDate, setOpeningImportDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [openingImportDate, setOpeningImportDate] = useState(() => businessTodayYmd());
   const [openingImportLoading, setOpeningImportLoading] = useState(false);
   const openingImportInputRef = useRef<HTMLInputElement>(null);
 

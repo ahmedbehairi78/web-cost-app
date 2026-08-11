@@ -13,6 +13,7 @@ import {
 } from '../accounting/openingInventoryJournal.js';
 import { resolveProjectWarehouseAccount } from '../accounting/projectWarehouseGl.js';
 import { roundMoney } from '../lib/money.js';
+import { businessYmdFromDate } from '../lib/businessCalendar.js';
 import { moduleAccess } from '../permissions.js';
 import {
   EPSILON,
@@ -464,12 +465,7 @@ inventoryRouter.get(
       const projectId = projectByContract.get(row.contractId) ?? '';
       if (projectIdFilter && projectId !== projectIdFilter) continue;
       // Business calendar day (Africa/Cairo) — avoid UTC date shift on recordedAt.
-      const day = new Intl.DateTimeFormat('en-CA', {
-        timeZone: process.env.BUSINESS_TIMEZONE?.trim() || 'Africa/Cairo',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-      }).format(row.recordedAt);
+      const day = businessYmdFromDate(row.recordedAt);
       const month = groupByMonth ? day.slice(0, 7) : undefined;
       const dayKey = groupByDay ? day : undefined;
       const key = groupByDay

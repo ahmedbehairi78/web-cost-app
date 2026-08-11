@@ -180,7 +180,7 @@ export function GLJournalEntries({
   }, []);
 
   const [contractForm, setContractForm] = useState({ contractName: '', contractNumber: '', projectId: '' });
-  const [projectForm, setProjectForm] = useState({ projectName: '', projectCode: '', clientName: '', budget: 0, startDate: new Date().toISOString().split('T')[0] });
+  const [projectForm, setProjectForm] = useState({ projectName: '', projectCode: '', clientName: '', budget: 0, startDate: businessTodayYmd() });
 
   const inputCls = (extra = '') => cn(
     'w-full border rounded-lg py-2.5 px-4 text-sm outline-none focus:border-blue-500 transition-colors',
@@ -312,7 +312,7 @@ export function GLJournalEntries({
         setContractForm(prev => ({ ...prev, projectId: docRef.id }));
       }
       setIsProjectModalOpen(false);
-      setProjectForm({ projectName: '', projectCode: '', clientName: '', budget: 0, startDate: new Date().toISOString().split('T')[0] });
+      setProjectForm({ projectName: '', projectCode: '', clientName: '', budget: 0, startDate: businessTodayYmd() });
     } catch (error) {
       handleFirestoreError(error, OperationType.CREATE, 'projects');
     } finally {
@@ -474,7 +474,7 @@ export function GLJournalEntries({
     const ws = XLSX.utils.json_to_sheet([...rows, totalsRow]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, isAr ? 'قيود اليومية' : 'Journal Entries');
-    XLSX.writeFile(wb, `Journal_Entries_${fiscalYear}_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(wb, `Journal_Entries_${fiscalYear}_${businessTodayYmd()}.xlsx`);
   };
 
   const totalDebit = entryForm.entries.reduce((s, e) => s + Number(e.debit), 0);

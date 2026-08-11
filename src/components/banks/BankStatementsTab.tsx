@@ -10,6 +10,7 @@ import { listenQuery } from '../../lib/firestoreListen';
 import toast from 'react-hot-toast';
 import { db, handleFirestoreError, OperationType } from '../../firebase';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { isLocalBackend } from '../../lib/dataBackend';
 import { banksApi } from '../../services/local/modulesApi';
 import {
@@ -27,7 +28,7 @@ type LineDraft = {
 };
 
 const emptyLine = (): LineDraft => ({
-  lineDate: new Date().toISOString().slice(0, 10),
+  lineDate: businessTodayYmd(),
   debit: '',
   credit: '',
   reference: '',
@@ -59,8 +60,8 @@ export function BankStatementsTab({
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
     bankAccountId: '',
-    periodStart: new Date().toISOString().slice(0, 10),
-    periodEnd: new Date().toISOString().slice(0, 10),
+    periodStart: businessTodayYmd(),
+    periodEnd: businessTodayYmd(),
     openingBalance: '0',
     closingBalance: '',
     sourceLabel: '',

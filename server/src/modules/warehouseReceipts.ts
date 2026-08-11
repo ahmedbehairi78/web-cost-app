@@ -18,6 +18,7 @@ import {
   receiveUnpricedProjectInventory,
   reverseUnpricedProjectInventory,
 } from './inventoryHelpers.js';
+import { businessTodayCompact } from '../lib/businessCalendar.js';
 
 export const warehouseReceiptsRouter = Router();
 warehouseReceiptsRouter.use(requireAuth);
@@ -42,17 +43,8 @@ function requireReceiptApprover(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-function todayCairoYmd(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Cairo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
-
 async function nextReceiptNumber(tx: Prisma.TransactionClient = prisma): Promise<string> {
-  const day = todayCairoYmd().replace(/-/g, '');
+  const day = businessTodayCompact();
   const prefix = `WR-${day}-`;
   const latest = await tx.warehouseReceipt.findFirst({
     where: { receiptNumber: { startsWith: prefix } },

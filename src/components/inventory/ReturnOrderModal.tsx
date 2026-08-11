@@ -12,6 +12,7 @@ import { formatMoney as formatMoneyLib } from '../../lib/money';
 import { formatQuantity } from '../../lib/formatQuantity';
 import toast from 'react-hot-toast';
 import type { AppTheme } from '../../lib/shellTheme';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 
 export type ReturnOrderLineContext = {
   consumptionOrderLineId: number;
@@ -29,7 +30,7 @@ export type ReturnOrderLineContext = {
 
 type Theme = AppTheme;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessTodayYmd();
 
 function fmtMoney(n: number) {
   return formatMoneyLib(n);

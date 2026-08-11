@@ -64,6 +64,7 @@ import {
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { listenQuery } from '../lib/firestoreListen';
 import { cn, listKey, compositeListKey } from '../lib/utils';
+import { businessTodayYmd } from '../lib/businessCalendar';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import {
@@ -475,7 +476,7 @@ async function exportBackup(onProgress: (msg: string) => void): Promise<void> {
   const blob = new Blob([payload], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  const date = new Date().toISOString().slice(0, 10);
+  const date = businessTodayYmd();
   a.href = url;
   a.download = `backup_${date}.json`;
   a.click();
@@ -702,7 +703,7 @@ function BackupModal({ language, theme, onClose, allowFullReplace = true }: Back
         const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        const date = new Date().toISOString().slice(0, 10);
+        const date = businessTodayYmd();
         a.href = url;
         a.download = `backup_${date}.json`;
         a.click();

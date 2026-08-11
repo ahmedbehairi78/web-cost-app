@@ -37,6 +37,7 @@ import toast from 'react-hot-toast';
 import { useUserAccessScope } from '../../hooks/useUserAccessScope';
 import type { AppTheme } from '../../lib/shellTheme';
 import { clearFormDraft } from '../../lib/offline';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 
 export type ProjectInventoryItemForConsume = {
   id: number;
@@ -89,7 +90,7 @@ type ConfirmedOrderForPrint = {
 type Theme = AppTheme;
 type ExpenseAccountPreferenceMap = Record<string, string>;
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => businessTodayYmd();
 const EXPENSE_PREFS_STORAGE_KEY = 'consumptionExpenseAccountByGroup_v1';
 
 function normalizeAccountCode(code: unknown): string {

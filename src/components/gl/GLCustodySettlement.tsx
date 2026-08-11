@@ -10,6 +10,7 @@ import { accountingService, Account, invalidateCoaCache } from '../../services/a
 import { AccountModal } from './AccountModal';
 import { SearchableSelect } from '../ui/SearchableSelect';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { formatMoney as formatMoneyLib, roundMoney } from '../../lib/money';
 import toast from 'react-hot-toast';
 import { useLanguage } from '../../context/LanguageContext';
@@ -127,7 +128,7 @@ function emptyItem(): CustodySettlementItem {
 function emptyForm(language: string) {
   return {
     projectId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: businessTodayYmd(),
     description: language === 'ar' ? 'تسوية عهدة' : 'Custody Settlement',
     items: [emptyItem()],
   };
@@ -705,7 +706,7 @@ export function GLCustodySettlement({
     );
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'CustodySettlement');
-    const name = row?.settlementNumber || `Custody_${new Date().toISOString().split('T')[0]}`;
+    const name = row?.settlementNumber || `Custody_${businessTodayYmd()}`;
     XLSX.writeFile(wb, `${name}.xlsx`);
   };
 

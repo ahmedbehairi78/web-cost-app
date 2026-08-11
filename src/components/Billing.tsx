@@ -18,6 +18,7 @@ import { collection, query, where, orderBy, addDoc, updateDoc, writeBatch, doc, 
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { accountingService, buildIpcEntries } from '../services/accountingService';
 import { JournalPreviewModal, type JournalPreviewEntry } from './gl/JournalPreviewModal';
+import { businessTodayYmd } from '../lib/businessCalendar';
 import { cn, normalizeDate, roundMoney2 } from '../lib/utils';
 import { computeIpcBillingAmounts } from '../lib/ipcBillingAmounts';
 import { LISTENER_PURCHASE_TX_CAP } from '../constants/dataLimits';
@@ -427,7 +428,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const [showIpcQtyItems, setShowIpcQtyItems] = useState(false);
   const [formData, setFormData] = useState({
     billingNumber: '',
-    date: new Date().toISOString().split('T')[0],
+    date: businessTodayYmd(),
     items: [] as BillingItem[],
     vatPct: BILLING_DEFAULTS.VAT_PCT,
     execGuaranteePct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
@@ -1119,7 +1120,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
 
       setFormData({
         billingNumber: `IPC-${billings.length + 1}`,
-        date: new Date().toISOString().split('T')[0],
+        date: businessTodayYmd(),
         items: initialItems,
         vatPct: BILLING_DEFAULTS.VAT_PCT,
         execGuaranteePct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,

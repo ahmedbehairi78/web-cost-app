@@ -16,6 +16,7 @@ import {
   toMoney,
   weightedAvgCost,
 } from './inventoryHelpers.js';
+import { businessTodayCompact } from '../lib/businessCalendar.js';
 
 export const inventoryTransfersRouter = Router();
 inventoryTransfersRouter.use(requireAuth);
@@ -35,7 +36,7 @@ async function generateTransferNumber(tx: Prisma.TransactionClient): Promise<str
     where: { transferNumber: { startsWith: 'TRF-' } },
   });
   const seq = String(cnt + 1).padStart(4, '0');
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const date = businessTodayCompact();
   return `TRF-${date}-${seq}`;
 }
 

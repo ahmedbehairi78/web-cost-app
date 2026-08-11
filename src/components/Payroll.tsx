@@ -44,6 +44,7 @@ import {
 import { computeEgyptEmployeeStatutory } from '../lib/egyptPayrollStatutory';
 import { isPayrollPaymentAccount } from '../lib/chartOfAccountsPicker';
 import { cn } from '../lib/utils';
+import { businessTodayYmd } from '../lib/businessCalendar';
 import toast from 'react-hot-toast';
 import { ManualHelpButton } from './help/ManualHelpButton';
 import type { ManualTopicId } from '../lib/operationsManual';
@@ -547,7 +548,7 @@ interface PayModalProps {
 function PayModal({ run, paymentAccounts, onClose, onPaid }: PayModalProps) {
   const { language, formatMoney } = useLanguage();
   const [accountCode, setAccountCode] = useState(paymentAccounts[0]?.code ?? '');
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(businessTodayYmd());
   const [saving, setSaving] = useState(false);
 
   const handlePay = useCallback(async () => {

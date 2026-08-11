@@ -7,6 +7,7 @@ import { serialize } from '../prisma/serialize.js';
 import { createTransaction } from '../accounting/journal.js';
 import { roundMoney, MONEY_TOLERANCE } from '../lib/money.js';
 import { assertProjectAccess, getAccessibleProjectIds } from './inventoryHelpers.js';
+import { businessTodayCompact, businessTodayYmd } from '../lib/businessCalendar.js';
 
 export const contractExpenseOrdersRouter = Router();
 contractExpenseOrdersRouter.use(requireAuth);
@@ -16,7 +17,7 @@ async function generateOrderNumber(tx: Prisma.TransactionClient): Promise<string
     where: { orderNumber: { startsWith: 'CEX-' } },
   });
   const seq = String(cnt + 1).padStart(4, '0');
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const date = businessTodayCompact();
   return `CEX-${date}-${seq}`;
 }
 
@@ -127,7 +128,7 @@ contractExpenseOrdersRouter.post(
           orderNumber,
           contractId,
           projectId,
-          orderDate: body.orderDate?.trim() || new Date().toISOString().slice(0, 10),
+          orderDate: body.orderDate?.trim() || businessTodayYmd(),
           expenseAccountCode: String(body.expenseAccountCode ?? '').trim(),
           expenseAccountName: body.expenseAccountName?.trim() || null,
           creditorAccountCode: String(body.creditorAccountCode ?? '').trim(),

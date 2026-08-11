@@ -10,6 +10,7 @@ import { useApiQuery } from '../hooks/useApiQuery';
 import { useChartOfAccountsRef } from '../hooks/useChartOfAccountsRef';
 import { isLocalBackend } from '../lib/dataBackend';
 import { cn } from '../lib/utils';
+import { businessTodayYmd } from '../lib/businessCalendar';
 import type { Account } from '../services/accountingService';
 import type {
   BankAccount,
@@ -269,7 +270,7 @@ export function Banks() {
       const s = c.status === 'returned' ? 'rejected' : c.status;
       return !['cleared', 'rejected', 'cancelled'].includes(s);
     }).length;
-    const month = new Date().toISOString().slice(0, 7);
+    const month = businessTodayYmd().slice(0, 7);
     const monthStatements = statements.filter((s) => s.periodEnd.startsWith(month)).length;
     return { activeAccounts, draftMovements, openCheques, monthStatements };
   }, [accounts, movements, cheques, statements]);

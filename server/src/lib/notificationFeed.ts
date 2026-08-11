@@ -10,6 +10,7 @@ import {
   type UserPermissions,
   type UserRole,
 } from '../permissions.js';
+import { businessTodayYmd, businessYmdFromDate } from './businessCalendar.js';
 
 export type NotificationPriority = 'urgent' | 'normal' | 'low';
 
@@ -307,7 +308,7 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
       take: 40,
     });
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = businessTodayYmd();
     for (const ch of cheques) {
       const due = ch.dueDate ?? ch.issueDate;
       const overdue = due < today;
@@ -428,7 +429,7 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
         entityId: mos.id,
         contractId: mos.contractId,
         projectId: mos.contract.projectId,
-        createdAt: mos.extractDate ?? mos.createdAt.toISOString().slice(0, 10),
+        createdAt: mos.extractDate ?? businessYmdFromDate(mos.createdAt),
       });
     }
 
@@ -460,7 +461,7 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
         entityId: mos.id,
         contractId: mos.contractId,
         projectId: legacyProjectByContract.get(mos.contractId),
-        createdAt: mos.extractDate ?? mos.createdAt.toISOString().slice(0, 10),
+        createdAt: mos.extractDate ?? businessYmdFromDate(mos.createdAt),
       });
     }
   }
@@ -486,7 +487,7 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
         entityId: vo.id,
         contractId: vo.contractId,
         projectId: vo.projectId,
-        createdAt: vo.voDate ?? vo.createdAt.toISOString().slice(0, 10),
+        createdAt: vo.voDate ?? businessYmdFromDate(vo.createdAt),
       });
     }
   }

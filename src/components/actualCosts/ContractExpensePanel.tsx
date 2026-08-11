@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { useLanguage } from '../../context/LanguageContext';
 import { useChartOfAccountsRef } from '../../hooks/useChartOfAccountsRef';
 import { contractExpenseOrdersApi } from '../../services/local/modulesApi';
@@ -42,7 +43,7 @@ export function ContractExpensePanel({
   const [form, setForm] = useState({
     projectId: '',
     contractId: '',
-    date: new Date().toISOString().slice(0, 10),
+    date: businessTodayYmd(),
     expenseAccountCode: '',
     creditorAccountCode: '',
     totalAmount: '',

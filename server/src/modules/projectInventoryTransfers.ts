@@ -19,6 +19,7 @@ import {
 } from './inventoryHelpers.js';
 import { ensureProjectExists } from './ensureLocalProject.js';
 import { postProjectTransferJournal } from '../accounting/projectWarehouseGl.js';
+import { businessTodayCompact } from '../lib/businessCalendar.js';
 import {
   notifyTransferCreated,
   notifyTransferPendingProjects,
@@ -45,7 +46,7 @@ async function generateTransferNumber(tx: Prisma.TransactionClient): Promise<str
     where: { transferNumber: { startsWith: 'PTRF-' } },
   });
   const seq = String(cnt + 1).padStart(4, '0');
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const date = businessTodayCompact();
   return `PTRF-${date}-${seq}`;
 }
 

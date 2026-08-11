@@ -10,6 +10,7 @@ import { assertTransactionsPeriodUnlocked } from '../accounting/periodLock.js';
 import { roundMoney, MONEY_TOLERANCE } from '../lib/money.js';
 import { computeEgyptEmployeeStatutory } from '../lib/egyptPayrollStatutory.js';
 import { env } from '../env.js';
+import { businessTodayYmd } from '../lib/businessCalendar.js';
 import {
   applyAttendanceRules,
   DEFAULT_ATTENDANCE_RULE,
@@ -711,7 +712,7 @@ payrollRouter.post(
   asyncHandler(async (req, res) => {
     const runId = String(req.params.id);
     const accrualDate = str((req.body as { accrualDate?: string }).accrualDate)
-      || new Date().toISOString().slice(0, 10);
+      || businessTodayYmd();
 
     const result = await prisma.$transaction(async (tx) => {
       const run = await tx.payrollRun.findUnique({
@@ -772,7 +773,7 @@ payrollRouter.post(
       });
       return;
     }
-    const paymentDate = str(b.paymentDate) || new Date().toISOString().slice(0, 10);
+    const paymentDate = str(b.paymentDate) || businessTodayYmd();
 
     const result = await prisma.$transaction(async (tx) => {
       const run = await tx.payrollRun.findUnique({ where: { id: runId } });

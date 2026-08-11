@@ -15,6 +15,7 @@ import { buildNotificationFeed, type NotificationAuthUser } from './notification
 import { fireCancelOutbox } from './enqueueNotification.js';
 import { hashApprovalToken } from './approvalLinkToken.js';
 import type { UserRole } from '../permissions.js';
+import { businessTodayYmd } from './businessCalendar.js';
 
 export type NotificationAction = 'approve' | 'reject';
 
@@ -379,7 +380,7 @@ export async function executeNotificationAction(
       await prisma.$transaction(async (tx) => {
         const journal = await createTransaction(
           {
-            date: String(row.extractDate ?? new Date().toISOString().slice(0, 10)),
+            date: String(row.extractDate ?? businessTodayYmd()),
             description: `تشوين - ${boqDescription}`,
             reference: extractNumber || undefined,
             costCenterId: row.contractId,

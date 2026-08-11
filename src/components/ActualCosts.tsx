@@ -22,6 +22,7 @@ import type { ManualTopicId } from '../lib/operationsManual';
 import { JournalPreviewModal, type JournalPreviewEntry } from './gl/JournalPreviewModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn, roundMoney2 } from '../lib/utils';
+import { businessTodayYmd } from '../lib/businessCalendar';
 import { roundMoney } from '../lib/money';
 import { useLanguage } from '../context/LanguageContext';
 import { displayLocale, formatNumber } from '../lib/numberLocale';
@@ -695,7 +696,7 @@ export function ActualCosts() {
     costCenterId: '',
     warehouseAccountId: '',
     expenseAccountId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: businessTodayYmd(),
     referenceNumber: '',
     amount: 0,
     invoiceLines: [createInvoiceLineDraft()] as InvoiceLineDraft[],
@@ -1098,7 +1099,7 @@ export function ActualCosts() {
         costCenterId: tx.contractId || '',
         warehouseAccountId: '',
         expenseAccountId: tx.expenseAccountId || '',
-        date: tx.date || new Date().toISOString().split('T')[0],
+        date: tx.date || businessTodayYmd(),
         referenceNumber: tx.referenceNumber || '',
         amount: Number(tx.amount) || 0,
         invoiceLines: [createInvoiceLineDraft()],
@@ -1149,7 +1150,7 @@ export function ActualCosts() {
       costCenterId: tx.contractId || '',
       warehouseAccountId,
       expenseAccountId: tx.expenseAccountId || '',
-      date: tx.date || new Date().toISOString().split('T')[0],
+      date: tx.date || businessTodayYmd(),
       referenceNumber: tx.referenceNumber || '',
       amount: Number(tx.amount) || 0,
       invoiceLines: hasMaterialLines ? invoiceLines : [createInvoiceLineDraft()],
@@ -2437,7 +2438,7 @@ export function ActualCosts() {
     setLinkedWarehouseReceiptId('');
     setFormData({
       supplierId: '', paymentType: 'credit', projectId: '', contractId: '', costCenterId: '', warehouseAccountId: '', expenseAccountId: '',
-      date: new Date().toISOString().split('T')[0], referenceNumber: '',
+      date: businessTodayYmd(), referenceNumber: '',
       amount: 0, invoiceLines: [createInvoiceLineDraft()], invoiceVatPct: BILLING_DEFAULTS.VAT_PCT, vatPct: BILLING_DEFAULTS.VAT_PCT, whtPct: BILLING_DEFAULTS.WHT_PCT,
       execGuaranteePct: 5, labourInsurancePct: 0, manpowerLevyPct: 0, advancePaymentRecovery: 0,
       description: '', items: [],

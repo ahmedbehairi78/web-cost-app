@@ -4,6 +4,7 @@ import { requireAuth, requirePermission } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
+import { businessTodayYmd } from '../lib/businessCalendar.js';
 import type { DbClient } from './inventoryHelpers.js';
 import {
   EPSILON,
@@ -441,7 +442,7 @@ sqliteCoreRouter.post(
     }
 
     const invoiceId = String(body.invoiceId || body.invoiceNumber || `INV-${Date.now()}`);
-    const invoiceDate = String(body.invoiceDate || new Date().toISOString().slice(0, 10));
+    const invoiceDate = String(body.invoiceDate || businessTodayYmd());
     const status = body.status ?? 'confirmed';
     if (!['draft', 'confirmed', 'posted'].includes(status)) {
       res.status(400).json({ error: 'Invalid invoice status' });

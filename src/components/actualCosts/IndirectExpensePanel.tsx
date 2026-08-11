@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Loader2, Save } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 import { useLanguage } from '../../context/LanguageContext';
 import { useChartOfAccountsRef } from '../../hooks/useChartOfAccountsRef';
 import { costCentersApi, type CostCenterRow } from '../../services/local/modulesApi';
@@ -18,7 +19,7 @@ export function IndirectExpensePanel({ theme }: { theme: Theme }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({
-    date: new Date().toISOString().slice(0, 10),
+    date: businessTodayYmd(),
     costCenterId: '',
     expenseAccountCode: '',
     creditorAccountCode: '',

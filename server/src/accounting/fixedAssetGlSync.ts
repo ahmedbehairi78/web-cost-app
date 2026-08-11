@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { roundMoney } from '../lib/money.js';
+import { businessTodayCompact } from '../lib/businessCalendar.js';
 
 /** 8-digit cost accounts under 11… excluding accumulated depreciation 119… */
 export function isFixedAssetCostAccount(code: string): boolean {
@@ -92,7 +93,7 @@ export async function syncFixedAssetsFromGl(): Promise<FixedAssetGlSyncResult> {
       continue;
     }
 
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const today = businessTodayCompact();
     const prefix = `FA-${today}-`;
     const last = await prisma.fixedAsset.findFirst({
       where: { assetNumber: { startsWith: prefix } },

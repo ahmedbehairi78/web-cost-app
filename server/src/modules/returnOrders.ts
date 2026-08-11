@@ -10,6 +10,7 @@ import { createTransaction } from '../accounting/journal.js';
 import { resolveProjectWarehouseAccount } from '../accounting/projectWarehouseGl.js';
 import { buildReturnToWarehouseEntries } from '../accounting/returnInventoryJournal.js';
 import { AccountCodes } from '../accounting/accountCodes.js';
+import { businessTodayCompact } from '../lib/businessCalendar.js';
 import {
   EPSILON,
   assertContractAccess,
@@ -32,7 +33,7 @@ async function generateReturnNumber(tx: Prisma.TransactionClient): Promise<strin
     where: { returnNumber: { startsWith: 'RET-' } },
   });
   const seq = String(cnt + 1).padStart(4, '0');
-  const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  const date = businessTodayCompact();
   return `RET-${date}-${seq}`;
 }
 

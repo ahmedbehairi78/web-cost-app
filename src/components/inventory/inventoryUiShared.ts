@@ -1,6 +1,7 @@
 import { cn } from '../../lib/utils';
 import { formatMoney as formatMoneyLib } from '../../lib/money';
 import type { AppTheme } from '../../lib/shellTheme';
+import { businessTodayYmd } from '../../lib/businessCalendar';
 
 export type Theme = AppTheme;
 
@@ -40,7 +41,8 @@ export interface ProjectRow {
   inventoryAccountCode?: string;
 }
 
-export const today = () => new Date().toISOString().slice(0, 10);
+/** Business calendar today (Africa/Cairo) — never UTC ISO date. */
+export const today = () => businessTodayYmd();
 
 /** Projects reachable via at least one assigned contract; null = unrestricted (admin / PM). */
 export function accessibleProjectIdsFromContracts(

@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { prisma } from '../db.js';
 import { createTransaction } from '../accounting/journal.js';
+import { businessTodayYmd } from '../lib/businessCalendar.js';
 import {
   buildOverheadPreview,
   closeOverheadPeriod,
@@ -47,7 +48,7 @@ async function main() {
   const amount = 100;
   const journal = await createTransaction(
     {
-      date: new Date().toISOString().slice(0, 10),
+      date: businessTodayYmd(),
       description: 'Smoke indirect expense',
       reference: ref,
       costCenterId: center.id,
