@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>إنشاء مشروع — أثر فوري</title>
+  <style>
+    :root { --navy:#003B71; --orange:#F58220; --bg:#0b1220; --muted:#94a3b8; --card:#1e293b; }
+    * { box-sizing: border-box; }
+    html, body { margin:0; height:100%; background:var(--bg); color:#f8fafc;
+      font-family:"Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; }
+    .slide { display:none; height:100%; padding:2rem 2.5rem 3.5rem; flex-direction:column; gap:.85rem; }
+    .slide.active { display:flex; }
+    h1,h2 { margin:0; }
+    h1 { font-size:2.3rem; }
+    h2 { font-size:1.45rem; border-bottom:3px solid var(--orange); width:fit-content; padding-bottom:.3rem; }
+    p,li { color:var(--muted); line-height:1.55; }
+    .hero { flex:1; display:flex; flex-direction:column; justify-content:center; gap:.75rem;
+      background:linear-gradient(145deg,#0f172a,#1e293b 55%,#0b1220); border:1px solid #334155;
+      border-radius:1rem; padding:2rem; }
+    .brand { color:var(--orange); font-weight:700; }
+    .grid { flex:1; min-height:0; display:grid; grid-template-columns:1.15fr .85fr; gap:1rem; }
+    .shot { min-height:0; border:1px solid #334155; border-radius:.75rem; background:#020617;
+      display:flex; align-items:center; justify-content:center; overflow:hidden; }
+    .shot img { max-width:100%; max-height:100%; object-fit:contain; display:none; }
+    .missing { color:var(--muted); padding:1.5rem; text-align:center; font-size:.95rem; }
+    .nav { position:fixed; inset-inline:0; bottom:0; height:3rem; display:flex; align-items:center;
+      justify-content:space-between; padding:0 1rem; background:rgba(11,18,32,.94); border-top:1px solid #334155; }
+    .nav button { background:var(--navy); color:#fff; border:0; border-radius:.5rem; padding:.4rem 1rem; cursor:pointer; font:inherit; }
+    .nav button:hover { background:var(--orange); }
+    code { color:#fdba74; background:#020617; padding:.05rem .3rem; border-radius:.25rem; }
+  </style>
+</head>
+<body>
+  <section class="slide active">
+    <div class="hero">
+      <div class="brand">Concord Plus · عرض تشغيلي</div>
+      <h1>إنشاء مشروع جديد</h1>
+      <p>من النموذج إلى ظهور المشروع في الفلاتر والمخزن والتكاليف والتقارير — مع عقد ومركز تكلفة مباشر.</p>
+      <p>أسهم لوحة المفاتيح للتنقل · <kbd>F</kbd> ملء الشاشة</p>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="01-before-projects-list">
+    <h2>1 — قائمة المشاريع قبل الإنشاء</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">شغّل npm run docs:demo-project</div></div>
+      <ul>
+        <li>المكتب الفني → مشاريع</li>
+        <li>نقطة البداية قبل إضافة المشروع التجريبي</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="03-new-project-modal-filled">
+    <h2>2 — تعبئة نموذج المشروع</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul>
+        <li>كود · اسم · عميل · حالة</li>
+        <li>بيانات تجريبية جاهزة للعرض</li>
+        <li>الحفظ يكتب في Postgres فوراً</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="04-project-saved-in-list">
+    <h2>3 — المشروع يظهر في القائمة</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul>
+        <li>بطاقة مشروع جديدة</li>
+        <li>جاهز للعقود وBOQ والمخزن</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="06-add-contract-filled">
+    <h2>4 — إضافة عقد (مركز تكلفة)</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul>
+        <li>العقد = نطاق تشغيلي</li>
+        <li>يُزامَن مركز تكلفة مباشر تلقائياً</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="08-impact-dashboard">
+    <h2>5 — الأثر: لوحة التحكم</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>المشروع ضمن فلاتر المقارنة/الفترة</li></ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="09-impact-inventory">
+    <h2>6 — الأثر: المخازن</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul>
+        <li>اختيار المشروع متاح</li>
+        <li>الخطوة التالية: ربط حساب <code>127…</code></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="10-impact-costs">
+    <h2>7 — الأثر: التكاليف الفعلية</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>فلتر المشروع/العقد للفواتير والمستخلصات</li></ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="11-impact-boq">
+    <h2>8 — الأثر: جداول الكميات</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>يمكن اختيار المشروع وبدء البنود</li></ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="12-impact-billing">
+    <h2>9 — الأثر: المستخلصات</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>نطاق العميل جاهز بعد العقد (+ بنود لاحقاً)</li></ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="13-impact-reports">
+    <h2>10 — الأثر: التقارير</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>فلتر المشروع يشمل الكيان الجديد</li></ul>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>خلاصة</h2>
+    <ul>
+      <li>إنشاء المشروع يفتح النطاق في كل الفلاتر فوراً</li>
+      <li>العقد يفعّل مركز التكلفة للتشغيل اليومي</li>
+      <li>لا أثر مالي في KPIs حتى فاتورة / صرف / مستخلص</li>
+    </ul>
+    <p>التفاصيل: <code>DEMO.md</code> · إعادة اللقطات: <code>npm run docs:demo-project</code></p>
+  </section>
+
+  <div class="nav">
+    <button type="button" id="prev">السابق</button>
+    <span id="counter" style="color:#94a3b8"></span>
+    <button type="button" id="next">التالي</button>
+  </div>
+  <script>
+    const slides=[...document.querySelectorAll('.slide')]; let i=0;
+    const counter=document.getElementById('counter');
+    function load(){document.querySelectorAll('.slide[data-shot]').forEach(s=>{
+      const id=s.dataset.shot, img=s.querySelector('img'), miss=s.querySelector('.missing');
+      if(!img) return; img.src=`screenshots/${id}.png?t=${Date.now()}`;
+      img.onload=()=>{img.style.display='block'; if(miss) miss.style.display='none';};
+      img.onerror=()=>{img.style.display='none'; if(miss) miss.style.display='block';};
+    });}
+    function show(n){i=(n+slides.length)%slides.length; slides.forEach((s,idx)=>s.classList.toggle('active',idx===i)); counter.textContent=`${i+1} / ${slides.length}`;}
+    document.getElementById('prev').onclick=()=>show(i-1);
+    document.getElementById('next').onclick=()=>show(i+1);
+    window.addEventListener('keydown',e=>{
+      if(e.key==='ArrowLeft'||e.key==='ArrowRight') show(i+(e.key==='ArrowLeft'?-1:1));
+      if(e.key==='f'||e.key==='F') document.documentElement.requestFullscreen?.();
+    });
+    load(); show(0);
+  </script>
+</body>
+</html>

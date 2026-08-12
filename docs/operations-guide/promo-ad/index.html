@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>إعلان ترويجي — Concord Plus · تشغيل المقاولة</title>
+  <style>
+    :root {
+      --navy: #003B71;
+      --orange: #F58220;
+      --ink: #0f172a;
+      --panel: rgba(15, 23, 42, 0.92);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; height: 100%; overflow: hidden;
+      background: #020617;
+      font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif;
+      color: #f8fafc;
+    }
+    .stage {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .frame-wrap {
+      position: relative;
+      flex: 1;
+      min-height: 0;
+      margin: 0.75rem 0.75rem 0;
+      border-radius: 0.75rem;
+      overflow: hidden;
+      border: 1px solid #334155;
+      background: #0b1220;
+    }
+    .frame-wrap img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+      background: #111827;
+    }
+    .overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+    }
+    .spotlight {
+      position: absolute;
+      border: 3px solid var(--orange);
+      border-radius: 10px;
+      box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.45), 0 0 24px rgba(245, 130, 32, 0.55);
+      animation: pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.015); }
+    }
+    .arrow {
+      position: absolute;
+      width: 0; height: 0;
+      filter: drop-shadow(0 2px 4px rgba(0,0,0,.5));
+      animation: bob 1s ease-in-out infinite;
+    }
+    .arrow.down {
+      border-left: 14px solid transparent;
+      border-right: 14px solid transparent;
+      border-top: 26px solid var(--orange);
+    }
+    .arrow.up {
+      border-left: 14px solid transparent;
+      border-right: 14px solid transparent;
+      border-bottom: 26px solid var(--orange);
+    }
+    .arrow.left {
+      border-top: 14px solid transparent;
+      border-bottom: 14px solid transparent;
+      border-right: 26px solid var(--orange);
+    }
+    .arrow.right {
+      border-top: 14px solid transparent;
+      border-bottom: 14px solid transparent;
+      border-left: 26px solid var(--orange);
+    }
+    @keyframes bob {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(6px); }
+    }
+    .arrow.left, .arrow.right { animation-name: bobX; }
+    @keyframes bobX {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(-6px); }
+    }
+    .callout {
+      position: absolute;
+      max-width: min(360px, 42vw);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 0.75rem;
+      padding: 0.65rem 0.85rem;
+      font-size: 0.95rem;
+      font-weight: 700;
+      line-height: 1.35;
+      border: 2px solid var(--orange);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .callout small {
+      display: block;
+      margin-top: 0.25rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #475569;
+    }
+    .caption {
+      flex: 0 0 auto;
+      margin: 0.65rem 0.75rem 0.75rem;
+      background: var(--panel);
+      border: 1px solid #334155;
+      border-radius: 0.75rem;
+      padding: 0.85rem 1.1rem;
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      min-height: 5.2rem;
+    }
+    .step-badge {
+      flex: 0 0 auto;
+      width: 3.1rem; height: 3.1rem;
+      border-radius: 999px;
+      background: var(--orange);
+      color: #111;
+      font-weight: 900;
+      font-size: 1.2rem;
+      display: grid;
+      place-items: center;
+    }
+    .caption h1 {
+      margin: 0;
+      font-size: 1.15rem;
+      font-weight: 800;
+    }
+    .caption p {
+      margin: 0.2rem 0 0;
+      color: #cbd5e1;
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+    .progress {
+      position: absolute;
+      top: 0; inset-inline: 0;
+      height: 4px;
+      background: #1e293b;
+      z-index: 5;
+    }
+    .progress > i {
+      display: block;
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, var(--navy), var(--orange));
+      transition: width 0.2s linear;
+    }
+    .brand {
+      position: absolute;
+      top: 12px;
+      inset-inline-start: 16px;
+      z-index: 6;
+      background: rgba(15,23,42,.75);
+      border: 1px solid #334155;
+      border-radius: 999px;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.75rem;
+      color: #fdba74;
+      font-weight: 700;
+    }
+    .voice-badge {
+      position: absolute;
+      top: 12px;
+      inset-inline-end: 16px;
+      z-index: 6;
+      background: rgba(15,23,42,.75);
+      border: 1px solid #334155;
+      border-radius: 999px;
+      padding: 0.25rem 0.7rem;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      font-weight: 600;
+    }
+    .voice-badge.on { color: #86efac; border-color: #166534; }
+  </style>
+</head>
+<body>
+  <div class="stage" id="stage">
+    <div class="progress"><i id="bar"></i></div>
+    <div class="brand">Concord Plus · إعلان ترويجي</div>
+    <div class="voice-badge" id="voiceBadge">بدون تعليق صوتي</div>
+    <div class="frame-wrap" id="frame">
+      <img id="shot" alt="" />
+      <div class="overlay" id="overlay"></div>
+    </div>
+    <div class="caption">
+      <div class="step-badge" id="num">1</div>
+      <div>
+        <h1 id="title">…</h1>
+        <p id="body">…</p>
+      </div>
+    </div>
+  </div>
+  <audio id="narration" preload="auto"></audio>
+
+  <script>
+    const PAD_MS = 450;
+    const shot = document.getElementById('shot');
+    const overlay = document.getElementById('overlay');
+    const num = document.getElementById('num');
+    const title = document.getElementById('title');
+    const body = document.getElementById('body');
+    const bar = document.getElementById('bar');
+    const audio = document.getElementById('narration');
+    const voiceBadge = document.getElementById('voiceBadge');
+
+    let STEPS = [];
+    let i = 0;
+    let startedAt = 0;
+    let stepMs = 4000;
+    let raf = 0;
+    let timer = 0;
+    let hasVoice = false;
+
+    function clearOverlay() {
+      overlay.innerHTML = '';
+    }
+
+    function place(el, left, top) {
+      el.style.left = `${left}%`;
+      el.style.top = `${top}%`;
+    }
+
+    function audioUrlFor(index) {
+      return `audio/${String(index + 1).padStart(2, '0')}.mp3`;
+    }
+
+    function probeAudio(url) {
+      return new Promise((resolve) => {
+        const a = new Audio();
+        a.preload = 'metadata';
+        const done = (ok) => {
+          a.removeAttribute('src');
+          a.load();
+          resolve(ok);
+        };
+        a.onloadedmetadata = () => done(Number.isFinite(a.duration) && a.duration > 0.2);
+        a.onerror = () => done(false);
+        a.src = url;
+      });
+    }
+
+    function loadAudioDuration(url) {
+      return new Promise((resolve) => {
+        const a = new Audio();
+        a.preload = 'metadata';
+        a.onloadedmetadata = () => resolve(Math.max(0.5, a.duration) * 1000);
+        a.onerror = () => resolve(null);
+        a.src = url;
+      });
+    }
+
+    function renderStep(step) {
+      clearOverlay();
+      num.textContent = String(i + 1);
+      title.textContent = step.title;
+      body.textContent = step.body;
+      shot.src = `${step.img}?t=${Date.now()}`;
+
+      const spot = document.createElement('div');
+      spot.className = 'spotlight';
+      spot.style.left = `${step.hotspot.left}%`;
+      spot.style.top = `${step.hotspot.top}%`;
+      spot.style.width = `${step.hotspot.width}%`;
+      spot.style.height = `${step.hotspot.height}%`;
+      overlay.appendChild(spot);
+
+      const arrow = document.createElement('div');
+      arrow.className = `arrow ${step.arrow.dir}`;
+      place(arrow, step.arrow.left, step.arrow.top);
+      overlay.appendChild(arrow);
+
+      const callout = document.createElement('div');
+      callout.className = 'callout';
+      callout.innerHTML = `${step.callout.text}<small>${step.callout.hint || ''}</small>`;
+      place(callout, step.callout.left, step.callout.top);
+      overlay.appendChild(callout);
+    }
+
+    function tick() {
+      const elapsed = performance.now() - startedAt;
+      const pct = Math.min(100, (elapsed / stepMs) * 100);
+      bar.style.width = `${(i / STEPS.length) * 100 + pct / STEPS.length}%`;
+      raf = requestAnimationFrame(tick);
+    }
+
+    async function playStepAudio() {
+      audio.pause();
+      audio.removeAttribute('src');
+      if (!hasVoice) return;
+      const url = audioUrlFor(i);
+      audio.src = url;
+      try {
+        await audio.play();
+      } catch {
+        /* autoplay may block outside recording; duration still drives timing */
+      }
+    }
+
+    async function next() {
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+      audio.pause();
+      if (i >= STEPS.length) {
+        document.body.dataset.done = '1';
+        bar.style.width = '100%';
+        return;
+      }
+      document.body.dataset.step = String(i);
+      const step = STEPS[i];
+      renderStep(step);
+
+      let duration = step.ms || 4500;
+      if (hasVoice) {
+        const fromMeta = await loadAudioDuration(audioUrlFor(i));
+        if (fromMeta) duration = Math.ceil(fromMeta) + PAD_MS;
+      }
+      stepMs = duration;
+      startedAt = performance.now();
+      raf = requestAnimationFrame(tick);
+      await playStepAudio();
+      timer = setTimeout(() => {
+        i += 1;
+        next();
+      }, stepMs);
+    }
+
+    async function boot() {
+      const res = await fetch('steps.json', { cache: 'no-store' });
+      if (!res.ok) throw new Error('steps.json missing — serve via npm run docs:video');
+      STEPS = await res.json();
+      hasVoice = await probeAudio(audioUrlFor(0));
+      voiceBadge.textContent = hasVoice ? 'تعليق صوتي · صوتك المستنسخ' : 'بدون تعليق — شغّل docs:voice:narrate';
+      voiceBadge.classList.toggle('on', hasVoice);
+      document.body.dataset.voice = hasVoice ? '1' : '0';
+
+      await Promise.all(
+        STEPS.map(
+          (s) =>
+            new Promise((resolve) => {
+              const im = new Image();
+              im.onload = resolve;
+              im.onerror = resolve;
+              im.src = s.img;
+            }),
+        ),
+      );
+
+      document.body.dataset.ready = '1';
+      i = 0;
+      next();
+    }
+
+    boot().catch((err) => {
+      document.body.dataset.ready = '1';
+      document.body.dataset.done = '1';
+      title.textContent = 'تعذّر التحميل';
+      body.textContent = String(err?.message || err);
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') {
+        clearTimeout(timer);
+        cancelAnimationFrame(raf);
+        i = Math.max(0, i - 1);
+        next();
+      }
+      if (e.key === 'ArrowRight') {
+        clearTimeout(timer);
+        cancelAnimationFrame(raf);
+        i = Math.min(STEPS.length - 1, i + 1);
+        next();
+      }
+      if (e.key === 'm' || e.key === 'M' || e.key === 'ء') {
+        audio.muted = !audio.muted;
+      }
+    });
+  </script>
+</body>
+</html>

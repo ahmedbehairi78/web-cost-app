@@ -174,6 +174,7 @@ export function ModuleNavMenu({
       <button
         ref={buttonRef}
         type="button"
+        data-shell-module={moduleId}
         onClick={handlePrimaryClick}
         onKeyDown={onKeyDown}
         title={deniedTitle}

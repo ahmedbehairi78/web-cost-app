@@ -1,0 +1,145 @@
+[
+  {
+    "id": "00",
+    "img": "../screenshots/02-desktop-after-login.png",
+    "title": "تشغيل مقاولة… مش إكسيل مبعثر",
+    "body": "الحسابات والمخزن والمستخلصات في نظام واحد.",
+    "narration": "لو بتشتغل مقاولات الحسابات والمخزن والمستخلصات مش لازم تفضل مبعثرة",
+    "hotspot": { "left": 8, "top": 12, "width": 84, "height": 70 },
+    "arrow": { "left": 50, "top": 8, "dir": "down" },
+    "callout": { "left": 55, "top": 10, "text": "سطح المكتب", "hint": "كل الموديولات من هنا" },
+    "ms": 5000
+  },
+  {
+    "id": "01",
+    "img": "../project-create-demo/screenshots/07-contract-on-project.png",
+    "title": "مشروع + عقد + مركز تكلفة",
+    "body": "من أول ما تحفظ… المركز بيتظبط معاك.",
+    "narration": "تبدأ بمشروع وعقد ومركز التكلفة بيتظبط من أول ما تحفظ",
+    "hotspot": { "left": 10, "top": 40, "width": 55, "height": 40 },
+    "arrow": { "left": 35, "top": 36, "dir": "down" },
+    "callout": { "left": 58, "top": 38, "text": "المشروع والعقد", "hint": "أساس الشغل" },
+    "ms": 5000
+  },
+  {
+    "id": "02",
+    "img": "../boq-materials-demo/screenshots/03-boq-materials-modal.png",
+    "title": "بنود BOQ مربوطة بالأصناف",
+    "body": "الصرف على البند يبقى مضبوط… مش تخمين.",
+    "narration": "جدول الكميات مش أرقام بس كل بند يتربط بأصناف المخزن عشان الصرف يبقى مضبوط",
+    "hotspot": { "left": 28, "top": 28, "width": 44, "height": 42 },
+    "arrow": { "left": 50, "top": 22, "dir": "down" },
+    "callout": { "left": 58, "top": 16, "text": "ربط الأصناف", "hint": "شرط الصرف" },
+    "ms": 5500
+  },
+  {
+    "id": "03",
+    "img": "../screenshots/06-inventory.png",
+    "title": "مخزن المشروع + تكلفة فعلية",
+    "body": "فاتورة → مخزن → صرف على البنود.",
+    "narration": "فاتورة المشتريات بتدخل مخزن المشروع وبعد إذن الصرف ينزل تكلفة فعلية على البنود",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "المخازن", "hint": "رصيد وصرف" },
+    "ms": 5500
+  },
+  {
+    "id": "04",
+    "img": "../project-create-demo/screenshots/12-impact-billing.png",
+    "title": "مستخلص العميل + قيد بعد الاعتماد",
+    "body": "كفر استقطاعات… والصافي يحسب صح.",
+    "narration": "مستخلص العميل بكفر جاهز للاستقطاعات والصافي بيحسب صح والقيد بعد الاعتماد",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "المستخلصات", "hint": "اعتماد ← قيد" },
+    "ms": 5500
+  },
+  {
+    "id": "05",
+    "img": "../project-create-demo/screenshots/14-impact-cost-centers.png",
+    "title": "توزيع المصروفات الخدمية",
+    "body": "مراكز خدمية → على عقود المشاريع بعد الاعتماد.",
+    "narration": "المصروفات الخدمية مش بتضيع بتتوزع على عقود المشاريع وبعد الاعتماد ينزل القيد",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "مراكز التكلفة", "hint": "توزيع على العقود" },
+    "ms": 5500
+  },
+  {
+    "id": "06",
+    "img": "../screenshots/07-general-ledger.png",
+    "title": "إقفال الفترات وقفل الدفاتر",
+    "body": "انضباط من الألف للياء.",
+    "narration": "وفي إقفال للفترات المحاسبية وقفل الدفاتر عشان الشغل يبقى من الألف للياء",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "الدفاتر", "hint": "إقفال وقفل فترة" },
+    "ms": 5000
+  },
+  {
+    "id": "07",
+    "img": "../screenshots/08-banks.png",
+    "title": "بنوك بتحويلات حديثة",
+    "body": "حسابات · شيكات · إنستاباي · قيود.",
+    "narration": "موديول البنوك يواكب التطور المصرفي حسابات وشيكات وتحويلات وإنستاباي مربوطة بالقيود",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "البنوك", "hint": "تحويلات وشيكات" },
+    "ms": 5500
+  },
+  {
+    "id": "08",
+    "img": "../screenshots/09-payroll.png",
+    "title": "رواتب على القانون المصري",
+    "body": "أيام · تأمينات · ضريبة · معاينة قيد.",
+    "narration": "الرواتب على القانون المصري أيام وتأمينات وضريبة مع معاينة القيد قبل الترحيل",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "الرواتب", "hint": "قبل الترحيل: معاينة" },
+    "ms": 5500
+  },
+  {
+    "id": "09",
+    "img": "../screenshots/03-dashboard.png",
+    "title": "تنبيهات للفريق",
+    "body": "اعتمادات وطلبات… توصل للي مسؤول.",
+    "narration": "والفريق بياخد تنبيهات على الاعتمادات والطلبات عشان محدش يفوت خطوة",
+    "hotspot": { "left": 70, "top": 4, "width": 22, "height": 12 },
+    "arrow": { "left": 78, "top": 16, "dir": "up" },
+    "callout": { "left": 40, "top": 14, "text": "التنبيهات", "hint": "متابعة الاعتمادات" },
+    "ms": 5000
+  },
+  {
+    "id": "10",
+    "img": "../screenshots/12-settings.png",
+    "title": "صلاحيات · لغة · ثيمات",
+    "body": "كل دور بشاشته… عربي/إنجليزي… و٤ ثيمات.",
+    "narration": "وكل مستخدم بصلاحية مناسبة أدمن أو مدير مشاريع أو محاسب مشروع والواجهة عربي أو إنجليزي وتختار ثيم يناسب شغلك داكن أو هادي أو فاتح أو ERP",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "الإعدادات", "hint": "صلاحيات · لغة · ثيم" },
+    "ms": 7000
+  },
+  {
+    "id": "11",
+    "img": "../screenshots/10-reports.png",
+    "title": "تقارير من نفس القيود",
+    "body": "تحصيل · مستحقات · تكاليف العقود.",
+    "narration": "لوحة التحكم والتقارير مبنية على القيود تحصيل ومستحقات وتكاليف العقود",
+    "hotspot": { "left": 8, "top": 15, "width": 84, "height": 65 },
+    "arrow": { "left": 50, "top": 10, "dir": "down" },
+    "callout": { "left": 55, "top": 12, "text": "التقارير", "hint": "أرقام متسقة" },
+    "ms": 5000
+  },
+  {
+    "id": "12",
+    "img": "../screenshots/01-login.png",
+    "title": "Concord Plus",
+    "body": "تشغيل المقاولة من الشاشة — اطلب عرض تجريبي.",
+    "narration": "Concord Plus تشغيل المقاولة من الشاشة بقيود بعد الاعتماد اطلب عرض تجريبي",
+    "hotspot": { "left": 25, "top": 20, "width": 50, "height": 50 },
+    "arrow": { "left": 50, "top": 14, "dir": "down" },
+    "callout": { "left": 55, "top": 16, "text": "اطلب عرض", "hint": "Concord Plus" },
+    "ms": 5500
+  }
+]

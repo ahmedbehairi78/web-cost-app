@@ -1,0 +1,68 @@
+{
+  "createdAt": "2026-08-12T11:36:33.772Z",
+  "project": {
+    "id": "10f5ad86-621b-49eb-8926-7593264a5313",
+    "projectCode": "PRJ-DEMO-20260812"
+  },
+  "contract": {
+    "id": "fe2142a0-8afb-489e-b5a0-5611e94ea9fd",
+    "contractNumber": "CRT-BOQ-20260812",
+    "contractValue": 301224,
+    "estimatedCost": 268950,
+    "overheadPct": 10,
+    "profitPct": 12
+  },
+  "materials": {
+    "group": {
+      "code": "DEMO-GRP",
+      "name": "مجموعة تجريبية للعرض"
+    },
+    "categories": [
+      {
+        "code": "DEMO-MAT-SAND",
+        "name": "رمل تجريبي",
+        "unit": "م3"
+      },
+      {
+        "code": "DEMO-MAT-CEMENT",
+        "name": "أسمنت تجريبي",
+        "unit": "طن"
+      },
+      {
+        "code": "DEMO-MAT-PAINT",
+        "name": "دهان تجريبي",
+        "unit": "لتر"
+      }
+    ]
+  },
+  "boqItems": [
+    {
+      "id": "97c51ef1-fd71-4400-8022-8267b174b938",
+      "itemCode": "DEMO-01",
+      "tenderAmount": 20944,
+      "estimatedAmount": 18700,
+      "materialCodes": [
+        "DEMO-MAT-SAND"
+      ]
+    },
+    {
+      "id": "1ac9915c-8037-4862-b28d-c00133f03c22",
+      "itemCode": "DEMO-02",
+      "tenderAmount": 95480,
+      "estimatedAmount": 85250,
+      "materialCodes": [
+        "DEMO-MAT-SAND",
+        "DEMO-MAT-CEMENT"
+      ]
+    },
+    {
+      "id": "2ee6035a-df93-49e1-99b6-60854538d4e0",
+      "itemCode": "DEMO-03",
+      "tenderAmount": 184800,
+      "estimatedAmount": 165000,
+      "materialCodes": [
+        "DEMO-MAT-PAINT"
+      ]
+    }
+  ]
+}

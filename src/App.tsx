@@ -53,7 +53,7 @@ import {
 import { normalizeVisibleShellModules } from './lib/shellModuleVisibility';
 import { bootstrapLocalCoaFromFirestore, resetLocalCoaBootstrap } from './lib/localCoaSync';
 import { isElectronShell, isDesktopSessionReuseWindow, requestWindowMaximize, requestRevealDesktopWindow } from './lib/electronShell';
-import { resolveShellNavigation, resolveStartupModule, resolveSavedDefaultModulePreference, setPendingShellView } from './lib/shellNavigation';
+import { resolveShellNavigation, resolveStartupModule, resolveSavedDefaultModulePreference, setPendingShellView, setPendingBoqFocus } from './lib/shellNavigation';
 import {
   normalizeShellModuleId,
   partitionExclusiveShellWindows,
@@ -1259,6 +1259,25 @@ function ErpShellContent({
     },
     [navigateToModule],
   );
+
+  // Dev-only hook for docs screenshot capture (Playwright).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const w = window as Window & {
+      __webCostNavigate?: (moduleId: string, viewId?: string) => void;
+      __webCostSetBoqFocus?: (focus: { projectId?: string; contractId: string }) => void;
+    };
+    w.__webCostNavigate = (moduleId, viewId) => {
+      navigateToModule(moduleId, viewId, { force: true });
+    };
+    w.__webCostSetBoqFocus = (focus) => {
+      setPendingBoqFocus(focus);
+    };
+    return () => {
+      delete w.__webCostNavigate;
+      delete w.__webCostSetBoqFocus;
+    };
+  }, [navigateToModule]);
 
   useLayoutEffect(() => {
     if (!usesTopNav(theme)) return;

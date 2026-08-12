@@ -1,0 +1,16 @@
+{
+  "createdAt": "2026-08-12T11:18:00.000Z",
+  "demo": {
+    "projectCode": "PRJ-DEMO-20260812",
+    "projectName": "مشروع تجريبي — عرض إنشاء مشروع",
+    "projectNameEn": "Demo Project — Create Walkthrough",
+    "clientName": "عميل تجريبي Concord",
+    "contractNumber": "CRT-DEMO-20260812",
+    "contractName": "عقد تجريبي رئيسي",
+    "boqValue": 1500000
+  },
+  "via": "ui",
+  "screenshotsDir": "docs/operations-guide/project-create-demo/screenshots",
+  "slides": "docs/operations-guide/project-create-demo/slides.html",
+  "guide": "docs/operations-guide/project-create-demo/DEMO.md"
+}

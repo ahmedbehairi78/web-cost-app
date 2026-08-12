@@ -216,6 +216,7 @@ export function TopNavBar({
                 key={item.id}
                 ref={(el) => { navBtnRefs.current[idx] = el; }}
                 type="button"
+                data-shell-module={item.id}
                 onClick={() => {
                   if (canEnter) playNavigate();
                   else playTap();
