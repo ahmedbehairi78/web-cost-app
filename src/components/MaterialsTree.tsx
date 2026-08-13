@@ -14,7 +14,11 @@ import {
 } from '../lib/materialsTreeExcel';
 import toast from 'react-hot-toast';
 
-const UNITS = ['طن', 'م3', 'م2', 'متر', 'كجم', 'EA', 'لتر', 'عدد'];
+const UNITS = [
+  'طن', 'م3', 'م2', 'متر', 'كجم', 'شيكارة', 'كيس', 'قطعة', 'علبة', 'لفة', 'طقم',
+  'بكرة', 'لوح', 'ماسورة', 'أنبوبة', 'ألف', 'لوحة', 'باكو', 'مجموعة', 'جالون',
+  'زوج', 'كرتونة', 'برميل', 'ورقة', 'جركن', 'بستلة', 'رزمة', 'EA', 'لتر', 'عدد',
+];
 
 function cardBg(theme: AppTheme) {
   return theme === 'dark'
@@ -80,7 +84,7 @@ export function MaterialsTree() {
   const [importing, setImporting] = useState(false);
   const [search, setSearch] = useState('');
   const [groupFilterId, setGroupFilterId] = useState<number | ''>('');
-  const [groupForm, setGroupForm] = useState({ code: '', name: '' });
+  const [groupForm, setGroupForm] = useState({ code: '', name: '', nameEn: '' });
   const [catForm, setCatForm] = useState({ groupId: 0, code: '', name: '', unit: 'طن' });
 
   const load = useCallback(async () => {
@@ -114,7 +118,13 @@ export function MaterialsTree() {
     }
     if (!q) return result;
     return result.filter((g) => {
-      if (g.code.toLowerCase().includes(q) || g.name.toLowerCase().includes(q)) return true;
+      if (
+        g.code.toLowerCase().includes(q) ||
+        g.name.toLowerCase().includes(q) ||
+        (g.nameEn || '').toLowerCase().includes(q)
+      ) {
+        return true;
+      }
       return categories.some(
         (c) =>
           c.groupId === g.id &&
@@ -133,7 +143,11 @@ export function MaterialsTree() {
     return result.filter((c) => {
       if (c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)) return true;
       const g = groups.find((row) => row.id === c.groupId);
-      return g ? g.code.toLowerCase().includes(q) || g.name.toLowerCase().includes(q) : false;
+      return g
+        ? g.code.toLowerCase().includes(q) ||
+            g.name.toLowerCase().includes(q) ||
+            (g.nameEn || '').toLowerCase().includes(q)
+        : false;
     });
   }, [categories, groups, search, groupFilterId]);
 
@@ -163,8 +177,8 @@ export function MaterialsTree() {
       const result = await materialsApi.importTree(rows);
       await load();
       const msg = ar
-        ? `مجموعات جديدة: ${result.groupsCreated} | أصناف جديدة: ${result.categoriesCreated} | متخطى: ${result.groupsSkipped + result.categoriesSkipped}`
-        : `New groups: ${result.groupsCreated} | New categories: ${result.categoriesCreated} | Skipped: ${result.groupsSkipped + result.categoriesSkipped}`;
+        ? `مجموعات جديدة: ${result.groupsCreated} | محدّثة: ${result.groupsUpdated ?? 0} | أصناف جديدة: ${result.categoriesCreated} | محدّثة: ${result.categoriesUpdated ?? 0}`
+        : `New groups: ${result.groupsCreated} | Updated: ${result.groupsUpdated ?? 0} | New categories: ${result.categoriesCreated} | Updated: ${result.categoriesUpdated ?? 0}`;
       if (result.errors.length > 0) {
         toast.error(`${msg}\n${result.errors.slice(0, 3).join('\n')}`, { duration: 6000 });
       } else {
@@ -186,10 +200,14 @@ export function MaterialsTree() {
   }
 
   const addGroup = async () => {
-    if (!canEdit || !groupForm.code.trim() || !groupForm.name.trim()) return;
+    if (!canEdit || !groupForm.code.trim() || (!groupForm.name.trim() && !groupForm.nameEn.trim())) return;
     try {
-      await materialsApi.createGroup({ code: groupForm.code.trim(), name: groupForm.name.trim() });
-      setGroupForm({ code: '', name: '' });
+      await materialsApi.createGroup({
+        code: groupForm.code.trim(),
+        name: groupForm.name.trim() || groupForm.nameEn.trim(),
+        nameEn: groupForm.nameEn.trim() || undefined,
+      });
+      setGroupForm({ code: '', name: '', nameEn: '' });
       await load();
       toast.success(ar ? 'تمت إضافة المجموعة' : 'Group added');
     } catch (e: unknown) {
@@ -269,7 +287,7 @@ export function MaterialsTree() {
               <option value="">{t('inventory_materials_all_groups')}</option>
               {groups.map((g, gi) => (
                 <option key={listKey(g.id, gi, `mat-filter-${g.code}`)} value={g.id}>
-                  {g.code} — {g.name}
+                  {g.code} — {ar ? g.name : g.nameEn || g.name}
                 </option>
               ))}
             </select>
@@ -317,8 +335,9 @@ export function MaterialsTree() {
           <div className={cn('pt-3 border-t space-y-4', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
             <div className="space-y-2">
               <p className={splitSectionTitleCls()}>{ar ? 'مجموعة رئيسية' : 'Main group'}</p>
-              <input className={input} placeholder="MTL-01" value={groupForm.code} onChange={(e) => setGroupForm((f) => ({ ...f, code: e.target.value }))} />
-              <input className={input} placeholder={ar ? 'الاسم' : 'Name'} value={groupForm.name} onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))} />
+              <input className={input} placeholder="BLK" value={groupForm.code} onChange={(e) => setGroupForm((f) => ({ ...f, code: e.target.value }))} />
+              <input className={input} placeholder={t('inventory_materials_name_ar')} value={groupForm.name} onChange={(e) => setGroupForm((f) => ({ ...f, name: e.target.value }))} />
+              <input className={input} placeholder={t('inventory_materials_name_en')} value={groupForm.nameEn} onChange={(e) => setGroupForm((f) => ({ ...f, nameEn: e.target.value }))} />
               <button type="button" onClick={addGroup} className="w-full text-sm bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded-lg flex items-center justify-center gap-1 transition-colors">
                 <Plus size={14} />
                 {ar ? 'إضافة مجموعة' : 'Add group'}
@@ -366,7 +385,7 @@ function MaterialsCategoryForm({
         <option value="">{ar ? 'اختر المجموعة' : 'Select group'}</option>
         {groups.map((g, gi) => (
           <option key={listKey(g.id, gi, `mat-grp-${g.code}`)} value={g.id}>
-            {g.code} — {g.name}
+            {g.code} — {ar ? g.name : g.nameEn || g.name}
           </option>
         ))}
       </select>
@@ -439,8 +458,18 @@ function MaterialsTreeView({
                 <div className="min-w-0">
                   <p className="font-mono text-xs font-bold text-blue-600 tracking-wide">{g.code}</p>
                   <h4 className={cn('font-bold text-base mt-0.5 leading-snug', theme === 'dark' ? 'text-gray-100' : 'text-gray-900')}>
-                    {g.name}
+                    {ar ? g.name : g.nameEn || g.name}
                   </h4>
+                  {g.nameEn && ar && (
+                    <p className={cn('text-xs mt-0.5 truncate', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                      {g.nameEn}
+                    </p>
+                  )}
+                  {!ar && g.nameEn && g.name && g.name !== g.nameEn && (
+                    <p className={cn('text-xs mt-0.5 truncate', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
+                      {g.name}
+                    </p>
+                  )}
                 </div>
                 <span
                   className={cn(

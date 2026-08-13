@@ -21,7 +21,7 @@ type CategoryWithGroup = {
   name: string;
   unit: string;
   createdAt: Date;
-  group: { code: string; name: string };
+  group: { code: string; name: string; nameEn: string | null };
 };
 
 /** Flattens a category + its group into the legacy flat shape (groupCode/groupName). */
@@ -35,6 +35,7 @@ function flattenCategory(c: CategoryWithGroup) {
     createdAt: c.createdAt,
     groupCode: c.group.code,
     groupName: c.group.name,
+    groupNameEn: c.group.nameEn ?? '',
   });
 }
 
@@ -57,8 +58,10 @@ materialsRouter.post(
       res.status(403).json({ error: 'Only admin or projects manager can manage materials' });
       return;
     }
-    const body = req.body as { code: string; name: string };
-    if (!body.code?.trim() || !body.name?.trim()) {
+    const body = req.body as { code: string; name: string; nameEn?: string };
+    const name = body.name?.trim() || '';
+    const nameEn = body.nameEn?.trim() || '';
+    if (!body.code?.trim() || (!name && !nameEn)) {
       res.status(400).json({ error: 'code and name are required' });
       return;
     }
@@ -68,7 +71,11 @@ materialsRouter.post(
       return;
     }
     const created = await prisma.materialGroup.create({
-      data: { code: body.code.trim(), name: body.name.trim() },
+      data: {
+        code: body.code.trim(),
+        name: name || nameEn,
+        nameEn: nameEn || null,
+      },
     });
     res.status(201).json(serialize(created));
   }),
@@ -79,7 +86,7 @@ materialsRouter.put(
   requireModuleWrite('inventory'),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
-    const body = req.body as { code?: string; name?: string };
+    const body = req.body as { code?: string; name?: string; nameEn?: string };
     const exists = await prisma.materialGroup.findUnique({ where: { id } });
     if (!exists) {
       res.status(404).json({ error: 'Not found' });
@@ -94,9 +101,10 @@ materialsRouter.put(
         return;
       }
     }
-    const data: { code?: string; name?: string } = {};
+    const data: { code?: string; name?: string; nameEn?: string | null } = {};
     if (body.code) data.code = body.code.trim();
     if (body.name) data.name = body.name.trim();
+    if (body.nameEn !== undefined) data.nameEn = body.nameEn.trim() || null;
     const updated = await prisma.materialGroup.update({ where: { id }, data });
     res.json(serialize(updated));
   }),
@@ -111,7 +119,7 @@ materialsRouter.get(
     const groupId = req.query.groupId ? Number(req.query.groupId) : null;
     const rows = (await prisma.materialCategory.findMany({
       where: groupId ? { groupId } : undefined,
-      include: { group: { select: { code: true, name: true } } },
+      include: { group: { select: { code: true, name: true, nameEn: true } } },
       orderBy: groupId ? { code: 'asc' } : [{ group: { code: 'asc' } }, { code: 'asc' }],
     })) as unknown as CategoryWithGroup[];
     res.json(rows.map(flattenCategory));
@@ -124,7 +132,7 @@ materialsRouter.get(
   requireAnyPermission('costs', 'inventory'),
   asyncHandler(async (_req, res) => {
     const rows = (await prisma.materialCategory.findMany({
-      include: { group: { select: { code: true, name: true } } },
+      include: { group: { select: { code: true, name: true, nameEn: true } } },
       orderBy: [{ group: { code: 'asc' } }, { code: 'asc' }],
     })) as unknown as CategoryWithGroup[];
     res.json(rows.map(flattenCategory));
@@ -157,7 +165,7 @@ materialsRouter.post(
         name: body.name.trim(),
         unit: body.unit.trim(),
       },
-      include: { group: { select: { code: true, name: true } } },
+      include: { group: { select: { code: true, name: true, nameEn: true } } },
     })) as unknown as CategoryWithGroup;
     res.status(201).json(flattenCategory(created));
   }),
@@ -191,7 +199,7 @@ materialsRouter.put(
     const updated = (await prisma.materialCategory.update({
       where: { id },
       data,
-      include: { group: { select: { code: true, name: true } } },
+      include: { group: { select: { code: true, name: true, nameEn: true } } },
     })) as unknown as CategoryWithGroup;
     res.json(flattenCategory(updated));
   }),
@@ -202,6 +210,7 @@ materialsRouter.put(
 type ImportRow = {
   groupCode: string;
   groupName: string;
+  groupNameEn?: string;
   categoryCode?: string;
   categoryName?: string;
   unit?: string;
@@ -226,38 +235,53 @@ materialsRouter.post(
       for (const g of await tx.materialGroup.findMany({ select: { id: true, code: true } })) {
         groupIdByCode.set(g.code, g.id);
       }
-      const existingCategoryCodes = new Set(
-        (await tx.materialCategory.findMany({ select: { code: true } })).map((r) => r.code),
+      const existingCategories = new Map(
+        (await tx.materialCategory.findMany({ select: { id: true, code: true } })).map((r) => [r.code, r.id]),
       );
 
       let groupsCreated = 0;
       let groupsSkipped = 0;
+      let groupsUpdated = 0;
       let categoriesCreated = 0;
-      let categoriesSkipped = 0;
-      const errors: string[] = [];
+      let categoriesUpdated = 0;
+      const groupsPatched = new Set<string>();
+      const errorList: string[] = [];
 
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const groupCode = String(row.groupCode ?? '').trim();
         const groupName = String(row.groupName ?? '').trim();
+        const groupNameEn = String(row.groupNameEn ?? '').trim();
         const categoryCode = String(row.categoryCode ?? '').trim();
         const categoryName = String(row.categoryName ?? '').trim();
         const unit = String(row.unit ?? '').trim() || 'عدد';
 
-        if (!groupCode || !groupName) {
-          errors.push(`Row ${i + 1}: group code and name are required`);
+        if (!groupCode || (!groupName && !groupNameEn)) {
+          errorList.push(`Row ${i + 1}: group code and name are required`);
           continue;
         }
 
+        const resolvedName = groupName || groupNameEn;
         let groupId = groupIdByCode.get(groupCode);
         const groupExisted = !!groupId;
         if (!groupId) {
-          // Dedup via groupIdByCode above prevents unique violations; any other
-          // failure aborts the whole transaction (Postgres) and fails the request.
-          const g = await tx.materialGroup.create({ data: { code: groupCode, name: groupName } });
+          const g = await tx.materialGroup.create({
+            data: { code: groupCode, name: resolvedName, nameEn: groupNameEn || null },
+          });
           groupId = g.id;
           groupIdByCode.set(groupCode, groupId);
           groupsCreated++;
+          groupsPatched.add(groupCode);
+        } else if (!groupsPatched.has(groupCode) && (groupName || groupNameEn)) {
+          await tx.materialGroup.update({
+            where: { id: groupId },
+            data: {
+              ...(groupName ? { name: groupName } : {}),
+              ...(groupNameEn ? { nameEn: groupNameEn } : {}),
+            },
+          });
+          groupsPatched.add(groupCode);
+          groupsUpdated++;
         }
 
         if (!categoryCode) {
@@ -266,23 +290,36 @@ materialsRouter.post(
         }
 
         if (!categoryName) {
-          errors.push(`Row ${i + 1}: category name required for ${categoryCode}`);
+          errorList.push(`Row ${i + 1}: category name required for ${categoryCode}`);
           continue;
         }
 
-        if (existingCategoryCodes.has(categoryCode)) {
-          categoriesSkipped++;
+        const existingCatId = existingCategories.get(categoryCode);
+        if (existingCatId) {
+          await tx.materialCategory.update({
+            where: { id: existingCatId },
+            data: { groupId, name: categoryName, unit },
+          });
+          categoriesUpdated++;
           continue;
         }
 
-        await tx.materialCategory.create({
+        const created = await tx.materialCategory.create({
           data: { groupId, code: categoryCode, name: categoryName, unit },
         });
-        existingCategoryCodes.add(categoryCode);
+        existingCategories.set(categoryCode, created.id);
         categoriesCreated++;
       }
 
-      return { groupsCreated, groupsSkipped, categoriesCreated, categoriesSkipped, errors };
+      return {
+        groupsCreated,
+        groupsSkipped,
+        groupsUpdated,
+        categoriesCreated,
+        categoriesUpdated,
+        categoriesSkipped: 0,
+        errors: errorList,
+      };
     });
 
     res.json(result);

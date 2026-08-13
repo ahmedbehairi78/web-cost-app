@@ -978,6 +978,32 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — قالب شجرة الأصناف مطابق ملف المخزن v2 ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** القالب كان 5 أعمدة. الملف المرجعي «شجرة أصناف مخزن مقاولات v2» يضع **الاسم الإنجليزي للمجموعة في عمود `Code`** — وليس كود المجموعة.
+
+### التسكين
+
+| عمود Excel | الحقل |
+|------------|--------|
+| كود المجموعة | `material_groups.code` |
+| **Code** | `material_groups.name_en` — **ليس** الكود |
+| اسم المجموعة | `material_groups.name` |
+| كود الصنف | `material_categories.code` |
+| اسم الصنف | `material_categories.name` |
+| الوحدة | `material_categories.unit` |
+| الرصيد | **يُتجاهل** — الرصيد الافتتاحي من مخزون → استيراد أرصدة |
+
+الاستيراد **ينشئ أو يحدّث** المجموعات/الأصناف (لا يتخطى المكرر). القالب القديم ذو 5 أعمدة ما زال يُقرأ.
+
+```powershell
+npx prisma migrate deploy
+npm run test -- src/lib/materialsTreeExcel.test.ts src/lib/operationsManual.test.ts
+# مخازن → أصناف → تنزيل القالب أو استيراد ملف v2 كما هو
+```
+
+---
+
 ## 🔴 HANDOFF — الوضع الافتراضي: شركة فارغة + شجرة حسابات ✅ (2026-08-13)
 
 > **جلسة 2026-08-13:** مسح المجموعات من Electron ترك مشاريع · عقود · BOQ · أصناف · بنوك · طلبات شراء · تنبيهات لأن تلك الجداول خارج `CLEAR_DATA_GROUPS`. زر **الوضع الافتراضي** يفرّغ Postgres بالكامل ثم يزرع COA مع الإبقاء على `myline78@gmail.com`.
@@ -1851,13 +1877,13 @@ Rendered by `MaterialsTree.tsx` at the bottom of **Projects** and on the **Mater
 
 | Action | Who | Notes |
 |--------|-----|-------|
-| **Export** | All users with `projects` view | Flat rows: group code/name + optional category code/name/unit |
+| **Export** | All users with `projects` view | Flat rows matching warehouse-tree v2 (7 columns) |
 | **Template** | admin / projects_manager | Sample rows (ar or en column headers) |
-| **Import** | admin / projects_manager | `POST /api/materials/import` — creates new groups/categories; **skips** duplicate codes (no update-in-place) |
+| **Import** | admin / projects_manager | `POST /api/materials/import` — **creates or updates** groups/categories by code |
 
-**Excel columns** (either language): `Group Code` / `كود المجموعة`, `Group Name` / `اسم المجموعة`, `Category Code` / `كود الصنف`, `Category Name` / `اسم الصنف`, `Unit` / `الوحدة`. Row with empty category code = group-only row.
+**Excel columns** (warehouse v2, Arabic or English): `كود المجموعة` / `Group Code` → `material_groups.code` · **`Code` / `Group Name EN` → `material_groups.name_en` (English title — never the group code)** · `اسم المجموعة` / `Group Name` → `name` · `كود الصنف` / `Category Code` · `اسم الصنف` / `Category Name` · `الوحدة` / `Unit` · `الرصيد` / `Balance` (**ignored** — opening stock is Inventory opening-import). Legacy 5-column files still parse. Row with empty category code = group-only row.
 
-Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`.
+Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`. Migration **`20260813180000_material_group_name_en`**.
 
 ### Opening inventory balances — Excel import (2026-08-05)
 

@@ -504,7 +504,7 @@ export type DistributedInvoiceLinePayload = PurchaseInvoiceLinePayload & {
   }>;
 };
 
-export type MaterialGroup = { id: number; code: string; name: string };
+export type MaterialGroup = { id: number; code: string; name: string; nameEn?: string | null };
 export type MaterialCategory = {
   id: number;
   groupId: number;
@@ -513,11 +513,12 @@ export type MaterialCategory = {
   unit: string;
   groupCode?: string;
   groupName?: string;
+  groupNameEn?: string;
 };
 
 export const materialsApi = {
   listGroups: () => apiClient.get<MaterialGroup[]>('/materials/groups'),
-  createGroup: (data: { code: string; name: string }) =>
+  createGroup: (data: { code: string; name: string; nameEn?: string }) =>
     apiClient.post<MaterialGroup>('/materials/groups', data),
   listCategories: (groupId?: number) =>
     apiClient.get<MaterialCategory[]>(
@@ -529,6 +530,7 @@ export const materialsApi = {
   importTree: (rows: Array<{
     groupCode: string;
     groupName: string;
+    groupNameEn?: string;
     categoryCode?: string;
     categoryName?: string;
     unit?: string;
@@ -536,8 +538,10 @@ export const materialsApi = {
     apiClient.post<{
       groupsCreated: number;
       groupsSkipped: number;
+      groupsUpdated?: number;
       categoriesCreated: number;
       categoriesSkipped: number;
+      categoriesUpdated?: number;
       errors: string[];
     }>('/materials/import', { rows }),
 };

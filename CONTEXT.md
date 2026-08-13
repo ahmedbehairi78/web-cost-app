@@ -228,12 +228,12 @@ web-cost-app/
 |---|---|---|
 | **تصدير** | عرض `projects` | كل المجموعات والأصناف → `.xlsx` |
 | **قالب** | admin / projects_manager | ملف نموذجي بصفّين |
-| **استيراد** | admin / projects_manager | `POST /api/materials/import` — يضيف الجديد فقط، **يتخطى** الأكواد المكررة |
+| **استيراد** | admin / projects_manager | `POST /api/materials/import` — **ينشئ أو يحدّث** المجموعات/الأصناف حسب الكود |
 
-**أعمدة الملف (عربي أو إنجليزي):** كود المجموعة، اسم المجموعة، كود الصنف، اسم الصنف، الوحدة.  
+**أعمدة الملف (مطابقة شجرة مخزن مقاولات v2):** كود المجموعة · **Code** (اسم المجموعة بالإنجليزي → `name_en`، **ليس** الكود) · اسم المجموعة · كود الصنف · اسم الصنف · الوحدة · الرصيد (**يُتجاهل** — الرصيد الافتتاحي من استيراد المخزون). القالب القديم ذو 5 أعمدة ما زال يعمل.  
 صف بدون كود صنف = مجموعة فقط.
 
-**ملفات:** `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree()`.
+**ملفات:** `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree()`. عمود DB: `material_groups.name_en`.
 
 ---
 
@@ -345,7 +345,7 @@ npm run dev                     # terminal 2 — :3000 أو التالي
 | **G** موديول مخازن (backend + `Inventory.tsx`) | ✅ |
 | **G5 / H** ربط فاتورة بـ BOQ، بطاقة مخزون، أعمدة BOQ | ✅ |
 | **004** شجرة أصناف + consumption orders | ✅ |
-| **Excel** تصدير/استيراد شجرة الأصناف | ✅ |
+| **Excel** تصدير/استيراد شجرة الأصناف (قالب v2 · `Code` = name_en · تحديث) | ✅ (2026-08-13) |
 | **DisplaySettings** + **Calculator** | ✅ |
 | **Shell single-module** + **Settings admin sections** | ✅ (2026-06-26) |
 | **حفظ إعدادات العرض** (theme · language · defaultModule `none`) | ✅ (2026-06-26) |
@@ -384,7 +384,6 @@ npm run dev                     # terminal 2 — :3000 أو التالي
 |---|---|---|
 | `permission-alignment` | مواءمة صلاحيات Firestore rules مع الواجهة | عالية |
 | `firestore-indexes-prod` | نشر `firestore.indexes.json` للإنتاج | عالية |
-| `materials-import-update` | استيراد Excel بتحديث الأصناف الموجودة (حالياً: تخطي فقط) | متوسطة |
 | `virtualize-lists` | BOQ / GL — قوائم طويلة | متوسطة |
 | `baseline-cost` | قياس تكلفة Firestore | متوسطة |
 | `sync-pipeline` | مزامنة Firestore → SQLite | منخفضة |
