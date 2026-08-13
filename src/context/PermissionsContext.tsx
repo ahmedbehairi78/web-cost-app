@@ -1,13 +1,13 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ModuleCrudPermission, PermissionKey, UserPermissions, UserRole } from '../types';
 import { ALL_PERMISSIONS } from '../types';
-import { moduleAccess } from '../lib/permissions';
+import { hasSettingsAccess, moduleAccess } from '../lib/permissions';
 
 export type PermissionsContextValue = {
   permissions: UserPermissions;
   role: UserRole;
   isAdmin: boolean;
-  /** Effective module capabilities (admin → all true). */
+  /** Effective module capabilities from stored checkboxes only. */
   can: (key: PermissionKey) => ModuleCrudPermission;
 };
 
@@ -25,16 +25,13 @@ export function PermissionsProvider({
   permissions: UserPermissions;
   role: UserRole;
 }) {
-  const isAdmin = role === 'admin';
+  const isAdmin = hasSettingsAccess(permissions);
   const value = useMemo<PermissionsContextValue>(
     () => ({
       permissions,
       role,
       isAdmin,
-      can: (key: PermissionKey) => {
-        if (isAdmin) return { view: true, create: true, edit: true };
-        return moduleAccess(permissions, key);
-      },
+      can: (key: PermissionKey) => moduleAccess(permissions, key),
     }),
     [permissions, role, isAdmin],
   );

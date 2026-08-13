@@ -3,6 +3,8 @@ import { IDLE_LOGOUT_MS } from '../lib/sessionLogout';
 import { shouldPauseIdleLogout } from '../lib/offline/idleGate';
 import { isBrowserOnline, subscribeOnlineStatus } from '../lib/offline/networkStatus';
 import { OFFLINE_CHANGED_EVENT } from '../lib/offline/types';
+import { getSystemIdleSeconds, isElectronShell } from '../lib/electronShell';
+import { SYSTEM_IDLE_POLL_MS, systemIdleReached } from '../lib/systemIdle';
 
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
 
@@ -11,7 +13,9 @@ const HIGH_FREQ_EVENTS = new Set<string>(['mousemove', 'scroll', 'wheel']);
 export const IDLE_ACTIVITY_THROTTLE_MS = 1000;
 
 /**
- * Signs the user out after `idleMs` with no pointer/keyboard activity.
+ * Fires after `idleMs` with no activity.
+ * Electron: OS-wide idle (`powerMonitor`) so working in another app keeps the session.
+ * Browser / older shells: pointer/keyboard activity inside this window only.
  * Pauses while offline or when offline drafts/outbox work is pending.
  */
 export function useIdleLogout(
@@ -29,33 +33,38 @@ export function useIdleLogout(
     if (!enabled) return;
 
     let timerId = 0;
+    let pollId = 0;
     let cancelled = false;
+    let fired = false;
     let lastHighFreqScheduleAt = 0;
+    let usingWindowActivity = false;
 
-    const clear = () => {
+    const clearTimer = () => {
       window.clearTimeout(timerId);
       timerId = 0;
     };
 
     const fireIfAllowed = async () => {
-      if (cancelled) return;
+      if (cancelled || fired) return;
       if (!isBrowserOnline()) {
-        schedule();
+        if (usingWindowActivity) scheduleWindow();
         return;
       }
       try {
         if (await shouldPauseIdleLogout(userIdRef.current)) {
-          schedule();
+          if (usingWindowActivity) scheduleWindow();
           return;
         }
       } catch {
         /* ignore gate errors */
       }
-      if (!cancelled) onIdleRef.current();
+      if (cancelled || fired) return;
+      fired = true;
+      onIdleRef.current();
     };
 
-    const schedule = () => {
-      clear();
+    const scheduleWindow = () => {
+      clearTimer();
       timerId = window.setTimeout(() => {
         void fireIfAllowed();
       }, idleMs);
@@ -67,25 +76,65 @@ export function useIdleLogout(
         if (now - lastHighFreqScheduleAt < IDLE_ACTIVITY_THROTTLE_MS) return;
         lastHighFreqScheduleAt = now;
       }
-      schedule();
+      scheduleWindow();
     };
 
-    for (const event of ACTIVITY_EVENTS) {
-      window.addEventListener(event, onActivity, { passive: true });
-    }
-    document.addEventListener('visibilitychange', schedule);
-    const unsubOnline = subscribeOnlineStatus(() => schedule());
-    const onOfflineChanged = () => schedule();
-    window.addEventListener(OFFLINE_CHANGED_EVENT, onOfflineChanged);
-    schedule();
+    const attachWindowActivity = () => {
+      if (usingWindowActivity) return;
+      usingWindowActivity = true;
+      for (const event of ACTIVITY_EVENTS) {
+        window.addEventListener(event, onActivity, { passive: true });
+      }
+      document.addEventListener('visibilitychange', scheduleWindow);
+      scheduleWindow();
+    };
 
-    return () => {
-      cancelled = true;
-      clear();
+    const detachWindowActivity = () => {
+      if (!usingWindowActivity) return;
       for (const event of ACTIVITY_EVENTS) {
         window.removeEventListener(event, onActivity);
       }
-      document.removeEventListener('visibilitychange', schedule);
+      document.removeEventListener('visibilitychange', scheduleWindow);
+      usingWindowActivity = false;
+    };
+
+    const tickSystemIdle = async () => {
+      if (cancelled || fired) return;
+      const seconds = await getSystemIdleSeconds();
+      if (cancelled || fired) return;
+      if (seconds == null) {
+        window.clearInterval(pollId);
+        pollId = 0;
+        attachWindowActivity();
+        return;
+      }
+      if (systemIdleReached(seconds, idleMs)) {
+        await fireIfAllowed();
+      }
+    };
+
+    const unsubOnline = subscribeOnlineStatus(() => {
+      if (usingWindowActivity) scheduleWindow();
+    });
+    const onOfflineChanged = () => {
+      if (usingWindowActivity) scheduleWindow();
+    };
+    window.addEventListener(OFFLINE_CHANGED_EVENT, onOfflineChanged);
+
+    if (isElectronShell()) {
+      void tickSystemIdle();
+      pollId = window.setInterval(() => {
+        void tickSystemIdle();
+      }, SYSTEM_IDLE_POLL_MS);
+    } else {
+      attachWindowActivity();
+    }
+
+    return () => {
+      cancelled = true;
+      clearTimer();
+      window.clearInterval(pollId);
+      detachWindowActivity();
       unsubOnline();
       window.removeEventListener(OFFLINE_CHANGED_EVENT, onOfflineChanged);
     };

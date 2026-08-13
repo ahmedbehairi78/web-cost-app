@@ -62,8 +62,8 @@ export async function importSqliteWarehouseToPostgres(
     if (!id) continue;
     await prisma.materialGroup.upsert({
       where: { id },
-      create: { id, code: str(row.code), name: str(row.name) || str(row.code) },
-      update: { code: str(row.code), name: str(row.name) || str(row.code) },
+      create: { id, code: str(row.code), name: str(row.name) || str(row.code), nameEn: str(row.name_en) || str(row.nameEn) || null },
+      update: { code: str(row.code), name: str(row.name) || str(row.code), nameEn: str(row.name_en) || str(row.nameEn) || null },
     });
     bump('material_groups');
   }

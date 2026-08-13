@@ -191,7 +191,7 @@ npm run test -- src/lib/shellWindowPolicy.test.ts
 | `activity`, `sample_data` | admin |
 | `coa` | `settings` + `ledger.view` |
 
-- **صيانة البيانات:** المسح بالمجموعات **لا** يفرّغ المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. للشركة الفارغة استخدم **«الوضع الافتراضي»** → `POST /api/financial-maintenance/factory-reset` (يُبقى `myline78@gmail.com` + شجرة الحسابات القياسية). Electron = Railway Postgres؛ `dev:local` = Postgres المحلي.
+- **صيانة البيانات:** المسح بالمجموعات **لا** يفرّغ المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. للشركة الفارغة استخدم **«الوضع الافتراضي»** → `POST /api/financial-maintenance/factory-reset` (يُبقى `myline78@gmail.com` + شجرة الحسابات القياسية). بعد النجاح: رسالة «تم العودة إلى الوضع الافتراضي» وزر «إعادة الدخول» — لا `quit` فوري. Electron = Railway Postgres؛ `dev:local` = Postgres المحلي.
 - **`SETTINGS_ADMIN_VIEW_IDS`** في `canOpenModuleView(..., { isAdmin })`.
 - **`TopNavBar`**: كل sub-view يمرّ عبر `canOpenModuleView`.
 - **نوافذ عائمة متسلسلة:** `SettingsFloatingDialog` (portal + `SHELL_MODAL_Z` / `SHELL_MODAL_STACK_Z`) لـ Backup · Clear · User · `AdminSensitiveVerifyModal`. الأب يُخفى أثناء التحقق ثم يعود. تأكيد تعطيل مركز تكلفة عبر `useConfirm()` (لا `window.confirm`).
@@ -288,13 +288,13 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
    ```
 4. **أضِف التسمية والترتيب** في `src/constants/modules.ts`:
    - في `STARTUP_MODULES` (يظهر في الـ Sidebar وقائمة موديول البدء) — أو فقط في `MODULE_LABELS` لو أداة مساعدة لا تظهر في البدء.
-5. **الصلاحيات**: أضِف مفتاح الموديول إلى `UserPermissions` في `src/types.ts` و`DEFAULT_PERMISSIONS`/`ALL_PERMISSIONS`، وعالِجه في `src/lib/permissions.ts` (`buildPermissionsForRole`, `moduleAccess`). الـ Sidebar يفلتر عبر `moduleAccess(permissions, id).view`.
+5. **الصلاحيات**: أضِف مفتاح الموديول إلى `UserPermissions` في `src/types.ts` و`DEFAULT_PERMISSIONS`/`ALL_PERMISSIONS`، وعالِجه في `src/lib/permissions.ts` (`moduleAccess`). لا تضف حزم أدوار. الـ Sidebar يفلتر عبر `moduleAccess(permissions, id).view`.
 6. **(اختياري) موضوع دليل الاستخدام**: أضِف `ManualTopicId` + مدخلًا في `MANUAL_TOPICS` (`src/lib/operationsManual.ts`)، ومفاتيح `manual_*` في `LanguageContext`، وزر `<ManualHelpButton topicId="…" />` على الشاشة. ثم `npm run test -- src/lib/operationsManual.test.ts`.
 7. **عزل الأعطال**: كل نافذة ملفوفة تلقائيًا بـ `WindowErrorBoundary` — لا حاجة لإجراء إضافي، لكن لا تترك أخطاء غير معالَجة تتسرّب.
 
 > أدوات الـ shell (`display` / `calculator` / `manual`) مرئية لكل المستخدمين المسجّلين بلا فحص صلاحيات — راجع `SHELL_UTILITY_MODULE_IDS`.
 >
-> **أوامر الشراء (`purchase_requests`, 2026-08-02):** نافذة مستقلة في الشريط لكل المستخدمين المسجّلين (`canOpenShellModule` / `canOpenModuleView` دائماً true). التنفيذ = تغيير حالة فقط (لا فاتورة / لا GL). BOQ picker عبر `GET /api/purchase-requests/boq-picker` يعيد **كود + وصف** فقط. إشعارات `purchase_request_pending` + واتساب لمستخدمي `purchase_requests.edit` (أو أدوار admin/PM/accountant). ملفات: `PurchaseRequests.tsx` · `server/src/modules/purchaseRequests.ts` · migration `20260802120000_purchase_requests`.
+> **أوامر الشراء (`purchase_requests`, 2026-08-02):** نافذة مستقلة في الشريط لكل المستخدمين المسجّلين (`canOpenShellModule` / `canOpenModuleView` دائماً true). التنفيذ = تغيير حالة فقط (لا فاتورة / لا GL). BOQ picker عبر `GET /api/purchase-requests/boq-picker` يعيد **كود + وصف** فقط. إشعارات `purchase_request_pending` + واتساب لمستخدمي `purchase_requests.edit`. ملفات: `PurchaseRequests.tsx` · `server/src/modules/purchaseRequests.ts` · migration `20260802120000_purchase_requests`.
 
 ---
 
@@ -390,7 +390,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 | التبويب | الحالة | GL |
 |---------|--------|-----|
 | **فاتورة مشتريات** | حفظ → ترحيل فوري (أو read-only إن `transactionId`) · **آجلة/نقدية** (`paymentType`) | `recordPurchaseToProjectInventory` / `recordFixedAssetPurchase` — Cr مورد **21101…** أو عهدة **12102…** |
-| **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (admin / projects_manager) |
+| **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) |
 | **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (admin أو `ledger.create`) |
 
 - **معاينة:** النقر على صف فاتورة/IPC في الجدول يفتح النافذة — المرحّلة = للقراءة فقط.
@@ -413,6 +413,31 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 | وراثة روابط | بند جديد / VO جديد | `POST …/inherit` · VO يرجع `newBoqItemIds` |
 
 **صلاحية الربط الفوري:** `admin` | `projects_manager` | `project_accountant`. لا تعرض تكاليف أو أسعار بيع في نافذة الربط الفوري.
+
+### 6.4.1 نسخة احتياطية Postgres كاملة (2026-08-13)
+
+قبل رفع بيانات شركة فعلية: صدّر لقطة كاملة (كل الموديولات + المستخدمون + الصلاحيات + **`passwordHash` bcrypt** — ليست كلمة السر نصاً). تفضيلات العرض في `settings` كمفاتيح `user_prefs:*`.
+
+```powershell
+npm run prod:export-backup   # Railway
+npm run local:export-backup  # Postgres المحلي
+```
+
+الملفات تحت `D:\cost web app\backups\<stamp>-production\` (أو `-local`). الاسترجاع من **الإعدادات → قاعدة البيانات → استيراد** — وضع **استبدال** يعيد كلمات الدخول؛ **دمج** يُبقي الهاش الحالي للمستخدم الموجود. لا تُصدَّر `sessions` ولا `idempotency_keys` (جلسات/إعادة محاولة فقط).
+
+### 6.5.0a شجرة الأصناف — Excel مطابق ملف المخزن v2 (2026-08-13)
+
+القالب والتصدير/الاستيراد يطابقان «شجرة أصناف مخزن مقاولات v2»:
+
+| عمود | قاعدة البيانات |
+|------|----------------|
+| كود المجموعة | `material_groups.code` |
+| **Code** | `material_groups.name_en` — اسم إنجليزي؛ **لا** تقرأه ككود |
+| اسم المجموعة | `material_groups.name` |
+| كود الصنف / اسم الصنف / الوحدة | `material_categories` |
+| الرصيد | يُتجاهل هنا — استخدم استيراد الأرصدة الافتتاحية |
+
+`POST /api/materials/import` يحدّث الصف الموجود حسب الكود (لا يتخطّاه). القالب ذو 5 أعمدة ما زال يُقرأ. بعد السحب: `npx prisma migrate deploy` (`name_en`).
 
 ### 6.5.0b أرصدة مخزون افتتاحية (2026-08-05)
 
@@ -715,13 +740,13 @@ async function postMyJournal(amount: number, contractId: string, projectId: stri
 
 | السلوك | الملف | القيمة |
 |--------|-------|--------|
-| **تسجيل الخروج بسبب الخمول** | `src/lib/sessionLogout.ts` → `IDLE_LOGOUT_MS` | **3 دقائق** (`3 * 60 * 1000`) عبر `useIdleLogout` في `App.tsx` |
-| **رسالة الخمول** | `LanguageContext` · `session_idle_logout` | تظهر عند تسجيل الخروج التلقائي |
-| **مفاتيح i18n قديمة** | `activity_geo_notice` | متبقية في الترجمة فقط — غير مستخدمة في الواجهة |
+| **قفل الخمول (خصوصية)** | `IDLE_LOGOUT_MS` + `powerMonitor` | **3 دقائق** بدون نشاط على **الجهاز** (Electron) → شاشة دخول + اسم المستخدم + **كلمة المرور**؛ لا `quit` |
+| **رسالة الخمول** | `session_idle_lock_subtitle` | Overlay على الجلسة الحية؛ الفتح عبر `POST /auth/login` |
+| **مفاتيح i18n قديمة** | `activity_geo_notice` · `session_idle_logout` | `session_idle_logout` لم يعد يُعرض عند القفل |
 
 ```bash
-npm run dev:local
-# سجّل الدخول → لا إشعار موقع · انتظر 3 دقائق بلا حركة → خروج + toast session_idle_logout
+npm run electron:dev   # بعد electron:build:shell
+# سجّل الدخول → اعمل في إكسل/متصفح 3 دقائق → التطبيق يبقى → اترك الجهاز 3 دقائق → شاشة دخول + كلمة المرور
 ```
 
 ---
@@ -781,7 +806,7 @@ npm run dev:local
 
 إصلاح صفوف يتيمة (فاتورة): `npx tsx server/src/scripts/linkOrphanPurchaseInvoiceJournals.ts` ثم `--live`.
 
-**خمول الجلسة:** `useIdleLogout` يتوقف أثناء الانقطاع أو وجود مسودة/طابور (`idleGate.ts`). إعادة ضبط المؤقّت من `mousemove`/`scroll`/`wheel` مُقيَّدة بـ ثانية واحدة (`IDLE_ACTIVITY_THROTTLE_MS`) — بدون throttle كان يسبب lag ملحوظاً في Electron. أصوات المودال عبر `notifyUiModalOpen/Close` (لا `MutationObserver` على `document.body`). مسح HTTP cache للقشرة المعبأة **مرة/يوم** كحد أقصى.
+**خمول الجلسة:** Electron يستخدم خمول **نظام التشغيل** (`powerMonitor`) حتى يبقى التطبيق مفتوحاً أثناء العمل في برامج أخرى. بعد 3 دقائق بلا نشاط على الجهاز: شاشة دخول + البريد + **كلمة المرور** (لا `quit`). المتصفح/قشرة قديمة: نشاط النافذة + throttle ثانية لـ `mousemove`/`scroll`/`wheel`. يُوقف القفل أثناء الانقطاع أو مسودة/طابور (`idleGate.ts`).
 
 **اختبارات:** `npm run test -- src/lib/offline/offline.test.ts`
 

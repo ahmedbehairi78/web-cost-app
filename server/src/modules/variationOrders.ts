@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { requireAuth, requirePermission, requireAnyPermission, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireAnyPermission, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { withIdempotency } from '../middleware/idempotency.js';
 import { prisma } from '../db.js';
@@ -343,7 +343,7 @@ variationOrdersRouter.post(
 
 variationOrdersRouter.post(
   '/:id/approve',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('boq'),
   asyncHandler(async (req, res) => {
     const row = await prisma.variationOrder.findUnique({ where: { id: req.params.id } });
     if (!row) {
@@ -369,7 +369,7 @@ variationOrdersRouter.post(
 
 variationOrdersRouter.post(
   '/:id/reject',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('boq'),
   asyncHandler(async (req, res) => {
     const row = await prisma.variationOrder.findUnique({ where: { id: req.params.id } });
     if (!row) {

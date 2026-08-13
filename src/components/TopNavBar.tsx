@@ -216,6 +216,7 @@ export function TopNavBar({
                 key={item.id}
                 ref={(el) => { navBtnRefs.current[idx] = el; }}
                 type="button"
+                data-shell-module={item.id}
                 onClick={() => {
                   if (canEnter) playNavigate();
                   else playTap();
@@ -289,7 +290,7 @@ export function TopNavBar({
               variant="topnav"
               isActive={activeModuleId === 'purchase_requests'}
               isOpen={openModuleIds.has('purchase_requests')}
-              canCreate={isAdmin || moduleAccess(permissions, 'purchase_requests').create}
+              canCreate={moduleAccess(permissions, 'purchase_requests').create}
               className={isErpTheme(theme) ? 'erp-nav-entry' : undefined}
             />
           )}

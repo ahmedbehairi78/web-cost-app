@@ -142,7 +142,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/services/local/modulesApi.ts` | Client-side API wrappers (`banksApi`, `settingsApi`, `projectInventoryTransfersApi` → `/inventory/project-transfers`, `inventoryApi`, …) |
 | `server/src/modules/settings.ts` | `GET/PUT /api/settings/company_info` · `GET/PATCH /api/settings/user-preferences` (+ `visibleShellModules` on GET) · **admin** `GET/PATCH /api/settings/user-preferences/:userId` · `GET /api/settings/backup-export` · **`GET/POST /api/settings/push-to-production/*`** |
 | `server/src/migration/pushToProduction.ts` | Preview + push local Postgres → Railway via `PRODUCTION_DATABASE_URL` |
-| `server/src/migration/buildPostgresBackup.ts` | Full Postgres snapshot — **78** collection keys (inventory · warehouse receipts · payroll · fixed assets · OHA · custody · MOS · VO · …); v3 JSON via **`GET /api/settings/backup-export`** |
+| `server/src/migration/buildPostgresBackup.ts` | Full Postgres snapshot — **78** collection keys including **warehouse receipts** + **`users.passwordHash`**; v3 JSON via **`GET /api/settings/backup-export`** or **`npm run local:export-backup`** / **`prod:export-backup`** |
 | `server/src/migration/backupCollections.ts` · `src/constants/backupCollections.ts` | **`POSTGRES_BACKUP_COLLECTIONS`** / **`FIRESTORE_BACKUP_COLLECTIONS`** |
 | `server/src/lib/dataMaintenanceWipes.ts` | Postgres wipe handlers per module group — used by **`POST /api/financial-maintenance/wipe`** |
 | `server/src/migration/importPostgresBackup.ts` | Full Postgres restore from backup JSON |
@@ -383,20 +383,22 @@ Cloud Firestore security rules **cannot** reliably evaluate `permissions[variabl
 
 **Server `hasPermission`:** `server/src/permissions.ts` treats CRUD maps as enabled when **any** of `view|create|edit` is true (not only flat booleans).
 
-**Roles** (defined in `src/lib/permissions.ts` + `server/src/permissions.ts`):
+**Access is stored checkboxes only** (`users.permissions` JSON). Role names (`admin` / `projects_manager` / `project_accountant` / `user`) remain on the user row for bootstrap/legacy but **do not grant modules**. Settings → Users has no role preset buttons.
 
-| Role | Key Capabilities |
-|------|-----------------|
-| `admin` | Full access to everything |
-| `projects_manager` | projects, boq, billing (view costs), view/approve inventory transfers, view subcontractor |
-| `project_accountant` | costs, billing, inventory (full), subcontractor (full) — **writes** scoped to `assignedContractIds` for Actual Costs IPC/invoice; **inventory consumption** scoped by **project** (any contract in an accessible project). Legacy inventory **transfers** still use assigned contracts only. |
-| `user` | dashboard only (awaiting admin approval) |
+| Gate | Source |
+|------|--------|
+| Open module / API | `moduleAccess(permissions, key).view` / `.create` / `.edit` |
+| System admin (users, backup, wipe, cost centers) | `permissions.settings === true` (`hasSettingsAccess`) |
+| Approve IPC / VO / MOS / transfers / period lock | matching module **`.edit`** (`costs_ipc`, `boq`, `billing`, `inventory`, `overhead`) |
+| Contract scope | empty `assignedContractIds` = **all contracts**; non-empty = those contracts only |
 
-**Module permissions** include `inventory` and `subcontractor` as `ModuleCrudPermission` entries in `UserPermissions`. Sidebar filters items via `moduleAccess(permissions, id).view`.
+`can()` in `PermissionsContext` never bypasses via role. `isAdmin` in the UI means **settings** permission.
 
-`useUserAccessScope` hook exposes `role`, `assignedContractIds`, `isAdmin`, `isProjectsManager`, `isProjectAccountant` — use it to scope queries and guard writes client-side.
+`useUserAccessScope` exposes `isContractScoped` (assigned contracts length > 0). `isProjectAccountant` is an alias of that for list filtering. Do not use `role === 'admin'` for module access.
 
-**Password / Electron login (local mode):** `useUserAccessScope` must read **`role` from `PermissionsContext`** (set by `App.tsx` from Postgres session), not from `onAuthStateChanged` alone — Electron password login has **no Firebase user**. `assignedContractIds` still come from `authApi.me()`. Inventory uses `userRole === 'admin' || userRole === 'projects_manager'` → unrestricted contract scope (`myContractIds = null`).
+**Password / Electron login (local mode):** permissions come from Postgres session (`PermissionsContext`). `assignedContractIds` from `authApi.me()`. Empty assigned list → unrestricted (`myContractIds = null`).
+
+**BOOTSTRAP_ADMIN_EMAIL:** first login may still write `ALL_PERMISSIONS` + `role: admin` when stored JSON is empty.
 
 ### Date Handling
 
@@ -976,6 +978,60 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — قفل خمول الجهاز دون إغلاق Electron ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** العمل على برنامج آخر كان يُخرج الجلسة بعد 3 دقائق ويُغلق Electron. المطلوب: نشاط **الجهاز كله** يُبقي التطبيق مفتوحاً، وعند المهلة شاشة دخول باسم المستخدم **مع كلمة المرور**.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **نشاط** | Electron: `powerMonitor.getSystemIdleTime()` عبر IPC `system-idle-seconds` — ماوس/لوحة في أي تطبيق |
+| **قفل** | لا `app.quit` — Overlay شاشة دخول + بريد للقراءة + **كلمة المرور** (`POST /auth/login`) ثم متابعة |
+| **جلسة** | النوافذ والمسودات تبقى تحت القفل؛ لا `resetStartupSession` عند الفتح |
+| **نوافذ متعددة** | `BroadcastChannel` يقفل/يفتح كل نوافذ Ctrl+N معاً بعد نجاح كلمة المرور |
+| **قشرة قديمة** | بدون IPC → نشاط النافذة فقط (كما قبل) لكن القفل بدون إغلاق |
+
+```powershell
+npm run test -- src/lib/systemIdle.test.ts
+npm run electron:build:shell   # لازم للقشرة حتى يعمل نشاط الجهاز
+```
+
+### لا تراجع
+
+- لا تغلق Electron عند الخمول.
+- الخروج المؤقت **يتطلب كلمة المرور** — لا زر متابعة بدونها.
+- لا تستدعِ `handlePasswordLogin` / `resetStartupSession` عند فتح القفل (يمسح النوافذ).
+- لا تعتمد على `mousemove` داخل النافذة وحدها في Electron بعد تحديث القشرة.
+
+---
+
+## 🔴 HANDOFF — قالب شجرة الأصناف مطابق ملف المخزن v2 ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** القالب كان 5 أعمدة. الملف المرجعي «شجرة أصناف مخزن مقاولات v2» يضع **الاسم الإنجليزي للمجموعة في عمود `Code`** — وليس كود المجموعة.
+
+### التسكين
+
+| عمود Excel | الحقل |
+|------------|--------|
+| كود المجموعة | `material_groups.code` |
+| **Code** | `material_groups.name_en` — **ليس** الكود |
+| اسم المجموعة | `material_groups.name` |
+| كود الصنف | `material_categories.code` |
+| اسم الصنف | `material_categories.name` |
+| الوحدة | `material_categories.unit` |
+| الرصيد | **يُتجاهل** — الرصيد الافتتاحي من مخزون → استيراد أرصدة |
+
+الاستيراد **ينشئ أو يحدّث** المجموعات/الأصناف (لا يتخطى المكرر). القالب القديم ذو 5 أعمدة ما زال يُقرأ.
+
+```powershell
+npx prisma migrate deploy
+npm run test -- src/lib/materialsTreeExcel.test.ts src/lib/operationsManual.test.ts
+# مخازن → أصناف → تنزيل القالب أو استيراد ملف v2 كما هو
+```
+
+---
+
 ## 🔴 HANDOFF — الوضع الافتراضي: شركة فارغة + شجرة حسابات ✅ (2026-08-13)
 
 > **جلسة 2026-08-13:** مسح المجموعات من Electron ترك مشاريع · عقود · BOQ · أصناف · بنوك · طلبات شراء · تنبيهات لأن تلك الجداول خارج `CLEAR_DATA_GROUPS`. زر **الوضع الافتراضي** يفرّغ Postgres بالكامل ثم يزرع COA مع الإبقاء على `myline78@gmail.com`.
@@ -986,18 +1042,20 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 |--------|------|
 | **API** | `POST /api/financial-maintenance/factory-reset` — `TRUNCATE … CASCADE` لكل جداول التطبيق + sessions/idempotency · إعادة المستخدم المحتفظ به · `bootstrapCoaIfEmpty` |
 | **إبقاء** | `FACTORY_KEEP_ADMIN_EMAIL` الافتراضي `myline78@gmail.com` + الحساب الحالي إن اختلف (منع القفل) · `passwordHash` · `ALL_PERMISSIONS` · عقود فارغة |
-| **UI** | إعدادات → قاعدة البيانات → «الوضع الافتراضي — شركة فارغة» · تأكيد «ضبط المصنع» / `FACTORY` + تحقق الهوية · خروج إجباري · مسح IndexedDB للمسودات/الطابور |
+| **UI** | إعدادات → قاعدة البيانات → «الوضع الافتراضي — شركة فارغة» · تأكيد «ضبط المصنع» / `FACTORY` + تحقق الهوية · بعد النجاح رسالة «تم العودة إلى الوضع الافتراضي» + زر «إعادة الدخول» (Electron: `app.relaunch` · متصفح: reload) · مسح IndexedDB للمسودات/الطابور |
 | **طباعة** | `PrintSettingsPanel` بلا بيانات شركة النيل الوهمية عند غياب `company_info` |
 
 ### لا تراجع
 
 - لا تعتمد على مسح المجموعات لتفريغ الشركة — المشاريع/الأصناف/البنوك/PRs خارج تلك المجموعات.
 - لا تحذف `_prisma_migrations`.
+- لا تستدعِ `performAppLogout()` / `requestAppQuit()` تلقائياً بعد ضبط المصنع — أظهر رسالة النجاح وزر **إعادة الدخول**.
+- بعد النجاح أوقف طلبات الـ API (`pauseAuthenticatedApi`) حتى لا تظهر 401 من الموديولات المفتوحة.
 - Electron يطبّق على **Railway**؛ `dev:local` على **Postgres المحلي**.
 
 ```powershell
 npm run test -- server/src/lib/factoryReset.test.ts src/lib/operationsManual.test.ts src/lib/offline/offline.test.ts
-# إعدادات → صيانة البيانات → الوضع الافتراضي → ضبط المصنع → دخول myline78@gmail.com
+# إعدادات → صيانة البيانات → الوضع الافتراضي → ضبط المصنع → رسالة نجاح → إعادة الدخول → myline78@gmail.com
 ```
 
 ---
@@ -1666,7 +1724,7 @@ Golden path: قفل Q2-2026 → قيد/فاتورة بتاريخ داخل الر
 | **اختصار** | **`input.code === 'KeyN'`** (+ `preventDefault`) — لوحة عربية | `electron/main.ts` `before-input-event` |
 | **جلسة** | النافذة الثانوية مخفية حتى `sessionProbe` + جاهزية الواجهة، ثم `window-reveal` — **لا** Login ولا شعار | `App.tsx` · `electronShell.ts` · `main.ts` |
 | **UI** | زر Electron-only في Sidebar + TopNav بجانب Palette (ليس داخل General Settings) | `Sidebar.tsx` · `TopNavBar.tsx` |
-| **نشاط** | لا toast موقع جغرافي عند الدخول (أي نافذة) · `IDLE_LOGOUT_MS` = **3 دقائق** (يُيقاف مع offline drafts/outbox) | `useActivitySession.ts` · `sessionLogout.ts` · `idleGate.ts` |
+| **نشاط** | لا toast موقع جغرافي عند الدخول · خمول **3 دقائق على الجهاز** → قفل شاشة دخول + كلمة المرور (لا `quit`) | `useIdleLogout.ts` · `powerMonitor` · `sessionLogout.ts` |
 
 ### لا تراجع
 
@@ -1715,7 +1773,7 @@ Golden path: سجّل دخول → Ctrl+N (لوحة عربية أو إنجليز
 - **Backup & Restore** — **local/Railway:** **`GET /api/settings/backup-export`** exports **full Postgres** (`POSTGRES_BACKUP_COLLECTIONS`, v3 — excludes `sessions`; includes **`passwordHash`** on `users` for restore). **`POST /api/settings/backup-import`** (admin) restores JSON — **`merge`** upserts (keeps existing DB password if user already exists) · **`replace`** truncates backup tables then imports (`importPostgresBackup.ts` restores **`passwordHash`** from backup when present; **`usesNormalizedChildTables`** — GL lines from **`journal_entries`** only, not duplicated from nested `transactions.entries`) and **destroys the Express session** (`requiresReLogin: true`). Client shows a **full restore report** (counts + skip reasons via `BackupImportReportPanel` / `backupImportReport.ts` sessionStorage) and **suppresses forced 401 logout** (`suppressApiUnauthorizedLogout`) until the user clicks «متابعة لتسجيل الدخول». After re-login the last report remains under Settings → Database until dismissed. Generic upsert strips payload **`id`** from Prisma `update` (avoids mass `_upsert_error` on merge). Orphan `journal_entries.costCenterId` cleared; missing parent tx → skip `journal_entries_missing_transaction`. **Cloud legacy:** Firestore **`FIRESTORE_BACKUP_COLLECTIONS`** export/import in browser.
 - **Push to production (Railway)** — **`PushToProductionPanel`** (local dev + `admin` only). Merges **local Postgres → Railway Postgres** (upsert by doc id). Requires **`PRODUCTION_DATABASE_URL`** in `.env` (Railway **`DATABASE_PUBLIC_URL`**, `*.proxy.rlwy.net` — **not** `postgres.railway.internal`). Also accepts env alias **`DATABASE_PUBLIC_URL`**. Disabled when `NODE_ENV=production`. Does **not** overwrite Railway **`users`**. Does **not** delete GL rows that exist on Railway only. Google re-auth before push (`AdminSensitiveVerifyModal`).
 - **Data Maintenance** — **`CLEAR_DATA_GROUPS`** (Firestore cloud **or** Postgres local) + `ClearDataModal` (type **حذف** / **DELETE** + Google verify). Postgres: **`POST /api/financial-maintenance/wipe`** `{ groups[] }` via **`dataMaintenanceWipes.ts`** (financial · warehouse · custody · payroll · fixed_assets · materials_tree · …). Group wipe **does not** delete `users` · `sessions` · `settings` · `bank_accounts` · `purchase_requests` · `warehouse_receipts` · notifications — leftover master data can remain.
-- **Factory default (empty company)** — Settings → Database → **«الوضع الافتراضي — شركة فارغة»**. `POST /api/financial-maintenance/factory-reset` (`factoryReset.ts`) **TRUNCATE … CASCADE** all Prisma `@@map` tables plus `sessions` / `idempotency_keys` (never `_prisma_migrations`), restores **`myline78@gmail.com`** (`FACTORY_KEEP_ADMIN_EMAIL`) with **`ALL_PERMISSIONS`** + password hash, plus the signed-in actor if different (lockout guard), re-seeds COA (`bootstrapCoaIfEmpty`) and default fixed-asset groups. Confirm word **ضبط المصنع** / **FACTORY** + identity verify. Session destroyed (`requiresReLogin`). Client also clears IndexedDB drafts/outbox. Hits **the API’s Postgres** (Electron/Railway vs `dev:local` are different DBs).
+- **Factory default (empty company)** — Settings → Database → **«الوضع الافتراضي — شركة فارغة»**. `POST /api/financial-maintenance/factory-reset` (`factoryReset.ts`) **TRUNCATE … CASCADE** all Prisma `@@map` tables plus `sessions` / `idempotency_keys` (never `_prisma_migrations`), restores **`myline78@gmail.com`** (`FACTORY_KEEP_ADMIN_EMAIL`) with **`ALL_PERMISSIONS`** + password hash, plus the signed-in actor if different (lockout guard), re-seeds COA (`bootstrapCoaIfEmpty`) and default fixed-asset groups. Confirm word **ضبط المصنع** / **FACTORY** + identity verify. Session destroyed (`requiresReLogin`). Client shows a success dialog (**تم العودة إلى الوضع الافتراضي**) with **إعادة الدخول** — Electron relaunches onto the password screen (`app-relaunch`); browser reloads. Do **not** auto-`requestAppQuit()`. Also clears IndexedDB drafts/outbox. Hits **the API’s Postgres** (Electron/Railway vs `dev:local` are different DBs).
 - **`warehouse_movements`** group (visible when `isLocalBackend`): label **حركات وأوامر المخازن** — calls **`POST /api/inventory-maintenance/purge`** with `deleteMovements` + **`resetBalances: true`** (clears consumption/return/transfer/movement SQLite data **and** warehouse balance rows). Does **not** delete `material_groups` / `material_categories` or `127…` warehouse COA. Does **not** delete Firestore `purchase_transactions` / `transactions` — purge those separately if full reset needed.
 
 ### Push to production — API (local dev only)
@@ -1847,13 +1905,13 @@ Rendered by `MaterialsTree.tsx` at the bottom of **Projects** and on the **Mater
 
 | Action | Who | Notes |
 |--------|-----|-------|
-| **Export** | All users with `projects` view | Flat rows: group code/name + optional category code/name/unit |
+| **Export** | All users with `projects` view | Flat rows matching warehouse-tree v2 (7 columns) |
 | **Template** | admin / projects_manager | Sample rows (ar or en column headers) |
-| **Import** | admin / projects_manager | `POST /api/materials/import` — creates new groups/categories; **skips** duplicate codes (no update-in-place) |
+| **Import** | admin / projects_manager | `POST /api/materials/import` — **creates or updates** groups/categories by code |
 
-**Excel columns** (either language): `Group Code` / `كود المجموعة`, `Group Name` / `اسم المجموعة`, `Category Code` / `كود الصنف`, `Category Name` / `اسم الصنف`, `Unit` / `الوحدة`. Row with empty category code = group-only row.
+**Excel columns** (warehouse v2, Arabic or English): `كود المجموعة` / `Group Code` → `material_groups.code` · **`Code` / `Group Name EN` → `material_groups.name_en` (English title — never the group code)** · `اسم المجموعة` / `Group Name` → `name` · `كود الصنف` / `Category Code` · `اسم الصنف` / `Category Name` · `الوحدة` / `Unit` · `الرصيد` / `Balance` (**ignored** — opening stock is Inventory opening-import). Legacy 5-column files still parse. Row with empty category code = group-only row.
 
-Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`.
+Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`. Migration **`20260813180000_material_group_name_en`**.
 
 ### Opening inventory balances — Excel import (2026-08-05)
 

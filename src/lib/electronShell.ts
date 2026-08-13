@@ -7,6 +7,9 @@ type WebCostDesktopBridge = {
   /** Secondary Electron window opened via Ctrl+N / New GUI — reuse session cookies. */
   reuseSession?: boolean;
   quitApp?: () => Promise<void>;
+  /** Seconds since last OS-wide input. Packaged shells before this IPC return undefined. */
+  getSystemIdleSeconds?: () => Promise<number | null>;
+  relaunchApp?: () => Promise<void>;
   clearSession?: () => Promise<void>;
   maximizeWindow?: () => Promise<boolean>;
   openNewWindow?: () => Promise<boolean>;
@@ -85,17 +88,45 @@ export function requestRevealDesktopWindow(): void {
 }
 
 /** Clear persisted session cookies/storage in the desktop partition (cold start / logout). */
-export function clearDesktopSessionStorage(): void {
+export function clearDesktopSessionStorage(): Promise<void> {
   const bridge = desktopBridge();
   if (bridge?.clearSession) {
-    void bridge.clearSession().catch(() => undefined);
+    return bridge.clearSession().catch(() => undefined);
+  }
+  return Promise.resolve();
+}
+/** OS idle seconds in Electron; `null` in the browser or on an older shell. */
+export async function getSystemIdleSeconds(): Promise<number | null> {
+  const fn = desktopBridge()?.getSystemIdleSeconds;
+  if (!fn) return null;
+  try {
+    const n = await fn();
+    return typeof n === 'number' && Number.isFinite(n) ? Math.max(0, n) : null;
+  } catch {
+    return null;
   }
 }
+
 /** Close the desktop shell entirely (no-op in browser). */
 export function requestAppQuit(): void {
   const bridge = desktopBridge();
   if (bridge?.quitApp) {
     void bridge.quitApp().catch(() => undefined);
+  }
+}
+
+/**
+ * Quit and start a fresh Electron instance (login screen).
+ * Returns false when the packaged shell is too old (no IPC) — caller should reload.
+ */
+export async function requestAppRelaunch(): Promise<boolean> {
+  const bridge = desktopBridge();
+  if (!bridge?.relaunchApp) return false;
+  try {
+    await bridge.relaunchApp();
+    return true;
+  } catch {
+    return false;
   }
 }
 

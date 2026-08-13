@@ -17,4 +17,14 @@ release/
 release-build/
 electron/dist/
 scripts/.generated/
+docs/operations-guide/.auth/
+docs/operations-guide/video-walkthrough/audio/
+docs/operations-guide/promo-ad/audio/
+docs/operations-guide/video-walkthrough/voice-samples/*
+!docs/operations-guide/video-walkthrough/voice-samples/README.md
+docs/operations-guide/**/output/
+docs/operations-guide/**/screenshots/*.png
+!docs/operations-guide/**/screenshots/.gitkeep
+docs/operations-guide/module-screens/**/*.png
+!docs/operations-guide/module-screens/**/.gitkeep
 server/src/data/chartOfAccountsSeedData.ts

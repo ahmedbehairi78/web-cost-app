@@ -114,7 +114,6 @@ async function userCanAccessDestinationProject(
   toProjectId: string,
 ): Promise<boolean> {
   if (!user) return false;
-  if (user.role === 'admin' || user.role === 'projects_manager') return true;
   try {
     await assertProjectAccess(prisma, user, toProjectId);
     return true;

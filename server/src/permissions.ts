@@ -233,16 +233,10 @@ export function normalizeUserPermissions(raw: unknown): UserPermissions {
   return result;
 }
 
-export function permissionsNeedBootstrap(raw: unknown, role?: UserRole): boolean {
+export function permissionsNeedBootstrap(raw: unknown, _role?: UserRole): boolean {
   if (raw === undefined || raw === null) return true;
   if (typeof raw !== 'object' || Array.isArray(raw)) return true;
-  if (Object.keys(raw as Record<string, unknown>).length === 0) return true;
-  const r = role ?? 'user';
-  if (r === 'projects_manager' || r === 'project_accountant') {
-    const normalized = normalizeUserPermissions(raw);
-    if (!hasAnyGrantedPermission(normalized)) return true;
-  }
-  return false;
+  return Object.keys(raw as Record<string, unknown>).length === 0;
 }
 
 export function hasAnyGrantedPermission(permissions: UserPermissions): boolean {
@@ -251,6 +245,10 @@ export function hasAnyGrantedPermission(permissions: UserPermissions): boolean {
     const a = moduleAccess(permissions, key);
     return a.view || a.create || a.edit;
   });
+}
+
+export function hasSettingsAccess(permissions: unknown): boolean {
+  return normalizeUserPermissions(permissions).settings === true;
 }
 
 export function buildPermissionsForRole(role: UserRole): UserPermissions {
@@ -306,15 +304,13 @@ export function buildPermissionsForRole(role: UserRole): UserPermissions {
   return { ...DEFAULT_PERMISSIONS };
 }
 
-/** Resolve stored JSON or role preset (same rules as client `resolvePermissionsFromUserData`). */
+/** Resolve stored JSON only — role names never grant modules. */
 export function resolvePermissionsFromUserData(data: {
   role?: unknown;
   permissions?: unknown;
 }): UserPermissions {
-  const role = String(data.role ?? 'user') as UserRole;
-  if (role === 'admin') return { ...ALL_PERMISSIONS };
-  if (permissionsNeedBootstrap(data.permissions, role)) {
-    return buildPermissionsForRole(role);
+  if (permissionsNeedBootstrap(data.permissions)) {
+    return { ...DEFAULT_PERMISSIONS };
   }
   return normalizeUserPermissions(data.permissions);
 }

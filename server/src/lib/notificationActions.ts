@@ -15,6 +15,7 @@ import { buildNotificationFeed, type NotificationAuthUser } from './notification
 import { fireCancelOutbox } from './enqueueNotification.js';
 import { hashApprovalToken } from './approvalLinkToken.js';
 import type { UserRole } from '../permissions.js';
+import { moduleAccess } from '../permissions.js';
 import { businessTodayYmd } from './businessCalendar.js';
 
 export type NotificationAction = 'approve' | 'reject';
@@ -112,7 +113,6 @@ async function userCanAccessDestinationProject(
   toProjectId: string,
 ): Promise<boolean> {
   if (!user) return false;
-  if (user.role === 'admin' || user.role === 'projects_manager') return true;
   const { assertProjectAccess } = await import('../modules/inventoryHelpers.js');
   try {
     await assertProjectAccess(prisma, user, toProjectId);
@@ -175,7 +175,7 @@ export async function loadNotificationItemDetail(
       }
     }
     if (tr.status === 'pending_projects' && feedItem.type === 'transfer_pending_projects') {
-      if (user!.role === 'admin' || user!.role === 'projects_manager') {
+      if (moduleAccess(user!.permissions, 'inventory').edit) {
         allowedActions.push('approve', 'reject');
       }
     }
@@ -187,7 +187,7 @@ export async function loadNotificationItemDetail(
       summary.extractNumber = cert.certificateNo ?? id.slice(0, 8);
       summary.date = cert.extractDate ?? '';
       summary.status = cert.status;
-      if (user!.role === 'admin' || user!.role === 'projects_manager') {
+      if (moduleAccess(user!.permissions, 'billing').edit) {
         allowedActions.push('approve');
       }
     } else {
@@ -198,7 +198,7 @@ export async function loadNotificationItemDetail(
       summary.date = mos.extractDate ?? '';
       summary.status = mos.status;
 
-      if (user!.role === 'admin' || user!.role === 'projects_manager') {
+      if (moduleAccess(user!.permissions, 'billing').edit) {
         allowedActions.push('approve');
       }
     }
@@ -214,7 +214,7 @@ export async function loadNotificationItemDetail(
     summary.status = bill.status;
     summary.netPayable = String(bill.netPayable);
 
-    if (user!.role === 'admin' || user!.role === 'projects_manager') {
+    if (moduleAccess(user!.permissions, 'billing').edit) {
       allowedActions.push('approve');
     }
   } else if (key.startsWith('vo:')) {
@@ -227,7 +227,7 @@ export async function loadNotificationItemDetail(
     summary.status = vo.status;
     summary.totalValue = String(vo.totalValue);
 
-    if (user!.role === 'admin' || user!.role === 'projects_manager') {
+    if (moduleAccess(user!.permissions, 'boq').edit) {
       allowedActions.push('approve', 'reject');
     }
   }
@@ -298,7 +298,7 @@ export async function executeNotificationAction(
         notifyTransferResolved(transferId);
       }
     } else if (detail.type === 'transfer_pending_projects') {
-      if (user!.role !== 'admin' && user!.role !== 'projects_manager') {
+      if (!moduleAccess(user!.permissions, 'inventory').edit) {
         throw new Error('access_denied');
       }
       if (action === 'approve') {
@@ -350,7 +350,7 @@ export async function executeNotificationAction(
     const id = key.slice('mos:'.length);
     if (action !== 'approve') throw new Error('action_not_allowed');
 
-    if (user!.role !== 'admin' && user!.role !== 'projects_manager') {
+    if (!moduleAccess(user!.permissions, 'billing').edit) {
       throw new Error('access_denied');
     }
 
@@ -405,7 +405,7 @@ export async function executeNotificationAction(
     const id = key.slice('billing:'.length);
     if (action !== 'approve') throw new Error('action_not_allowed');
 
-    if (user!.role !== 'admin' && user!.role !== 'projects_manager') {
+    if (!moduleAccess(user!.permissions, 'billing').edit) {
       throw new Error('access_denied');
     }
 
@@ -413,7 +413,7 @@ export async function executeNotificationAction(
     await approveBillingIpc(id, user!.id);
   } else if (key.startsWith('vo:')) {
     const id = key.slice('vo:'.length);
-    if (user!.role !== 'admin' && user!.role !== 'projects_manager') {
+    if (!moduleAccess(user!.permissions, 'boq').edit) {
       throw new Error('access_denied');
     }
 

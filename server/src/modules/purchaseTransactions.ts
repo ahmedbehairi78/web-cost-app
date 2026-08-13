@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { requireAuth, requireModuleWrite, requireReferenceRead, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireModuleWrite, requireReferenceRead } from '../middleware/auth.js';
 import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
@@ -544,7 +544,7 @@ purchaseTransactionsRouter.delete(
 
 purchaseTransactionsRouter.post(
   '/:id/approve',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('costs_ipc'),
   asyncHandler(async (req, res) => {
     const user = req.user!;
     const row = await prisma.purchaseTransaction.findUnique({

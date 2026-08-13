@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>عقد + BOQ + ربط أصناف</title>
+  <style>
+    :root { --navy:#003B71; --orange:#F58220; --bg:#0b1220; --muted:#94a3b8; }
+    *{box-sizing:border-box} html,body{margin:0;height:100%;background:var(--bg);color:#f8fafc;font-family:"Segoe UI",Tahoma,"Noto Sans Arabic",sans-serif}
+    .slide{display:none;height:100%;padding:2rem 2.5rem 3.5rem;flex-direction:column;gap:.85rem}
+    .slide.active{display:flex} h1,h2{margin:0}
+    h1{font-size:2.2rem} h2{font-size:1.4rem;border-bottom:3px solid var(--orange);width:fit-content;padding-bottom:.25rem}
+    p,li{color:var(--muted);line-height:1.55}
+    .hero{flex:1;display:flex;flex-direction:column;justify-content:center;gap:.7rem;background:linear-gradient(145deg,#0f172a,#1e293b);border:1px solid #334155;border-radius:1rem;padding:2rem}
+    .brand{color:var(--orange);font-weight:700}
+    .grid{flex:1;min-height:0;display:grid;grid-template-columns:1.15fr .85fr;gap:1rem}
+    .shot{min-height:0;border:1px solid #334155;border-radius:.75rem;background:#020617;display:flex;align-items:center;justify-content:center;overflow:hidden}
+    .shot img{max-width:100%;max-height:100%;object-fit:contain;display:none}
+    .missing{color:var(--muted);padding:1.2rem;text-align:center}
+    .nav{position:fixed;inset-inline:0;bottom:0;height:3rem;display:flex;align-items:center;justify-content:space-between;padding:0 1rem;background:rgba(11,18,32,.94);border-top:1px solid #334155}
+    .nav button{background:var(--navy);color:#fff;border:0;border-radius:.5rem;padding:.4rem 1rem;cursor:pointer;font:inherit}
+    .nav button:hover{background:var(--orange)}
+    code{color:#fdba74;background:#020617;padding:.05rem .3rem;border-radius:.25rem}
+    table{width:100%;border-collapse:collapse;font-size:.92rem}
+    th,td{border-bottom:1px solid #334155;padding:.45rem .3rem;text-align:start;color:#cbd5e1}
+    th{color:#fdba74}
+  </style>
+</head>
+<body>
+  <section class="slide active"><div class="hero">
+    <div class="brand">Concord Plus · عرض تشغيلي</div>
+    <h1>عقد جديد + قائمة كميات + ربط أصناف</h1>
+    <p>على المشروع التجريبي: عقد بقيمة وتكلفة تقديرية، 3 بنود BOQ، وربط أصناف مخزن لكل بند.</p>
+  </div></section>
+
+  <section class="slide">
+    <h2>البيانات الافتراضية</h2>
+    <table>
+      <thead><tr><th>بند</th><th>كمية</th><th>أصناف مربوطة</th></tr></thead>
+      <tbody>
+        <tr><td><code>DEMO-01</code> حفر</td><td>100 م3</td><td>رمل</td></tr>
+        <tr><td><code>DEMO-02</code> خرسانة</td><td>50 م3</td><td>رمل + أسمنت</td></tr>
+        <tr><td><code>DEMO-03</code> تشطيب</td><td>200 م2</td><td>دهان</td></tr>
+      </tbody>
+    </table>
+    <p>قيمة العقد = مجموع أسعار البيع · التكلفة التقديرية = بدون ربح المقاول (OH فقط).</p>
+  </section>
+
+  <section class="slide" data-shot="01-projects-with-new-contract">
+    <h2>1 — العقد على المشروع التجريبي</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">npm run docs:demo-boq</div></div>
+      <ul><li>عقد <code>CRT-BOQ-…</code></li><li>قيمة = إجمالي بنود البيع</li></ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="02-boq-three-items">
+    <h2>2 — قائمة الكميات (3 بنود)</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>مواد / عمالة / معدات + OH 10% + ربح 12%</li><li>شارات الربط تظهر بعد ربط الأصناف</li></ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="03-boq-materials-modal">
+    <h2>3 — ربط أصناف بكل بند</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul>
+        <li>من أيقونة المواد على صف البند</li>
+        <li>يُحفظ في <code>boq_item_materials</code></li>
+        <li>شرط لاحق لصرف المخزن على البند</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="slide" data-shot="04-materials-tree-demo">
+    <h2>4 — شجرة الأصناف التجريبية</h2>
+    <div class="grid">
+      <div class="shot"><img alt=""><div class="missing">بانتظار اللقطة</div></div>
+      <ul><li>مجموعة <code>DEMO-GRP</code></li><li>رمل · أسمنت · دهان</li></ul>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>خلاصة</h2>
+    <ul>
+      <li>العقد يحدد نطاق BOQ ومركز التكلفة</li>
+      <li>البنود تحمل سعر البيع وتكلفة تقديرية من تفصيل المعدّل</li>
+      <li>ربط الأصناف ≠ مخزون فعلي — المخزون يأتي من فاتورة/استلام لاحقاً</li>
+    </ul>
+    <p><code>DEMO.md</code> · <code>npm run docs:demo-boq</code></p>
+  </section>
+
+  <div class="nav">
+    <button type="button" id="prev">السابق</button>
+    <span id="counter" style="color:#94a3b8"></span>
+    <button type="button" id="next">التالي</button>
+  </div>
+  <script>
+    const slides=[...document.querySelectorAll('.slide')]; let i=0;
+    const counter=document.getElementById('counter');
+    function load(){document.querySelectorAll('.slide[data-shot]').forEach(s=>{
+      const img=s.querySelector('img'), miss=s.querySelector('.missing');
+      img.src=`screenshots/${s.dataset.shot}.png?t=${Date.now()}`;
+      img.onload=()=>{img.style.display='block'; if(miss) miss.style.display='none'};
+      img.onerror=()=>{img.style.display='none'; if(miss) miss.style.display='block'};
+    });}
+    function show(n){i=(n+slides.length)%slides.length; slides.forEach((s,idx)=>s.classList.toggle('active',idx===i)); counter.textContent=`${i+1}/${slides.length}`;}
+    document.getElementById('prev').onclick=()=>show(i-1);
+    document.getElementById('next').onclick=()=>show(i+1);
+    window.addEventListener('keydown',e=>{ if(e.key==='ArrowLeft'||e.key==='ArrowRight') show(i+(e.key==='ArrowLeft'?-1:1)); });
+    load(); show(0);
+  </script>
+</body>
+</html>

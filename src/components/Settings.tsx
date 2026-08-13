@@ -40,6 +40,7 @@ import {
   PenLine,
   FlaskConical,
   RotateCcw,
+  LogIn,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { IndirectCostCentersPanel } from './settings/IndirectCostCentersPanel';
@@ -84,7 +85,7 @@ import { ActivityLogPanel } from './ActivityLogPanel';
 import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
 import { financialMaintenanceApi, settingsApi, contractsApi } from '../services/local/modulesApi';
 import { useApiQuery } from '../hooks/useApiQuery';
-import { buildPermissionsForRole, crudOff, crudOn, moduleAccess, normalizeUserPermissions } from '../lib/permissions';
+import { crudOff, crudOn, moduleAccess, normalizeUserPermissions } from '../lib/permissions';
 import { PERMISSION_MENU_HINTS } from '../lib/moduleViewPermissions';
 import { usePermissions } from '../context/PermissionsContext';
 import { isLocalBackend } from '../lib/dataBackend';
@@ -92,7 +93,7 @@ import { FIRESTORE_BACKUP_COLLECTIONS, POSTGRES_BACKUP_COLLECTIONS } from '../co
 import { isAppTheme, isSoftLikeTheme } from '../lib/shellTheme';
 import { consumePendingShellView } from '../lib/shellNavigation';
 import { authApi } from '../services/local/authApi';
-import { performAppLogout } from '../lib/sessionLogout';
+import { performAppLogout, performFactoryResetReentry } from '../lib/sessionLogout';
 import { labelBackupImportSkip } from '../lib/backupImportSkipLabels';
 import {
   isFullVisibleShellModulesWhitelist,
@@ -112,6 +113,7 @@ import {
 } from '../lib/backupImportReport';
 import {
   clearApiUnauthorizedLogoutSuppress,
+  notifyFactoryResetDone,
   suppressApiUnauthorizedLogout,
 } from '../lib/apiSession';
 import { ApiError } from '../lib/apiClient';
@@ -1284,6 +1286,9 @@ function FactoryResetModal({
   const { t } = useLanguage();
   const [confirmText, setConfirmText] = useState('');
   const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+  const [keptEmails, setKeptEmails] = useState<string[]>([]);
+  const [reentering, setReentering] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [lastError, setLastError] = useState('');
 
@@ -1296,15 +1301,10 @@ function FactoryResetModal({
     try {
       const result = await financialMaintenanceApi.factoryReset();
       await clearAllOfflineClientData();
-      suppressApiUnauthorizedLogout();
-      toast.success(
-        t('settings_factory_reset_success').replace(
-          '{emails}',
-          (result.keptEmails ?? []).join(', '),
-        ),
-      );
-      onClose();
-      await performAppLogout();
+      notifyFactoryResetDone(result.keptEmails ?? []);
+      setKeptEmails(result.keptEmails ?? []);
+      setDone(true);
+      setRunning(false);
     } catch (e) {
       const msg =
         e instanceof ApiError && e.status === 404
@@ -1321,9 +1321,16 @@ function FactoryResetModal({
   };
 
   const handleReset = () => {
-    if (!confirmed || running) return;
+    if (!confirmed || running || done) return;
     setLastError('');
     setVerifyOpen(true);
+  };
+
+  const handleReenter = () => {
+    if (reentering) return;
+    setReentering(true);
+    clearApiUnauthorizedLogoutSuppress();
+    void performFactoryResetReentry();
   };
 
   const panelCls = cn(
@@ -1339,17 +1346,19 @@ function FactoryResetModal({
         theme={theme}
         dir={dir}
         layer="base"
-        closeOnBackdrop={!running}
-        onClose={onClose}
+        closeOnBackdrop={!running && !done}
+        onClose={done ? undefined : onClose}
         panelClassName="max-w-lg"
       >
         <div className={panelCls} dir={dir}>
           <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2 text-red-500">
-              <RotateCcw size={22} />
-              <h3 className="text-lg font-bold">{t('settings_factory_reset_title')}</h3>
+            <div className={cn('flex items-center gap-2', done ? 'text-emerald-500' : 'text-red-500')}>
+              {done ? <CheckCircle2 size={22} /> : <RotateCcw size={22} />}
+              <h3 className="text-lg font-bold">
+                {done ? t('settings_factory_reset_done_title') : t('settings_factory_reset_title')}
+              </h3>
             </div>
-            {!running && (
+            {!running && !done && (
               <button
                 type="button"
                 onClick={onClose}
@@ -1361,68 +1370,99 @@ function FactoryResetModal({
             )}
           </div>
 
-          <div
-            className={cn(
-              'rounded-xl border p-4 mb-5 space-y-2 text-sm',
-              theme === 'dark' ? 'bg-red-950/30 border-red-900/50' : 'bg-red-50 border-red-200',
-            )}
-          >
-            <p className="text-red-400">{t('settings_factory_reset_body')}</p>
-            <p className="font-bold text-red-500">{t('settings_factory_reset_keep')}</p>
-          </div>
-
-          {lastError && !running && (
-            <div className={cn('rounded-xl border p-3 mb-4 text-sm', theme === 'dark' ? 'bg-red-950/40 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-800')}>
-              {lastError}
-            </div>
-          )}
-
-          {running && (
-            <div className="flex items-center justify-center gap-3 py-4 text-red-400">
-              <Loader2 size={20} className="animate-spin" />
-              <span className="font-bold text-sm">{t('settings_factory_reset_running')}</span>
-            </div>
-          )}
-
-          {!running && (
-            <>
-              <p className="text-sm text-gray-400 mb-2">
-                {t('settings_factory_reset_confirm_hint')}
-              </p>
-              <input
-                type="text"
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                placeholder={language === 'ar' ? 'ضبط المصنع أو FACTORY' : 'FACTORY or ضبط المصنع'}
+          {done ? (
+            <div className="space-y-4">
+              <div
                 className={cn(
-                  'w-full border rounded-xl py-2 px-3 text-sm outline-none mb-4 transition-colors',
-                  theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900',
-                  confirmed ? 'border-red-500' : '',
+                  'rounded-xl border p-4 space-y-2 text-sm',
+                  theme === 'dark' ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-emerald-50 border-emerald-200',
                 )}
-              />
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className={cn(
-                    'flex-1 py-2 rounded-xl text-sm font-bold border transition-colors',
-                    theme === 'dark'
-                      ? 'border-gray-700 text-gray-400 hover:bg-gray-800'
-                      : 'border-gray-300 text-gray-500 hover:bg-gray-100',
-                  )}
-                >
-                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!confirmed}
-                  className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:text-red-700 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
-                >
-                  <RotateCcw size={16} />
-                  {t('settings_factory_reset_btn')}
-                </button>
+              >
+                <p className={theme === 'dark' ? 'text-emerald-300' : 'text-emerald-800'}>
+                  {t('settings_factory_reset_done_body')}
+                </p>
+                {keptEmails.length > 0 && (
+                  <p className={cn('text-xs', theme === 'dark' ? 'text-emerald-400/80' : 'text-emerald-700')}>
+                    {t('settings_factory_reset_success').replace('{emails}', keptEmails.join(', '))}
+                  </p>
+                )}
               </div>
+              <button
+                type="button"
+                onClick={handleReenter}
+                disabled={reentering}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                {reentering ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+                {t('settings_factory_reset_relogin_btn')}
+              </button>
+            </div>
+          ) : (
+            <>
+              <div
+                className={cn(
+                  'rounded-xl border p-4 mb-5 space-y-2 text-sm',
+                  theme === 'dark' ? 'bg-red-950/30 border-red-900/50' : 'bg-red-50 border-red-200',
+                )}
+              >
+                <p className="text-red-400">{t('settings_factory_reset_body')}</p>
+                <p className="font-bold text-red-500">{t('settings_factory_reset_keep')}</p>
+              </div>
+
+              {lastError && !running && (
+                <div className={cn('rounded-xl border p-3 mb-4 text-sm', theme === 'dark' ? 'bg-red-950/40 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-800')}>
+                  {lastError}
+                </div>
+              )}
+
+              {running && (
+                <div className="flex items-center justify-center gap-3 py-4 text-red-400">
+                  <Loader2 size={20} className="animate-spin" />
+                  <span className="font-bold text-sm">{t('settings_factory_reset_running')}</span>
+                </div>
+              )}
+
+              {!running && (
+                <>
+                  <p className="text-sm text-gray-400 mb-2">
+                    {t('settings_factory_reset_confirm_hint')}
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    placeholder={language === 'ar' ? 'ضبط المصنع أو FACTORY' : 'FACTORY or ضبط المصنع'}
+                    className={cn(
+                      'w-full border rounded-xl py-2 px-3 text-sm outline-none mb-4 transition-colors',
+                      theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900',
+                      confirmed ? 'border-red-500' : '',
+                    )}
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className={cn(
+                        'flex-1 py-2 rounded-xl text-sm font-bold border transition-colors',
+                        theme === 'dark'
+                          ? 'border-gray-700 text-gray-400 hover:bg-gray-800'
+                          : 'border-gray-300 text-gray-500 hover:bg-gray-100',
+                      )}
+                    >
+                      {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      disabled={!confirmed}
+                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:text-red-700 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                      <RotateCcw size={16} />
+                      {t('settings_factory_reset_btn')}
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1431,7 +1471,7 @@ function FactoryResetModal({
       <AdminSensitiveVerifyModal
         open={verifyOpen}
         onOpenChange={(v) => {
-          if (running) return;
+          if (running || done) return;
           setVerifyOpen(v);
         }}
         language={language}
@@ -1733,9 +1773,9 @@ const PERMISSION_GROUPS: PermGroupDef[] = [
           { ar: 'قاعدة البيانات', en: 'Database' },
           { ar: 'إدارة المستخدمين', en: 'User management' },
           { ar: 'شجرة الحسابات', en: 'Chart of accounts' },
-          { ar: 'مراكز التكلفة غير المباشرة (admin)', en: 'Indirect cost centers (admin)' },
-          { ar: 'سجل النشاط (admin)', en: 'Activity log (admin)' },
-          { ar: 'بيانات تجريبية (admin)', en: 'Sample data (admin)' },
+          { ar: 'مراكز التكلفة غير المباشرة', en: 'Indirect cost centers' },
+          { ar: 'سجل النشاط', en: 'Activity log' },
+          { ar: 'بيانات تجريبية', en: 'Sample data' },
         ],
       },
     ],
@@ -2056,7 +2096,7 @@ function UserModal({ user, contracts, language, theme, onClose, onSave }: UserMo
   const { t } = useLanguage();
   const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>(user?.role ?? 'user');
+  const role: UserRole = user?.role ?? 'user';
   const [permissions, setPermissions] = useState<UserPermissions>(
     normalizeUserPermissions(user?.permissions ?? emptyPermissions())
   );
@@ -2273,53 +2313,12 @@ function UserModal({ user, contracts, language, theme, onClose, onSave }: UserMo
             </div>
           )}
 
-          {/* Role */}
-          <div className="mb-5">
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
-              {language === 'ar' ? 'الصلاحية' : 'Role'}
-            </label>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              {(['user', 'project_accountant', 'projects_manager', 'admin'] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => {
-                    setRole(r);
-                    setPermissions(buildPermissionsForRole(r));
-                  }}
-                  className={cn(
-                    'py-2 rounded-xl border text-sm font-bold transition-all',
-                    role === r
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : theme === 'dark'
-                        ? 'border-gray-700 text-gray-400 hover:border-gray-500'
-                        : 'border-gray-300 text-gray-500 hover:border-gray-400'
-                  )}
-                >
-                  {r === 'admin'
-                    ? (language === 'ar' ? 'مدير نظام' : 'Admin')
-                    : r === 'projects_manager'
-                      ? (language === 'ar' ? 'مسؤول مشاريع' : 'Projects Manager')
-                      : r === 'project_accountant'
-                        ? (language === 'ar' ? 'محاسب مشروع' : 'Project Accountant')
-                        : (language === 'ar' ? 'مستخدم' : 'User')}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="mb-5">
             <label className="block text-xs font-bold text-gray-400 uppercase mb-1">
-              {language === 'ar' ? 'العقود المسموح بها' : 'Allowed Contracts'}
+              {t('user_contracts_label')}
             </label>
             <p className="text-xs text-gray-500 mb-2">
-              {role === 'admin' || role === 'projects_manager'
-                ? (language === 'ar'
-                  ? 'اختياري — ترك الكل دون تحديد يعني جميع العقود. يمكن تحديد عقود لتوثيق النطاق أو للاستخدام في التقارير.'
-                  : 'Optional — leave all unchecked for every contract. Select specific contracts to document scope or use in reports.')
-                : (language === 'ar'
-                  ? 'حدّد العقود التي يمكن للمستخدم الوصول إليها في التكاليف والمخازن والتقارير. بدون تحديد = لا وصول للعقود.'
-                  : 'Select contracts this user may access in costs, inventory, and reports. None selected = no contract access.')}
+              {t('user_contracts_hint')}
             </p>
             <div className={cn(
               'max-h-48 overflow-y-auto rounded-xl border p-3 space-y-2',
@@ -2779,9 +2778,10 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
     contact?: { phoneRaw: string; whatsappOptIn: boolean },
     visibleShellModules?: string[] | null,
   ) => {
-    const createsOrPromotesAdmin =
-      role === 'admin' && (!editingUser || editingUser.role !== 'admin');
-    const sensitive = createsOrPromotesAdmin;
+    const grantingSettings =
+      permissions.settings === true
+      && (!editingUser || editingUser.permissions.settings !== true);
+    const sensitive = grantingSettings;
 
     if (sensitive && !viewerIsAdmin) {
       toast.error(language === 'ar' ? 'لا تملك صلاحية هذا الإجراء.' : 'You do not have permission for this action.');
@@ -2812,7 +2812,7 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
   };
 
   const handleDeleteUser = async (user: AppUser) => {
-    if (user.role === 'admin' && viewerIsAdmin) {
+    if (user.permissions.settings === true && viewerIsAdmin) {
       pendingUserOpRef.current = () => executeDeleteUser(user);
       setAdminUserVerifyOpen(true);
       return;
@@ -2841,7 +2841,7 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
             'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0',
-            u.role === 'admin' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
+            u.permissions.settings ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
           )}>
             {u.email.charAt(0).toUpperCase()}
           </div>
@@ -2860,23 +2860,14 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className={cn(
-                'text-xs font-bold',
-                u.role === 'admin' ? 'text-blue-400' : 'text-gray-400'
-              )}>
-                {u.role === 'admin'
-                  ? (language === 'ar' ? 'مدير نظام' : 'Admin')
-                  : u.role === 'projects_manager'
-                    ? (language === 'ar' ? 'مسؤول مشاريع' : 'Projects Manager')
-                    : u.role === 'project_accountant'
-                      ? (language === 'ar' ? 'محاسب مشروع' : 'Project Accountant')
-                      : (language === 'ar' ? 'مستخدم' : 'User')}
-              </span>
-              {u.role !== 'admin' && (
-                <span className="text-xs text-gray-500 truncate" title={activeModules}>
-                  · {activeModules || (language === 'ar' ? 'بدون صلاحيات' : 'No access')}
+              {u.permissions.settings && (
+                <span className="text-xs font-bold text-blue-400">
+                  {t('user_settings_badge')}
                 </span>
               )}
+              <span className="text-xs text-gray-500 truncate" title={activeModules}>
+                {activeModules || (language === 'ar' ? 'بدون صلاحيات' : 'No access')}
+              </span>
             </div>
             {isLocalBackend && u.phoneE164 && (
               <div className="flex items-center gap-1.5 mt-1">

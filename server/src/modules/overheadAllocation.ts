@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import { requireAuth, requireReferenceRead, requireModuleWrite, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { Prisma } from '@prisma/client';
@@ -239,7 +239,7 @@ overheadAllocationRouter.post(
 
 overheadAllocationRouter.post(
   '/periods/:id/reopen',
-  requireRole('admin'),
+  requireModuleWrite('overhead'),
   asyncHandler(async (req, res) => {
     await reopenOverheadPeriod(String(req.params.id), req.user?.id);
     res.json({ ok: true });

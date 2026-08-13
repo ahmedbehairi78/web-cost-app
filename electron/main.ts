@@ -3,7 +3,7 @@
  * Set WEB_COST_APP_URL for production; defaults to http://localhost:3000.
  * Multiple app windows share partition `persist:webcost` (same session cookies).
  */
-import { app, BrowserWindow, dialog, ipcMain, Notification, session, shell, type WebContents } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Notification, powerMonitor, session, shell, type WebContents } from 'electron';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -404,6 +404,21 @@ function createAppWindow(opts?: { reuseSession?: boolean }): BrowserWindow {
 }
 
 ipcMain.handle('app-quit', () => {
+  app.quit();
+});
+
+/** OS-wide idle seconds (mouse/keyboard anywhere on the machine — not only this window). */
+ipcMain.handle('system-idle-seconds', () => {
+  try {
+    return powerMonitor.getSystemIdleTime();
+  } catch {
+    return null;
+  }
+});
+
+/** Close every window and start a fresh instance on the login screen. */
+ipcMain.handle('app-relaunch', () => {
+  app.relaunch();
   app.quit();
 });
 

@@ -35,7 +35,6 @@ import { isLocalBackend } from '../lib/dataBackend';
 import { ApiError } from '../lib/apiClient';
 import { boqApi, billingApi, contractsApi, inventoryApi, projectsApi, settingsApi, boqMaterialsApi, NetworkQueuedError } from '../services/local/modulesApi';
 import { consumePendingBoqFocus } from '../lib/shellNavigation';
-import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { useVoPrintPreview } from '../hooks/useVoPrintPreview';
 import { buildVoPrintData } from '../lib/voPrintData';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
@@ -201,9 +200,8 @@ function buildBoqApiPayload(
 export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const { t, language, theme, dir, locale, formatMoney } = useLanguage();
   const { isAdmin, can } = usePermissions();
-  const { isProjectsManager } = useUserAccessScope();
   const canWriteVo = isLocalBackend && (can('boq').create || can('boq').edit);
-  const canApproveVo = isLocalBackend && (isAdmin || isProjectsManager);
+  const canApproveVo = isLocalBackend && can('boq').edit;
   const canReadBillingProgress = can('billing').view || can('billing').create || can('billing').edit;
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
   const [voRefreshKey, setVoRefreshKey] = useState(0);
@@ -428,11 +426,19 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
     if (projects.length > 0 && !selectedProjectId) setSelectedProjectId(projects[0].id);
   }, [projects, selectedProjectId]);
 
-  // Auto-select/clear contract when project changes
+  // Auto-select/clear contract when project changes — keep current if still valid
   useEffect(() => {
-    if (!selectedProjectId) { setSelectedContractId(''); return; }
-    if (contracts.length > 0) setSelectedContractId(contracts[0].id);
-    else setSelectedContractId('');
+    if (!selectedProjectId) {
+      setSelectedContractId('');
+      return;
+    }
+    if (contracts.length === 0) {
+      setSelectedContractId('');
+      return;
+    }
+    setSelectedContractId((prev) =>
+      prev && contracts.some((c) => c.id === prev) ? prev : contracts[0].id,
+    );
   }, [contracts, selectedProjectId]);
 
   // Clear contract if project cleared

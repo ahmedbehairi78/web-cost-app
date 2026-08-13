@@ -1,0 +1,610 @@
+{
+  "version": 1,
+  "viewport": {
+    "width": 1440,
+    "height": 900
+  },
+  "locale": "ar-EG",
+  "outputDir": "docs/operations-guide/module-screens",
+  "screens": [
+    {
+      "id": "shared-login",
+      "moduleId": "_shared",
+      "viewId": "login",
+      "tier": 1,
+      "file": "_shared/01-login.png",
+      "waitMs": 800,
+      "action": null,
+      "special": "login",
+      "capturedAt": "2026-08-13T10:13:14.151Z"
+    },
+    {
+      "id": "shared-desktop-after-login",
+      "moduleId": "_shared",
+      "viewId": "desktop",
+      "tier": 1,
+      "file": "_shared/02-desktop-after-login.png",
+      "waitMs": 1200,
+      "action": null,
+      "special": "desktop-after-login",
+      "capturedAt": "2026-08-13T10:13:17.121Z"
+    },
+    {
+      "id": "shared-general-settings",
+      "moduleId": "general",
+      "viewId": "main",
+      "tier": 1,
+      "file": "_shared/03-general-settings.png",
+      "waitMs": 1500,
+      "action": null,
+      "capturedAt": "2026-08-13T10:13:30.038Z"
+    },
+    {
+      "id": "dashboard-main",
+      "moduleId": "dashboard",
+      "viewId": "main",
+      "tier": 1,
+      "file": "01-dashboard/01-main.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:08:03.328Z"
+    },
+    {
+      "id": "ledger-journal",
+      "moduleId": "ledger",
+      "viewId": "journal",
+      "tier": 1,
+      "file": "02-ledger/01-journal.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:10:59.816Z"
+    },
+    {
+      "id": "ledger-statement",
+      "moduleId": "ledger",
+      "viewId": "statement",
+      "tier": 1,
+      "file": "02-ledger/02-statement.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:03.028Z"
+    },
+    {
+      "id": "ledger-periods",
+      "moduleId": "ledger",
+      "viewId": "periods",
+      "tier": 1,
+      "file": "02-ledger/03-periods.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:06.206Z"
+    },
+    {
+      "id": "technical-projects",
+      "moduleId": "technical",
+      "viewId": "projects",
+      "tier": 1,
+      "file": "03-technical/01-projects.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:08:58.123Z"
+    },
+    {
+      "id": "technical-boq",
+      "moduleId": "technical",
+      "viewId": "boq",
+      "tier": 1,
+      "file": "03-technical/02-boq.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:01.300Z"
+    },
+    {
+      "id": "technical-billing",
+      "moduleId": "technical",
+      "viewId": "billing",
+      "tier": 1,
+      "file": "03-technical/03-billing.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:04.465Z"
+    },
+    {
+      "id": "technical-documents",
+      "moduleId": "technical",
+      "viewId": "documents",
+      "tier": 1,
+      "file": "03-technical/04-documents.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:07.635Z"
+    },
+    {
+      "id": "costs-invoice-list",
+      "moduleId": "costs",
+      "viewId": "invoice",
+      "tier": 1,
+      "file": "04-costs/01-invoice-list.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:08:43.569Z"
+    },
+    {
+      "id": "costs-ipc-list",
+      "moduleId": "costs",
+      "viewId": "ipc",
+      "tier": 1,
+      "file": "04-costs/02-ipc-list.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:08:46.734Z"
+    },
+    {
+      "id": "costs-custody-list",
+      "moduleId": "costs",
+      "viewId": "custody",
+      "tier": 1,
+      "file": "04-costs/03-custody-list.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:08:49.916Z"
+    },
+    {
+      "id": "inventory-materials",
+      "moduleId": "inventory",
+      "viewId": "materials",
+      "tier": 1,
+      "file": "05-inventory/01-materials.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:15.224Z"
+    },
+    {
+      "id": "inventory-balance",
+      "moduleId": "inventory",
+      "viewId": "balance",
+      "tier": 1,
+      "file": "05-inventory/02-balance.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:18.380Z"
+    },
+    {
+      "id": "inventory-receipts",
+      "moduleId": "inventory",
+      "viewId": "receipts",
+      "tier": 1,
+      "file": "05-inventory/03-receipts.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:21.536Z"
+    },
+    {
+      "id": "inventory-transfers",
+      "moduleId": "inventory",
+      "viewId": "transfers",
+      "tier": 1,
+      "file": "05-inventory/04-transfers.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:24.693Z"
+    },
+    {
+      "id": "inventory-history",
+      "moduleId": "inventory",
+      "viewId": "history",
+      "tier": 1,
+      "file": "05-inventory/05-history.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:27.869Z"
+    },
+    {
+      "id": "purchase-requests-create",
+      "moduleId": "purchase_requests",
+      "viewId": "create",
+      "tier": 1,
+      "file": "06-purchase-requests/01-create.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:45.836Z"
+    },
+    {
+      "id": "purchase-requests-open",
+      "moduleId": "purchase_requests",
+      "viewId": "open",
+      "tier": 1,
+      "file": "06-purchase-requests/02-open.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:09:58.985Z"
+    },
+    {
+      "id": "purchase-requests-executed",
+      "moduleId": "purchase_requests",
+      "viewId": "executed",
+      "tier": 1,
+      "file": "06-purchase-requests/03-executed.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:10:12.147Z"
+    },
+    {
+      "id": "assets-register",
+      "moduleId": "assets",
+      "viewId": "register",
+      "tier": 1,
+      "file": "07-assets/01-register.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:12:32.825Z"
+    },
+    {
+      "id": "assets-depreciation",
+      "moduleId": "assets",
+      "viewId": "depreciation",
+      "tier": 1,
+      "file": "07-assets/02-depreciation.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:12:36.006Z"
+    },
+    {
+      "id": "payroll-runs",
+      "moduleId": "payroll",
+      "viewId": "runs",
+      "tier": 1,
+      "file": "08-payroll/01-runs.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:12:43.887Z"
+    },
+    {
+      "id": "payroll-employees",
+      "moduleId": "payroll",
+      "viewId": "employees",
+      "tier": 1,
+      "file": "08-payroll/02-employees.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:12:47.054Z"
+    },
+    {
+      "id": "payroll-settings",
+      "moduleId": "payroll",
+      "viewId": "settings",
+      "tier": 1,
+      "file": "08-payroll/03-settings.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:12:50.232Z"
+    },
+    {
+      "id": "banks-accounts",
+      "moduleId": "banks",
+      "viewId": "accounts",
+      "tier": 1,
+      "file": "09-banks/01-accounts.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:14.144Z"
+    },
+    {
+      "id": "banks-transactions",
+      "moduleId": "banks",
+      "viewId": "transactions",
+      "tier": 1,
+      "file": "09-banks/02-transactions.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:17.306Z"
+    },
+    {
+      "id": "banks-statements",
+      "moduleId": "banks",
+      "viewId": "statements",
+      "tier": 1,
+      "file": "09-banks/03-statements.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:20.513Z"
+    },
+    {
+      "id": "reports-income",
+      "moduleId": "reports",
+      "viewId": "income",
+      "tier": 1,
+      "file": "10-reports/01-income.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:28.711Z"
+    },
+    {
+      "id": "reports-budget",
+      "moduleId": "reports",
+      "viewId": "budget",
+      "tier": 1,
+      "file": "10-reports/02-budget.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:31.879Z"
+    },
+    {
+      "id": "reports-balance",
+      "moduleId": "reports",
+      "viewId": "balance",
+      "tier": 1,
+      "file": "10-reports/03-balance.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:35.035Z"
+    },
+    {
+      "id": "reports-trial",
+      "moduleId": "reports",
+      "viewId": "trial",
+      "tier": 1,
+      "file": "10-reports/04-trial.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:38.196Z"
+    },
+    {
+      "id": "reports-time",
+      "moduleId": "reports",
+      "viewId": "time",
+      "tier": 1,
+      "file": "10-reports/05-time.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:41.343Z"
+    },
+    {
+      "id": "reports-liquidity",
+      "moduleId": "reports",
+      "viewId": "liquidity",
+      "tier": 1,
+      "file": "10-reports/06-liquidity.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:44.494Z"
+    },
+    {
+      "id": "reports-costs",
+      "moduleId": "reports",
+      "viewId": "costs",
+      "tier": 1,
+      "file": "10-reports/07-costs.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:11:47.644Z"
+    },
+    {
+      "id": "settings-database",
+      "moduleId": "settings",
+      "viewId": "database",
+      "tier": 1,
+      "file": "11-settings/01-database.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:12:58.250Z"
+    },
+    {
+      "id": "settings-users",
+      "moduleId": "settings",
+      "viewId": "users",
+      "tier": 1,
+      "file": "11-settings/02-users.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:13:01.409Z"
+    },
+    {
+      "id": "settings-coa",
+      "moduleId": "settings",
+      "viewId": "coa",
+      "tier": 1,
+      "file": "11-settings/03-coa.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:13:04.586Z"
+    },
+    {
+      "id": "settings-cost-centers",
+      "moduleId": "settings",
+      "viewId": "cost_centers",
+      "tier": 1,
+      "file": "11-settings/04-cost-centers.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:13:07.771Z"
+    },
+    {
+      "id": "settings-activity",
+      "moduleId": "settings",
+      "viewId": "activity",
+      "tier": 1,
+      "file": "11-settings/05-activity.png",
+      "waitMs": 1800,
+      "action": null,
+      "capturedAt": "2026-08-13T10:13:10.936Z"
+    },
+    {
+      "id": "technical-projects-modal-new",
+      "moduleId": "technical",
+      "viewId": "projects",
+      "tier": 2,
+      "file": "03-technical/10-project-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/مشروع جديد|New Project/i"
+      },
+      "capturedAt": "2026-08-13T10:16:04.666Z"
+    },
+    {
+      "id": "technical-projects-modal-contract",
+      "moduleId": "technical",
+      "viewId": "projects",
+      "tier": 2,
+      "file": "03-technical/11-contract-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/إضافة عقد|Add Contract/i"
+      },
+      "capturedAt": "2026-08-13T10:16:09.636Z"
+    },
+    {
+      "id": "technical-boq-modal-item",
+      "moduleId": "technical",
+      "viewId": "boq",
+      "tier": 2,
+      "file": "03-technical/12-boq-item-modal.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/إضافة بند جديد|Add New Item/i"
+      },
+      "capturedAt": "2026-08-13T10:13:46.461Z"
+    },
+    {
+      "id": "technical-billing-modal-new",
+      "moduleId": "technical",
+      "viewId": "billing",
+      "tier": 2,
+      "file": "03-technical/13-billing-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/مستخلص جديد|New Extract/i"
+      },
+      "capturedAt": "2026-08-13T10:13:51.305Z"
+    },
+    {
+      "id": "costs-invoice-modal-new",
+      "moduleId": "costs",
+      "viewId": "invoice",
+      "tier": 2,
+      "file": "04-costs/10-invoice-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/فاتورة جديدة|New Invoice/i"
+      },
+      "capturedAt": "2026-08-13T10:13:56.290Z"
+    },
+    {
+      "id": "costs-ipc-modal-new",
+      "moduleId": "costs",
+      "viewId": "ipc",
+      "tier": 2,
+      "file": "04-costs/11-ipc-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/مستخلص جديد|New IPC/i"
+      },
+      "capturedAt": "2026-08-13T10:14:01.193Z"
+    },
+    {
+      "id": "costs-custody-modal-new",
+      "moduleId": "costs",
+      "viewId": "custody",
+      "tier": 2,
+      "file": "04-costs/12-custody-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/تسوية جديدة|New settlement/i"
+      },
+      "capturedAt": "2026-08-13T10:14:06.134Z"
+    },
+    {
+      "id": "inventory-balance-consumption-modal",
+      "moduleId": "inventory",
+      "viewId": "balance",
+      "tier": 2,
+      "file": "05-inventory/10-consumption-modal.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "pre": [
+          {
+            "type": "select-first",
+            "index": 0
+          },
+          {
+            "type": "select-first",
+            "index": 1
+          }
+        ],
+        "button": "/أمر صرف جديد|New consumption order/i"
+      },
+      "capturedAt": "2026-08-13T10:16:20.935Z"
+    },
+    {
+      "id": "inventory-history-return-modal",
+      "moduleId": "inventory",
+      "viewId": "history",
+      "tier": 2,
+      "file": "05-inventory/11-return-modal.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "pre": [
+          {
+            "type": "select-first",
+            "index": 0
+          },
+          {
+            "type": "select-first",
+            "index": 1
+          }
+        ],
+        "button": "/إذن إرجاع متعدد|Multi-line return/i"
+      },
+      "capturedAt": "2026-08-13T10:16:27.397Z"
+    },
+    {
+      "id": "inventory-receipts-modal-new",
+      "moduleId": "inventory",
+      "viewId": "receipts",
+      "tier": 2,
+      "file": "05-inventory/12-receipt-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/استلام جديد|New receipt/i"
+      },
+      "capturedAt": "2026-08-13T10:16:32.357Z"
+    },
+    {
+      "id": "banks-transactions-movement-modal",
+      "moduleId": "banks",
+      "viewId": "transactions",
+      "tier": 2,
+      "file": "09-banks/10-movement-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/حركة جديدة|New movement/i"
+      },
+      "capturedAt": "2026-08-13T10:14:20.820Z"
+    },
+    {
+      "id": "banks-transactions-cheque-modal",
+      "moduleId": "banks",
+      "viewId": "transactions",
+      "tier": 2,
+      "file": "09-banks/11-cheque-modal-new.png",
+      "waitMs": 1200,
+      "action": {
+        "type": "open-new-modal",
+        "button": "/شيك جديد|New cheque/i"
+      },
+      "capturedAt": "2026-08-13T10:14:25.698Z"
+    }
+  ],
+  "lastRunAt": "2026-08-13T10:16:33.069Z"
+}

@@ -7,7 +7,6 @@ import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
 import { usePermissions } from '../context/PermissionsContext';
-import { moduleAccess } from '../lib/permissions';
 import { overheadAllocationApi } from '../services/local/modulesApi';
 import { ApiError } from '../lib/apiClient';
 import { MONEY_TOLERANCE, roundMoney } from '../lib/money';
@@ -124,8 +123,8 @@ const CLOSING_TYPES: Array<{ id: ClosingType; icon: typeof Layers }> = [
 
 export function OverheadAllocation({ embedded = false }: { embedded?: boolean }) {
   const { t, language, theme, dir, locale, formatMoney } = useLanguage();
-  const { permissions, isAdmin } = usePermissions();
-  const canWrite = isAdmin || moduleAccess(permissions, 'overhead').create || moduleAccess(permissions, 'overhead').edit;
+  const { can } = usePermissions();
+  const canWrite = can('overhead').create || can('overhead').edit;
   const qDefault = useMemo(() => periodRangeForCadence('quarterly'), []);
   const fmtNum = (n: number) => formatMoney(n);
 
@@ -440,7 +439,7 @@ export function OverheadAllocation({ embedded = false }: { embedded?: boolean })
   };
 
   const handleReopen = async () => {
-    if (!selectedId || !isAdmin) return;
+    if (!selectedId || !canWrite) return;
     try {
       await overheadAllocationApi.reopen(selectedId);
       toast.success(t('save'));
@@ -696,7 +695,7 @@ export function OverheadAllocation({ embedded = false }: { embedded?: boolean })
                       <ManualHelpButton topicId="ledger.overhead.close" size={16} />
                     </div>
                   )}
-                  {selected.status === 'closed' && isAdmin && (
+                  {selected.status === 'closed' && canWrite && (
                     <button type="button" onClick={() => void handleReopen()} className={cn('inline-flex items-center gap-1 border border-red-500 text-red-500 font-bold', btnSmCls)}>
                       <Unlock size={12} /> {t('overhead_reopen')}
                     </button>

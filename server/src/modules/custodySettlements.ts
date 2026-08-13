@@ -94,7 +94,6 @@ function computeTotal(items: CustodySettlementLine[]): number {
 }
 
 function canApproveCustodySettlement(user: NonNullable<Request['user']>): boolean {
-  if (user.role === 'admin') return true;
   return hasModuleWrite(normalizeUserPermissions(user.permissions), 'ledger');
 }
 

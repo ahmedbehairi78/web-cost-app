@@ -91,6 +91,8 @@ export async function buildPostgresBackup(): Promise<
     purchaseInvoiceAllocations,
     projectInventory,
     projectInventoryMovements,
+    warehouseReceipts,
+    warehouseReceiptLines,
     consumptionOrders,
     consumptionOrderLines,
     consumptionAllocationTemplates,
@@ -168,6 +170,8 @@ export async function buildPostgresBackup(): Promise<
     prisma.purchaseInvoiceAllocation.findMany(),
     prisma.projectInventory.findMany(),
     prisma.projectInventoryMovement.findMany(),
+    prisma.warehouseReceipt.findMany(),
+    prisma.warehouseReceiptLine.findMany(),
     prisma.consumptionOrder.findMany(),
     prisma.consumptionOrderLine.findMany(),
     prisma.consumptionAllocationTemplate.findMany(),
@@ -264,6 +268,8 @@ export async function buildPostgresBackup(): Promise<
     purchase_invoice_allocations: mapRows(purchaseInvoiceAllocations),
     project_inventory: mapRows(projectInventory),
     project_inventory_movements: mapRows(projectInventoryMovements),
+    warehouse_receipts: mapRows(warehouseReceipts),
+    warehouse_receipt_lines: mapRows(warehouseReceiptLines),
     consumption_orders: mapRows(consumptionOrders),
     consumption_order_lines: mapRows(consumptionOrderLines),
     consumption_allocation_templates: mapRows(consumptionAllocationTemplates),
@@ -315,6 +321,12 @@ export async function buildPostgresBackup(): Promise<
     approval_link_tokens: mapRows(approvalLinkTokens),
     user_notification_reads: mapRows(userNotificationReads),
   };
+
+  for (const name of POSTGRES_BACKUP_COLLECTIONS) {
+    if (!(name in collections)) {
+      throw new Error(`Postgres backup is missing collection "${name}"`);
+    }
+  }
 
   return {
     exportedAt: new Date().toISOString(),

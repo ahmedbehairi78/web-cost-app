@@ -28,9 +28,6 @@ function isClosedStatus(status: string): boolean {
 const PRIORITIES = ['low', 'medium', 'high', 'urgent'] as const;
 
 function canManageStatus(user: NonNullable<Request['user']>): boolean {
-  if (user.role === 'admin' || user.role === 'projects_manager' || user.role === 'project_accountant') {
-    return true;
-  }
   return moduleAccess(normalizeUserPermissions(user.permissions), 'purchase_requests').edit;
 }
 
@@ -399,11 +396,7 @@ purchaseRequestsRouter.post(
     const id = String(req.params.id);
     const perms = normalizeUserPermissions(req.user?.permissions);
     const access = moduleAccess(perms, 'purchase_requests');
-    const mayNotify =
-      req.user?.role === 'admin'
-      || access.create
-      || access.edit
-      || hasModuleWrite(perms, 'purchase_requests');
+    const mayNotify = access.create || access.edit || hasModuleWrite(perms, 'purchase_requests');
     if (!mayNotify) {
       res.status(403).json({ error: 'لا صلاحية لإرسال إشعار واتساب' });
       return;
@@ -446,13 +439,13 @@ purchaseRequestsRouter.delete(
       res.status(404).json({ error: 'طلب الشراء غير موجود' });
       return;
     }
-    const isAdmin = req.user?.role === 'admin';
+    const canManage = moduleAccess(normalizeUserPermissions(req.user?.permissions), 'purchase_requests').edit;
     const isCreator = row.requestedByUserId && row.requestedByUserId === req.user?.id;
-    if (!isAdmin && !isCreator) {
-      res.status(403).json({ error: 'يمكن حذف الطلب للمنشئ أو المدير فقط' });
+    if (!canManage && !isCreator) {
+      res.status(403).json({ error: 'يمكن حذف الطلب للمنشئ أو من لديه تعديل أوامر الشراء' });
       return;
     }
-    if (isClosedStatus(row.status) && !isAdmin) {
+    if (isClosedStatus(row.status) && !canManage) {
       res.status(403).json({ error: 'لا يمكن حذف طلب منتهٍ' });
       return;
     }

@@ -15,7 +15,7 @@ import {
 } from '../services/local/modulesApi';
 import { isErpTheme } from '../lib/erpBrand';
 import type { PendingBillingFocus, PendingBoqFocus } from '../lib/shellNavigation';
-import { useUserAccessScope } from '../hooks/useUserAccessScope';
+import { usePermissions } from '../context/PermissionsContext';
 import { JournalPreviewModal, type JournalPreviewEntry } from './gl/JournalPreviewModal';
 import { ipcApproveErrorToastMessage } from '../lib/ipcApproveErrorMessage';
 import { formatQuantity } from '../lib/formatQuantity';
@@ -91,8 +91,8 @@ export function TechnicalOfficeDocuments({
   onOpenDocument?: (focus: PendingBillingFocus | PendingBoqFocus) => void;
 }) {
   const { t, theme, dir, formatMoney, language } = useLanguage();
-  const { isAdmin, isProjectsManager } = useUserAccessScope();
-  const canApprove = isAdmin || isProjectsManager;
+  const { can } = usePermissions();
+  const canApprove = can('billing').edit || can('boq').edit;
   const [inboxOnly, setInboxOnly] = useState(true);
   const [docType, setDocType] = useState<DocTypeFilter>('');
   const [status, setStatus] = useState<StatusFilter>('');

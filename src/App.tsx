@@ -15,10 +15,10 @@ import { Login } from './components/Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, onIdTokenChanged, signOut, getRedirectResult } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, LogIn, Loader2 } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { cn } from './lib/utils';
-import { isAppTheme, shellAppBackground, shellSidebarWidth, usesTopNav, ERP_GRADIENT_BG, SHELL_MAIN_CLASS } from './lib/shellTheme';
+import { SHELL_MODAL_STACK_Z, isAppTheme, shellAppBackground, shellSidebarWidth, usesTopNav, ERP_GRADIENT_BG, SHELL_MAIN_CLASS } from './lib/shellTheme';
 import { isErpTheme } from './lib/erpBrand';
 import { type AppUser, type UserPermissions, ALL_PERMISSIONS, DEFAULT_PERMISSIONS, type UserRole } from './types';
 import { DEFAULT_MODULE, MODULE_LABELS, NONE_DEFAULT_MODULE, isNoDefaultModule } from './constants/modules';
@@ -31,9 +31,9 @@ import {
   canOpenModuleView,
   defaultShellViewForModule,
   permissionKeyForModuleView,
-  buildPermissionsForRole,
   firstPermittedStartupModule,
   hasAnyGrantedPermission,
+  hasSettingsAccess,
   normalizeUserPermissions,
   permissionsNeedBootstrap,
   resolvePermissionsFromUserData,
@@ -53,7 +53,7 @@ import {
 import { normalizeVisibleShellModules } from './lib/shellModuleVisibility';
 import { bootstrapLocalCoaFromFirestore, resetLocalCoaBootstrap } from './lib/localCoaSync';
 import { isElectronShell, isDesktopSessionReuseWindow, requestWindowMaximize, requestRevealDesktopWindow } from './lib/electronShell';
-import { resolveShellNavigation, resolveStartupModule, resolveSavedDefaultModulePreference, setPendingShellView } from './lib/shellNavigation';
+import { resolveShellNavigation, resolveStartupModule, resolveSavedDefaultModulePreference, setPendingShellView, setPendingBoqFocus } from './lib/shellNavigation';
 import {
   normalizeShellModuleId,
   partitionExclusiveShellWindows,
@@ -65,12 +65,20 @@ import {
 import {
   performAppLogout,
   performColdStartAuthReset,
+  performFactoryResetReentry,
   readSessionUserLock,
   writeSessionUserLock,
   mustPasswordLogin,
   clearFreshLoginRequired,
+  broadcastSessionLock,
+  subscribeSessionLock,
 } from './lib/sessionLogout';
-import { API_UNAUTHORIZED_EVENT, isApiUnauthorizedLogoutSuppressed } from './lib/apiSession';
+import {
+  API_UNAUTHORIZED_EVENT,
+  FACTORY_RESET_DONE_EVENT,
+  clearApiUnauthorizedLogoutSuppress,
+  isApiUnauthorizedLogoutSuppressed,
+} from './lib/apiSession';
 import { useIdleLogout } from './hooks/useIdleLogout';
 import { OfflineStatusBar } from './components/offline/OfflineStatusBar';
 import { PendingSyncPanel, usePendingSyncPanelState } from './components/offline/PendingSyncPanel';
@@ -101,6 +109,7 @@ export default function App() {
 
   const [user, setUser] = useState<import('firebase/auth').User | null>(null);
   const [passwordSession, setPasswordSession] = useState<AppUser | null>(null);
+  const [idleLocked, setIdleLocked] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('user');
   const [userPermissions, setUserPermissions] = useState<UserPermissions>(ALL_PERMISSIONS);
   /** UI-only nav whitelist; null = show all permitted modules */
@@ -194,7 +203,7 @@ export default function App() {
     const resolved = resolveShellNavigation(moduleId, viewId);
     moduleId = normalizeShellModuleId(resolved.moduleId);
     viewId = resolved.viewId;
-    const isAdminUser = userRole === 'admin';
+    const isAdminUser = hasSettingsAccess(userPermissions);
     if (!canOpenShellModule(userPermissions, moduleId, { isAdmin: isAdminUser })) {
       denyModuleAccess(moduleId);
       return;
@@ -322,9 +331,9 @@ export default function App() {
 
   const applyLocalAppUser = useCallback(async (localUser: AppUser) => {
     const role = localUser.role;
-    const effectivePermissions = permissionsNeedBootstrap(localUser.permissions, role)
-      ? buildPermissionsForRole(role)
-      : normalizeUserPermissions(localUser.permissions);
+    const effectivePermissions = resolvePermissionsFromUserData({
+      permissions: localUser.permissions,
+    });
     setUserRole(role);
     setUserPermissions(effectivePermissions);
     let savedDefaultModule = DEFAULT_MODULE;
@@ -437,7 +446,7 @@ export default function App() {
   const restoreMinimized = useCallback((id: string) => {
     setWindows(prev => {
       const win = prev.find(w => w.id === id);
-      if (win && !canOpenShellModule(userPermissions, win.moduleId, { isAdmin: userRole === 'admin' })) {
+      if (win && !canOpenShellModule(userPermissions, win.moduleId, { isAdmin: hasSettingsAccess(userPermissions) })) {
         denyModuleAccess(win.moduleId);
         return prev;
       }
@@ -668,12 +677,12 @@ export default function App() {
               try {
                 const idToken = await firebaseUser.getIdToken();
                 const localUser = await authApi.firebaseSession(idToken);
-                if (localUser.role !== 'user') {
+                if (hasAnyGrantedPermission(resolvePermissionsFromUserData({ permissions: localUser.permissions }))) {
                   const ar = languageRef.current === 'ar';
                   toast.error(
                     ar
-                      ? 'تم إنشاء ملف Firebase بصلاحيات افتراضية. اطلب من المدير حفظ المستخدم من الإعدادات لمزامنة الدور والصلاحيات.'
-                      : 'Firebase profile was created with default access. Ask an admin to re-save your user in Settings to sync role and permissions.'
+                      ? 'تم إنشاء ملف Firebase بصلاحيات افتراضية. اطلب من المدير حفظ المستخدم من الإعدادات لمزامنة الصلاحيات.'
+                      : 'Firebase profile was created with default access. Ask an admin to re-save your user in Settings to sync permissions.'
                   );
                 }
               } catch (syncErr: unknown) {
@@ -702,27 +711,19 @@ export default function App() {
             };
 
             if (localUser) {
-              const localRole = localUser.role;
-              if (localRole !== role && localRole !== 'user') {
-                const ar = languageRef.current === 'ar';
-                toast.error(
-                  ar
-                    ? `دورك في النظام المحلي (${localRole}) لا يطابق ملف Firebase (${role}). جاري استخدام صلاحيات النظام المحلي؛ اطلب من المدير إعادة حفظ المستخدم من الإعدادات.`
-                    : `Local role (${localRole}) differs from Firebase (${role}). Using local permissions; ask an admin to re-save your user in Settings.`
-                );
-              }
-
-              if (localRole !== 'user') {
-                role = localRole;
-                effectivePermissions = permissionsNeedBootstrap(localUser.permissions, localRole)
-                  ? buildPermissionsForRole(localRole)
-                  : normalizeUserPermissions(localUser.permissions);
-              }
-
+              const localPermissions = resolvePermissionsFromUserData({
+                permissions: localUser.permissions,
+              });
               const localContractIds = Array.isArray(localUser.assignedContractIds)
                 ? localUser.assignedContractIds.filter((id): id is string => typeof id === 'string')
                 : [];
               const fsContractIds = Array.isArray(data.assignedContractIds) ? data.assignedContractIds : [];
+
+              if (hasAnyGrantedPermission(localPermissions)) {
+                role = localUser.role;
+                effectivePermissions = localPermissions;
+              }
+
               if (
                 localContractIds.length > 0
                 && JSON.stringify([...localContractIds].sort()) !== JSON.stringify([...fsContractIds].sort())
@@ -730,15 +731,14 @@ export default function App() {
                 loginPatch.assignedContractIds = localContractIds;
               }
 
-              const fsRole = String(data.role || 'user');
-              const needsProfileSync =
-                permissionsNeedBootstrap(data.permissions, role)
-                || (localRole !== 'user' && fsRole !== localRole);
-              if (needsProfileSync) {
+              if (
+                permissionsNeedBootstrap(data.permissions)
+                || JSON.stringify(normalizeUserPermissions(data.permissions)) !== JSON.stringify(localPermissions)
+              ) {
                 loginPatch.role = role;
                 loginPatch.permissions = effectivePermissions;
               }
-            } else if (permissionsNeedBootstrap(data.permissions, role)) {
+            } else if (permissionsNeedBootstrap(data.permissions)) {
               loginPatch.role = role;
               loginPatch.permissions = effectivePermissions;
             }
@@ -867,9 +867,16 @@ export default function App() {
   const sessionDisplayName = user?.displayName ?? passwordSession?.displayName ?? null;
   const offlineUserId = passwordSession?.id ?? user?.uid ?? (sessionEmail ? `email:${sessionEmail}` : null);
 
-  useIdleLogout(isAuthenticated, () => {
-    toast(t('session_idle_logout'), { id: 'idle-logout' });
-    void handleLogout();
+  const unlockIdleSession = useCallback(() => {
+    setIdleLocked(false);
+    broadcastSessionLock(false);
+  }, []);
+
+  useEffect(() => subscribeSessionLock(setIdleLocked), []);
+
+  useIdleLogout(isAuthenticated && !idleLocked, () => {
+    setIdleLocked(true);
+    broadcastSessionLock(true);
   }, undefined, offlineUserId);
 
   const { open: pendingSyncOpen, setOpen: setPendingSyncOpen } = usePendingSyncPanelState(offlineUserId);
@@ -900,7 +907,7 @@ export default function App() {
     requestRevealDesktopWindow();
   }, [authChecked, isAuthenticated, loading, startupPrefsReady]);
 
-  const canOpenDefault = userRole === 'admin' || hasAnyGrantedPermission(userPermissions);
+  const canOpenDefault = hasAnyGrantedPermission(userPermissions);
   /** Splash after login only — not when the user closes all module windows manually.
    *  Secondary New GUI windows skip this entirely (no login card flash). */
   const enteringApp =
@@ -922,7 +929,7 @@ export default function App() {
   useLayoutEffect(() => {
     if (usesTopNav(theme)) return;
     if (!startupPrefsReady || loading || !isAuthenticated) return;
-    const canOpenDefault = userRole === 'admin' || hasAnyGrantedPermission(userPermissions);
+    const canOpenDefault = hasAnyGrantedPermission(userPermissions);
     if (!canOpenDefault) return;
     if (startupLayoutOpenedRef.current === 'sidebar') return;
 
@@ -948,6 +955,17 @@ export default function App() {
     return visible.reduce((top, w) => (w.zIndex > top.zIndex ? w : top)).moduleId;
   }, [windows]);
 
+  const idleLockScreen = idleLocked ? (
+    <Login
+      idleResume={{
+        email: sessionEmail,
+        displayName: sessionDisplayName,
+        onContinue: unlockIdleSession,
+      }}
+      onPasswordLogin={() => undefined}
+    />
+  ) : null;
+
   // ── Render ───────────────────────────────────────────────────────────────────
   if (!authInitDone || !authChecked || !isAuthenticated) {
     // New GUI: blank while OS window stays hidden — no Login, no logo.
@@ -963,13 +981,14 @@ export default function App() {
     );
   }
 
-  const isAdmin      = userRole === 'admin';
-  const hasGrantedAccess = isAdmin || hasAnyGrantedPermission(userPermissions);
+  const isAdmin      = hasSettingsAccess(userPermissions);
+  const hasGrantedAccess = hasAnyGrantedPermission(userPermissions);
 
   // شاشة الانتظار: حساب مسجّل لكن بدون صلاحيات — فقط تبديل اللغة وتسجيل الخروج
   if (!hasGrantedAccess) {
     const toggleLang = () => setLanguage(language === 'ar' ? 'en' : 'ar');
     return (
+      <>
       <div
         className={cn(
           'h-screen w-full flex flex-col items-center justify-center p-6 gap-6',
@@ -1022,6 +1041,8 @@ export default function App() {
           </button>
         </div>
       </div>
+      {idleLockScreen}
+    </>
     );
   }
 
@@ -1117,8 +1138,87 @@ export default function App() {
             />
           </>
         )}
+        <FactoryResetReentryGate onFreezeShell={closeAllWindows} />
+        {idleLockScreen}
       </ErpWorkspaceProvider>
     </>
+  );
+}
+
+/** Full-screen prompt after factory reset — modules are frozen; session is already gone. */
+function FactoryResetReentryGate({ onFreezeShell }: { onFreezeShell: () => void }) {
+  const erp = useErpWorkspace();
+  const { t, theme, dir } = useLanguage();
+  const [keptEmails, setKeptEmails] = useState<string[] | null>(null);
+  const [reentering, setReentering] = useState(false);
+
+  useEffect(() => {
+    const onDone = (e: Event) => {
+      const emails = (e as CustomEvent<{ keptEmails?: string[] }>).detail?.keptEmails ?? [];
+      onFreezeShell();
+      erp.closeWorkspace();
+      setKeptEmails(emails);
+    };
+    window.addEventListener(FACTORY_RESET_DONE_EVENT, onDone);
+    return () => window.removeEventListener(FACTORY_RESET_DONE_EVENT, onDone);
+  }, [erp, onFreezeShell]);
+
+  if (keptEmails === null) return null;
+
+  const isDark = theme === 'dark';
+
+  return (
+    <div
+      className={cn(
+        'fixed inset-0 flex items-center justify-center p-4',
+        SHELL_MODAL_STACK_Z,
+      )}
+      dir={dir}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/70" />
+      <div
+        className={cn(
+          'relative w-full max-w-lg rounded-2xl border shadow-2xl p-6 space-y-4',
+          isDark ? 'bg-[#1a1d23] border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900',
+        )}
+      >
+        <div className="flex items-center gap-2 text-emerald-500">
+          <CheckCircle2 size={22} />
+          <h3 className="text-lg font-bold">{t('settings_factory_reset_done_title')}</h3>
+        </div>
+        <div
+          className={cn(
+            'rounded-xl border p-4 space-y-2 text-sm',
+            isDark ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-emerald-50 border-emerald-200',
+          )}
+        >
+          <p className={isDark ? 'text-emerald-300' : 'text-emerald-800'}>
+            {t('settings_factory_reset_done_body')}
+          </p>
+          {keptEmails.length > 0 && (
+            <p className={cn('text-xs', isDark ? 'text-emerald-400/80' : 'text-emerald-700')}>
+              {t('settings_factory_reset_success').replace('{emails}', keptEmails.join(', '))}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={reentering}
+          onClick={() => {
+            if (reentering) return;
+            setReentering(true);
+            clearApiUnauthorizedLogoutSuppress();
+            void performFactoryResetReentry();
+          }}
+          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+        >
+          {reentering ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+          {t('settings_factory_reset_relogin_btn')}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -1260,10 +1360,29 @@ function ErpShellContent({
     [navigateToModule],
   );
 
+  // Dev-only hook for docs screenshot capture (Playwright).
+  useEffect(() => {
+    if (!import.meta.env.DEV) return;
+    const w = window as Window & {
+      __webCostNavigate?: (moduleId: string, viewId?: string) => void;
+      __webCostSetBoqFocus?: (focus: { projectId?: string; contractId: string }) => void;
+    };
+    w.__webCostNavigate = (moduleId, viewId) => {
+      navigateToModule(moduleId, viewId, { force: true });
+    };
+    w.__webCostSetBoqFocus = (focus) => {
+      setPendingBoqFocus(focus);
+    };
+    return () => {
+      delete w.__webCostNavigate;
+      delete w.__webCostSetBoqFocus;
+    };
+  }, [navigateToModule]);
+
   useLayoutEffect(() => {
     if (!usesTopNav(theme)) return;
     if (!startupPrefsReady || loading || !isAuthenticated) return;
-    const canOpenDefault = userRole === 'admin' || hasAnyGrantedPermission(userPermissions);
+    const canOpenDefault = hasAnyGrantedPermission(userPermissions);
     if (!canOpenDefault) return;
     if (startupLayoutOpenedRef.current === 'topnav') return;
 

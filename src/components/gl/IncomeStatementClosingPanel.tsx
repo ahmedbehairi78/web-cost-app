@@ -34,7 +34,8 @@ export function IncomeStatementClosingPanel({
   compact = false,
 }: Props) {
   const { t, dir, formatMoney } = useLanguage();
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const isAdmin = can('overhead').edit;
   const [rows, setRows] = useState<FiscalPeriodClosingRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);

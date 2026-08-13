@@ -1,6 +1,11 @@
 import { getApiAuthIdToken, ensureApiAuthToken } from './authToken';
 import { isLocalBackend } from './dataBackend';
-import { isAuthExemptApiPath, notifyApiUnauthorized } from './apiSession';
+import {
+  ApiPausedError,
+  isAuthExemptApiPath,
+  isAuthenticatedApiPaused,
+  notifyApiUnauthorized,
+} from './apiSession';
 import { NetworkError } from './offline/NetworkError';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -29,6 +34,9 @@ async function parseResponse(response: Response) {
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (isAuthenticatedApiPaused() && !isAuthExemptApiPath(path)) {
+    throw new ApiPausedError();
+  }
   let idToken = getApiAuthIdToken();
   if (isLocalBackend && !idToken) {
     idToken = await ensureApiAuthToken();

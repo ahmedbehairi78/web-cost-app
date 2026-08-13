@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>تدفق العمليات — Web Cost App</title>
+  <style>
+    :root {
+      --navy: #003B71;
+      --orange: #F58220;
+      --bg: #0f172a;
+      --card: #1e293b;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", Tahoma, "Noto Sans Arabic", sans-serif; }
+    .deck { height: 100%; overflow: hidden; position: relative; }
+    .slide {
+      display: none; height: 100%; padding: 2.5rem 3rem 4rem;
+      flex-direction: column; gap: 1rem;
+    }
+    .slide.active { display: flex; }
+    .slide h1 { margin: 0; font-size: 2rem; color: #fff; }
+    .slide h2 { margin: 0; font-size: 1.55rem; color: #fff; border-bottom: 3px solid var(--orange); padding-bottom: .35rem; width: fit-content; }
+    .slide p, .slide li { color: var(--muted); line-height: 1.6; font-size: 1.05rem; }
+    .brand { color: var(--orange); font-weight: 700; letter-spacing: .02em; }
+    .hero {
+      flex: 1; display: flex; flex-direction: column; justify-content: center;
+      background: radial-gradient(ellipse at 70% 20%, #1e3a5f 0%, transparent 55%),
+                  linear-gradient(145deg, #0f172a, #1e293b 60%, #0b1220);
+      border-radius: 1rem; padding: 2.5rem; border: 1px solid #334155;
+    }
+    .hero h1 { font-size: 2.6rem; }
+    .shot {
+      flex: 1; min-height: 0; border-radius: .75rem; overflow: hidden;
+      border: 1px solid #334155; background: #020617;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .missing { color: var(--muted); font-size: .95rem; padding: 2rem; text-align: center; }
+    ul { margin: 0; padding-inline-start: 1.2rem; }
+    .grid2 { display: grid; grid-template-columns: 1.1fr 1fr; gap: 1.25rem; flex: 1; min-height: 0; }
+    .nav {
+      position: fixed; inset-inline: 0; bottom: 0; height: 3rem;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.25rem; background: rgba(15,23,42,.92); border-top: 1px solid #334155;
+      backdrop-filter: blur(6px);
+    }
+    .nav button {
+      background: var(--navy); color: #fff; border: 0; border-radius: .5rem;
+      padding: .4rem 1rem; cursor: pointer; font: inherit;
+    }
+    .nav button:hover { background: var(--orange); }
+    .nav .counter { color: var(--muted); font-size: .9rem; }
+    code { background: #0b1220; padding: .1rem .35rem; border-radius: .25rem; color: #fdba74; }
+  </style>
+</head>
+<body>
+  <div class="deck" id="deck">
+    <section class="slide active">
+      <div class="hero">
+        <div class="brand">Concord Plus · Web Cost App</div>
+        <h1>تدفق العمليات في النظام</h1>
+        <p>عرض تقديمي خارج التطبيق — لقطات حقيقية من الواجهة بعد تشغيل سكربت الالتقاط.</p>
+        <p>التنقل: الأسهم ← → أو الأزرار بالأسفل · <kbd>F</kbd> ملء الشاشة</p>
+      </div>
+    </section>
+
+    <section class="slide">
+      <h2>خريطة التدفق</h2>
+      <ul>
+        <li>مكتب فني: مشروع → عقد → BOQ → مستخلص عميل</li>
+        <li>تكاليف: فاتورة مشتريات → مخزن <code>127</code> → صرف للموقع</li>
+        <li>بنوك / يومية / رواتب / تقارير تكمّل الدورة المالية</li>
+      </ul>
+      <p>الملف النصي التفصيلي: <code>OPERATIONS_FLOWS.md</code></p>
+    </section>
+
+    <section class="slide" data-shot="01-login">
+      <h2>1 — تسجيل الدخول</h2>
+      <div class="shot"><img alt="login" /><div class="missing">شغّل npm run docs:screenshots لتوليد اللقطة</div></div>
+    </section>
+
+    <section class="slide" data-shot="02-desktop-after-login">
+      <h2>2 — سطح المكتب بعد الدخول</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="desktop" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>شريط جانبي بالموديولات</li>
+          <li>موديول واحد نشط في كل مرة</li>
+          <li>الآلة الحاسبة يمكن أن تبقى مفتوحة معه</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="04-technical-office">
+      <h2>3 — المكتب الفني</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="technical" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>مشاريع وعقود</li>
+          <li>جداول كميات وأوامر تغيير</li>
+          <li>مستخلصات العميل + كفر Cover-JLL</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="05-actual-costs">
+      <h2>4 — فاتورة المشتريات</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="costs" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>آجلة أو نقدية</li>
+          <li>أصناف + مخزن مشروع</li>
+          <li>قيد ومخزون معاً عند الحفظ (محلي)</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="06-inventory">
+      <h2>5 — المخازن والصرف</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="inventory" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>رصيد مخزن المشروع</li>
+          <li>أمر صرف متعدد الأصناف/البنود</li>
+          <li>إرجاع جزئي عند الحاجة</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="07-general-ledger">
+      <h2>6 — الأستاذ العام</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="ledger" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>فلاتر قبل التحميل</li>
+          <li>يومية + كشف حساب</li>
+          <li>شجرة الحسابات من الإعدادات</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="08-banks">
+      <h2>7 — البنوك</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="banks" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>كشف حساب بنكي</li>
+          <li>معاملات: حركات + شيكات</li>
+          <li>تحويل موحّد وشيك ISS/CLR</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="09-payroll">
+      <h2>8 — الرواتب</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="payroll" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>كشف أيام → تأمينات/ضريبة تلقائياً</li>
+          <li>معاينة قيد قبل الاستحقاق</li>
+          <li>توزيع على مراكز تكلفة</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide" data-shot="10-reports">
+      <h2>9 — التقارير</h2>
+      <div class="grid2">
+        <div class="shot"><img alt="reports" /><div class="missing">بانتظار اللقطة</div></div>
+        <ul>
+          <li>دخل · ميزانية · ميزان · سيولة</li>
+          <li>تكاليف BOQ · ميزانية مقابل فعلي</li>
+          <li>طباعة عبر معاينة موحّدة</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="slide">
+      <h2>مسارات للتحقق السريع</h2>
+      <ul>
+        <li>فاتورة → زيادة رصيد المخزن → صرف CON-</li>
+        <li>مستخلص: كفر = Sub − استقطاعات − Previous Payments → اعتماد متوازن</li>
+        <li>رواتب: أيام → معاينة → استحقاق</li>
+      </ul>
+      <p>حدّث اللقطات: <code>npm run docs:screenshots</code></p>
+    </section>
+  </div>
+
+  <div class="nav">
+    <button type="button" id="prev">السابق</button>
+    <span class="counter" id="counter"></span>
+    <button type="button" id="next">التالي</button>
+  </div>
+
+  <script>
+    const slides = [...document.querySelectorAll('.slide')];
+    let i = 0;
+    const counter = document.getElementById('counter');
+
+    function loadShots() {
+      document.querySelectorAll('.slide[data-shot]').forEach((slide) => {
+        const id = slide.getAttribute('data-shot');
+        const img = slide.querySelector('img');
+        const missing = slide.querySelector('.missing');
+        if (!img) return;
+        img.src = `screenshots/${id}.png?t=${Date.now()}`;
+        img.onload = () => { if (missing) missing.style.display = 'none'; img.style.display = 'block'; };
+        img.onerror = () => { img.style.display = 'none'; if (missing) missing.style.display = 'block'; };
+        img.style.display = 'none';
+      });
+    }
+
+    function show(n) {
+      i = (n + slides.length) % slides.length;
+      slides.forEach((s, idx) => s.classList.toggle('active', idx === i));
+      counter.textContent = `${i + 1} / ${slides.length}`;
+    }
+
+    document.getElementById('prev').onclick = () => show(i - 1);
+    document.getElementById('next').onclick = () => show(i + 1);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') show(i + (e.key === 'ArrowLeft' ? -1 : 1));
+      if (e.key === 'f' || e.key === 'F') document.documentElement.requestFullscreen?.();
+    });
+
+    loadShots();
+    show(0);
+  </script>
+</body>
+</html>

@@ -599,9 +599,8 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
 }) {
   const { language, theme, t, dir } = useLanguage();
   const ar = language === 'ar';
-  const { isAdmin, role, can } = usePermissions();
-  const canImportOpening =
-    isLocalBackend && (isAdmin || role === 'projects_manager' || can('inventory').create);
+  const { can } = usePermissions();
+  const canImportOpening = isLocalBackend && can('inventory').create;
   const moneyLocale = 'en-US';
   const formatMoneyPrint = (value: number) => formatMoneyLib(value, moneyLocale);
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
@@ -1371,13 +1370,11 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
 function InventoryTransfers({
   contracts,
   myContractIds,
-  userRole,
   userId,
   allowCreate,
 }: {
   contracts: Contract[];
   myContractIds: string[] | null;
-  userRole: string;
   userId: string;
   allowCreate: boolean;
 }) {
@@ -1393,7 +1390,8 @@ function InventoryTransfers({
   const [warehouseAccounts, setWarehouseAccounts] = useState<WarehouseAccountRow[]>([]);
   const [selectedTransferId, setSelectedTransferId] = useState<number | null>(null);
 
-  const isManager = userRole === 'admin' || userRole === 'projects_manager';
+  const { can } = usePermissions();
+  const canApproveTransfers = can('inventory').edit;
 
   useEffect(() => {
     void loadProjectRowsForInventory()
@@ -1472,17 +1470,16 @@ function InventoryTransfers({
 
   const canApproveDestination = (t: ProjectInventoryTransfer) => {
     if (t.status !== 'pending_b') return false;
-    if (userRole === 'admin' || userRole === 'projects_manager') return true;
     if (myContractIds === null) return true;
     return contracts.some((c) => c.projectId === t.toProjectId && myContractIds.includes(c.id));
   };
 
   const canApproveProjects = (t: ProjectInventoryTransfer) =>
-    t.status === 'pending_projects' && isManager;
+    t.status === 'pending_projects' && canApproveTransfers;
 
   const canCancel = (t: ProjectInventoryTransfer) =>
     ['pending_b', 'pending_projects'].includes(t.status) &&
-    (userRole === 'admin' || t.createdBy === userId);
+    (canApproveTransfers || t.createdBy === userId);
 
   const handleProjectAction = async (
     id: number,
@@ -1822,12 +1819,11 @@ function InventoryTransfers({
                 const meta = STATUS_META[t.status];
                 const canLegacyB =
                   t.status === 'pending_b' &&
-                  (userRole === 'admin' ||
-                    (myContractIds !== null && myContractIds.includes(t.toContractId)));
-                const canLegacyPm = t.status === 'pending_projects' && isManager;
+                  (myContractIds === null || myContractIds.includes(t.toContractId));
+                const canLegacyPm = t.status === 'pending_projects' && canApproveTransfers;
                 const canLegacyCancel =
                   ['pending_b', 'pending_projects'].includes(t.status) &&
-                  (userRole === 'admin' || t.createdBy === userId);
+                  (canApproveTransfers || t.createdBy === userId);
                 return (
                   <div key={`leg-${t.id}`} className={cn('border rounded-xl p-4', cardBg(theme))}>
                     <div className="flex justify-between flex-wrap gap-2">
@@ -1979,9 +1975,8 @@ function ConsumptionHistory({ contracts, myContractIds, onRefreshNeeded }: {
 }) {
   const { language, theme, t, dir } = useLanguage();
   const ar = language === 'ar';
-  const { isAdmin, role, can } = usePermissions();
-  const canApproveCost =
-    isAdmin || role === 'projects_manager' || can('costs').edit === true;
+  const { can } = usePermissions();
+  const canApproveCost = can('inventory').edit || can('costs_invoice').edit || can('costs').edit;
   const moneyLocale = 'en-US';
   const formatMoneyPrint = (value: number) => formatMoneyLib(value, moneyLocale);
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
@@ -2681,7 +2676,7 @@ export default function Inventory() {
   const ar = language === 'ar';
   const { can } = usePermissions();
   const invPerm = can('inventory');
-  const { role: userRole, assignedContractIds: scopeContractIds } = useUserAccessScope();
+  const { assignedContractIds: scopeContractIds } = useUserAccessScope();
   const { isErpShell, activeViewId, erp } = useErpModuleView('inventory', isLocalBackend ? 'materials' : 'balance');
   const draftHydrated = useRef(false);
   const [activeTab, setActiveTab] = useState<Tab>(() => {
@@ -2729,9 +2724,9 @@ export default function Inventory() {
   }, [contractsError, ar]);
 
   const myContractIds: string[] | null = useMemo(() => {
-    if (userRole === 'admin' || userRole === 'projects_manager') return null;
-    return scopeContractIds ?? [];
-  }, [userRole, scopeContractIds]);
+    if (!scopeContractIds || scopeContractIds.length === 0) return null;
+    return scopeContractIds;
+  }, [scopeContractIds]);
 
   const contractRows = contracts;
 
@@ -2835,7 +2830,6 @@ export default function Inventory() {
           <InventoryTransfers
             contracts={contractRows}
             myContractIds={myContractIds}
-            userRole={userRole}
             userId={userId}
             allowCreate={invPerm.create}
           />

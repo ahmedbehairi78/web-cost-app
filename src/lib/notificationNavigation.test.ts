@@ -122,12 +122,11 @@ describe('resolveNotificationNavigation', () => {
 });
 
 describe('canNavigateToNotificationTarget', () => {
-  it('allows admin for any target', () => {
+  it('allows full permissions for any target', () => {
     expect(
       canNavigateToNotificationTarget(
-        DEFAULT_PERMISSIONS,
+        ALL_PERMISSIONS,
         { moduleId: 'costs', viewId: 'ipc' },
-        { isAdmin: true },
       ),
     ).toBe(true);
   });

@@ -1333,8 +1333,6 @@ function topicAllowed(
   permissions: UserPermissions,
   isAdmin?: boolean,
 ): boolean {
-  if (isAdmin) return true;
-
   if (topic.permission && !canOpenModule(permissions, topic.permission, { isAdmin })) {
     return false;
   }

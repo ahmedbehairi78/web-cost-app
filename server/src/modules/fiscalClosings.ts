@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requireReferenceRead, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
   approveBalanceSheet,
@@ -17,7 +17,7 @@ export const fiscalClosingsRouter = Router();
 fiscalClosingsRouter.use(requireAuth);
 
 const viewPerm = requireReferenceRead('ledger', 'overhead', 'reports');
-const adminOnly = requireRole('admin');
+const adminOnly = requireModuleWrite('overhead');
 
 fiscalClosingsRouter.get(
   '/',

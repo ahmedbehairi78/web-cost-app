@@ -59,62 +59,46 @@ function asReqUser(user: NotificationAuthUser): ReqUserShape {
 }
 
 function canSeeInventory(user: NotificationAuthUser): boolean {
-  return user.role === 'admin'
-    || user.role === 'projects_manager'
-    || hasReferenceRead(user.permissions, 'inventory');
+  return hasReferenceRead(user.permissions, 'inventory');
 }
 
 function canApproveTransfers(user: NotificationAuthUser): boolean {
-  return user.role === 'admin' || user.role === 'projects_manager';
+  return moduleAccess(user.permissions, 'inventory').edit;
 }
 
 function canSeeBanks(user: NotificationAuthUser): boolean {
-  return user.role === 'admin' || hasReferenceRead(user.permissions, 'banks');
+  return hasReferenceRead(user.permissions, 'banks');
 }
 
 function canSeeOverhead(user: NotificationAuthUser): boolean {
-  return user.role === 'admin'
-    || user.role === 'projects_manager'
-    || hasReferenceRead(user.permissions, 'overhead');
+  return hasReferenceRead(user.permissions, 'overhead');
 }
 
 function canSeeBoq(user: NotificationAuthUser): boolean {
-  return user.role === 'admin'
-    || user.role === 'projects_manager'
-    || hasReferenceRead(user.permissions, 'boq');
+  return hasReferenceRead(user.permissions, 'boq');
 }
 
 function canSeeBilling(user: NotificationAuthUser): boolean {
-  return user.role === 'admin'
-    || user.role === 'projects_manager'
-    || hasReferenceRead(user.permissions, 'billing');
+  return hasReferenceRead(user.permissions, 'billing');
 }
 
 function canSeeCosts(user: NotificationAuthUser): boolean {
-  return user.role === 'admin'
-    || user.role === 'projects_manager'
-    || hasReferenceRead(user.permissions, 'costs');
+  return hasReferenceRead(user.permissions, 'costs');
 }
 
 function canApproveSubcontractorIpc(user: NotificationAuthUser): boolean {
-  return user.role === 'admin' || user.role === 'projects_manager';
+  return moduleAccess(user.permissions, 'costs_ipc').edit || moduleAccess(user.permissions, 'costs').edit;
 }
 
 function canApproveCustodySettlement(user: NotificationAuthUser): boolean {
-  if (user.role === 'admin') return true;
   return hasModuleWrite(user.permissions, 'ledger');
 }
 
 function canSeeSubcontractor(user: NotificationAuthUser): boolean {
-  return user.role === 'admin'
-    || user.role === 'projects_manager'
-    || hasReferenceRead(user.permissions, 'subcontractor');
+  return hasReferenceRead(user.permissions, 'subcontractor') || hasReferenceRead(user.permissions, 'costs');
 }
 
 function canManagePurchaseRequests(user: NotificationAuthUser): boolean {
-  if (user.role === 'admin' || user.role === 'projects_manager' || user.role === 'project_accountant') {
-    return true;
-  }
   return moduleAccess(user.permissions, 'purchase_requests').edit;
 }
 
@@ -280,9 +264,8 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
       take: 20,
     });
     const showReceiptToApprover =
-      user.role === 'admin'
-      || user.role === 'projects_manager'
-      || moduleAccess(user.permissions, 'costs').edit === true
+      moduleAccess(user.permissions, 'costs').edit === true
+      || moduleAccess(user.permissions, 'costs_invoice').edit === true
       || canSeeInventory(user);
     if (showReceiptToApprover) {
       for (const receipt of pendingReceipts) {
@@ -352,7 +335,7 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
 
   if (canSeeBilling(user)) {
     const billingPendingApprove =
-      user.role === 'admin' || user.role === 'projects_manager'
+      moduleAccess(user.permissions, 'billing').edit
         ? await prisma.billing.findMany({
             where: {
               status: { in: ['submitted', 'review'] },
@@ -468,7 +451,7 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
 
   if (canSeeBoq(user)) {
     const voPending =
-      user.role === 'admin' || user.role === 'projects_manager'
+      moduleAccess(user.permissions, 'boq').edit
         ? await prisma.variationOrder.findMany({
             where: { status: 'submitted', ...scopedContracts },
             orderBy: { createdAt: 'desc' },

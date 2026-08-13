@@ -3,7 +3,7 @@ import { auth } from '../firebase';
 import { isLocalBackend } from './dataBackend';
 import { authApi } from '../services/local/authApi';
 import { logActivity } from '../services/activityLogService';
-import { isElectronShell, requestAppQuit, clearDesktopSessionStorage } from './electronShell';
+import { isElectronShell, requestAppQuit, requestAppRelaunch, clearDesktopSessionStorage } from './electronShell';
 import { setApiAuthIdToken } from './authToken';
 
 export const SESSION_USER_LOCK_KEY = 'web_cost_session_user_email';
@@ -11,8 +11,33 @@ export const SESSION_USER_LOCK_KEY = 'web_cost_session_user_email';
 export const REQUIRE_FRESH_LOGIN_KEY = 'web_cost_require_fresh_login';
 /** Last successful password login email — kept across logout / app restart (password never stored). */
 export const LAST_LOGIN_EMAIL_KEY = 'web_cost_last_login_email';
-/** Auto logout / Electron quit after this much pointer/keyboard idle time. */
+/** Auto lock (privacy screen) after this much idle time. Electron uses OS-wide input. */
 export const IDLE_LOGOUT_MS = 3 * 60 * 1000; // 3 minutes
+
+const SESSION_LOCK_CHANNEL = 'web-cost-session-lock';
+
+export function broadcastSessionLock(locked: boolean): void {
+  try {
+    const ch = new BroadcastChannel(SESSION_LOCK_CHANNEL);
+    ch.postMessage(locked ? 'lock' : 'unlock');
+    ch.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function subscribeSessionLock(onChange: (locked: boolean) => void): () => void {
+  try {
+    const ch = new BroadcastChannel(SESSION_LOCK_CHANNEL);
+    ch.onmessage = (event) => {
+      if (event.data === 'lock') onChange(true);
+      if (event.data === 'unlock') onChange(false);
+    };
+    return () => ch.close();
+  } catch {
+    return () => undefined;
+  }
+}
 
 /** Desktop app always uses password; browser after logout/idle too. */
 export function mustPasswordLogin(): boolean {
@@ -107,8 +132,8 @@ export function writeSessionUserLock(email: string): void {
   }
 }
 
-/** Sign out API + Firebase; quit Electron shell (no in-app login screen). */
-export async function performAppLogout(): Promise<void> {
+/** Sign out API + Firebase; quit Electron shell unless `quitElectron` is false. */
+export async function performAppLogout(options?: { quitElectron?: boolean }): Promise<void> {
   markFreshLoginRequired();
   void logActivity({ kind: 'logout' });
   try {
@@ -131,7 +156,18 @@ export async function performAppLogout(): Promise<void> {
   } catch {
     /* password-only sessions may have no Firebase user */
   }
-  if (isElectronShell()) {
+  if (isElectronShell() && options?.quitElectron !== false) {
     requestAppQuit();
   }
+}
+
+/**
+ * After factory reset: sign out without a sudden quit, then reopen on the login screen.
+ * Electron prefers a full relaunch; older shells / the browser reload the same window.
+ */
+export async function performFactoryResetReentry(): Promise<void> {
+  await performAppLogout({ quitElectron: false });
+  await clearDesktopSessionStorage();
+  if (isElectronShell() && (await requestAppRelaunch())) return;
+  window.location.reload();
 }

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
-import { requireAuth, requireReferenceRead, requireRole } from '../middleware/auth.js';
+import { requireAuth, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -11,7 +11,7 @@ export const accountingPeriodsRouter = Router();
 accountingPeriodsRouter.use(requireAuth);
 
 const viewPerm = requireReferenceRead('ledger', 'overhead');
-const adminOnly = requireRole('admin');
+const adminOnly = requireModuleWrite('overhead');
 
 function parseAllowedUserIds(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];

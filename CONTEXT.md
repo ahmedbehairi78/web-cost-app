@@ -23,7 +23,7 @@
 
 **Shell:** موديول واحد (`shellWindowPolicy.ts`)؛ الآلة الحاسبة استثناء. ERP = `TopNavBar` + `ErpWorkspace`.
 
-**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول → خروج بعد **3 دقائق** (`IDLE_LOGOUT_MS`) — **يُيقاف** أثناء الانقطاع أو وجود مسودة/طابور مزامنة (`idleGate` + `useIdleLogout`). مستمعات `mousemove`/`scroll`/`wheel` مُقيَّدة بـ **1 ثانية** (`IDLE_ACTIVITY_THROTTLE_MS`) لتقليل lag في Electron.
+**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول بعد **3 دقائق** على مستوى **الجهاز** (Electron `powerMonitor`) → شاشة دخول باسم المستخدم **مع كلمة المرور** (التطبيق لا يُغلق؛ النوافذ تبقى تحت القفل). المتصفح/قشرة قديمة: نشاط النافذة فقط. يُيقاف أثناء الانقطاع أو مسودة/طابور (`idleGate`). `mousemove`/`scroll`/`wheel` في وضع النافذة مُقيَّدة بـ **1 ثانية**.
 
 **Offline sync (محلي/ريلواي):** مسودات نماذج في IndexedDB + طابور إرسال (`safe_save` تلقائي · `confirm_required` بمراجعة يدوية) — شريط حالة + `PendingSyncPanel`. يشمل المشتريات/التكاليف/البنوك/المخزون/الرواتب/الأصول/**BOQ·VO**/GL. مفاتيح: `src/lib/offline/`. دليل: موضوع `tools.offline.sync`.
 
@@ -145,19 +145,19 @@ web-cost-app/
 
 ## 4. نظام الصلاحيات
 
-### الأدوار
-| الدور | ملخص |
+### مصدر الصلاحيات (2026-08-13)
+الوصول = مربعات **عرض / إنشاء / تعديل** المخزّنة في `users.permissions` فقط. أسماء الأدوار (`admin` · `projects_manager` · `project_accountant` · `user`) باقية في العمود للتوافق ولا تمنح موديولات. إعدادات النظام (مستخدمون · نسخ احتياطي) = `settings: true`. العقود: قائمة فارغة = كل العقود.
+
+### الأدوار (عمود قديم — لا يُستخدم للوصول)
+| الدور | ملاحظة |
 |---|---|
-| `admin` | كامل |
-| `projects_manager` | مشاريع + BOQ + اعتماد تحويلات مخزون (مشاريع) |
-| `project_accountant` | تكاليف + مخازن + باطن — **عقوده المعينة فقط** |
-| `user` | بانتظار تفعيل من الإعدادات |
+| `admin` / غيره | لا يُفتح منه مسار ولا اعتماد — استخدم JSON الصلاحيات |
 
 ### مفاتيح CRUD
 `dashboard` | `ledger` | `projects` | `boq` | `billing` | `costs` | `suppliers` | `banks` | **`inventory`** | **`transfers`** | **`subcontractor`** | `reports` | `settings`
 
 - قراءة/إنشاء تحويلات المشاريع: `inventory` **أو** `transfers` **أو** `costs`.
-- اعتماد نهائي (`approve-projects`): **`projects_manager`** أو **`admin`** فقط.
+- اعتماد نهائي (`approve-projects`): **`inventory.edit`**.
 
 ### التطبيق
 - Firestore Rules + `useUserAccessScope` + `requirePermission` على API المحلي.
@@ -198,7 +198,7 @@ web-cost-app/
 
 **لا تراجع:** استخدم `usePermissions().isAdmin` في `Settings.tsx` — لا `authApi.me()` منفصل للدور. ERP: `TopNavBar` يمرّر `{ isAdmin }` إلى `canOpenModuleView`.
 
-**الوضع الافتراضي (2026-08-13):** مسح الوحدات بالمجموعات **لا** يحذف المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. زر **«الوضع الافتراضي — شركة فارغة»** (`POST /api/financial-maintenance/factory-reset`) يفرّغ Postgres ثم يزرع شجرة الحسابات ويبقي `myline78@gmail.com`. Electron = Railway؛ `dev:local` = Postgres المحلي.
+**الوضع الافتراضي (2026-08-13):** مسح الوحدات بالمجموعات **لا** يحذف المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. زر **«الوضع الافتراضي — شركة فارغة»** (`POST /api/financial-maintenance/factory-reset`) يفرّغ Postgres ثم يزرع شجرة الحسابات ويبقي `myline78@gmail.com`. بعد النجاح تظهر رسالة + زر **إعادة الدخول** (لا إغلاق مفاجئ). Electron = Railway؛ `dev:local` = Postgres المحلي.
 
 **حفظ إعدادات العرض (2026-06-26):**
 
@@ -228,12 +228,12 @@ web-cost-app/
 |---|---|---|
 | **تصدير** | عرض `projects` | كل المجموعات والأصناف → `.xlsx` |
 | **قالب** | admin / projects_manager | ملف نموذجي بصفّين |
-| **استيراد** | admin / projects_manager | `POST /api/materials/import` — يضيف الجديد فقط، **يتخطى** الأكواد المكررة |
+| **استيراد** | admin / projects_manager | `POST /api/materials/import` — **ينشئ أو يحدّث** المجموعات/الأصناف حسب الكود |
 
-**أعمدة الملف (عربي أو إنجليزي):** كود المجموعة، اسم المجموعة، كود الصنف، اسم الصنف، الوحدة.  
+**أعمدة الملف (مطابقة شجرة مخزن مقاولات v2):** كود المجموعة · **Code** (اسم المجموعة بالإنجليزي → `name_en`، **ليس** الكود) · اسم المجموعة · كود الصنف · اسم الصنف · الوحدة · الرصيد (**يُتجاهل** — الرصيد الافتتاحي من استيراد المخزون). القالب القديم ذو 5 أعمدة ما زال يعمل.  
 صف بدون كود صنف = مجموعة فقط.
 
-**ملفات:** `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree()`.
+**ملفات:** `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree()`. عمود DB: `material_groups.name_en`.
 
 ---
 
@@ -345,7 +345,7 @@ npm run dev                     # terminal 2 — :3000 أو التالي
 | **G** موديول مخازن (backend + `Inventory.tsx`) | ✅ |
 | **G5 / H** ربط فاتورة بـ BOQ، بطاقة مخزون، أعمدة BOQ | ✅ |
 | **004** شجرة أصناف + consumption orders | ✅ |
-| **Excel** تصدير/استيراد شجرة الأصناف | ✅ |
+| **Excel** تصدير/استيراد شجرة الأصناف (قالب v2 · `Code` = name_en · تحديث) | ✅ (2026-08-13) |
 | **DisplaySettings** + **Calculator** | ✅ |
 | **Shell single-module** + **Settings admin sections** | ✅ (2026-06-26) |
 | **حفظ إعدادات العرض** (theme · language · defaultModule `none`) | ✅ (2026-06-26) |
@@ -384,7 +384,6 @@ npm run dev                     # terminal 2 — :3000 أو التالي
 |---|---|---|
 | `permission-alignment` | مواءمة صلاحيات Firestore rules مع الواجهة | عالية |
 | `firestore-indexes-prod` | نشر `firestore.indexes.json` للإنتاج | عالية |
-| `materials-import-update` | استيراد Excel بتحديث الأصناف الموجودة (حالياً: تخطي فقط) | متوسطة |
 | `virtualize-lists` | BOQ / GL — قوائم طويلة | متوسطة |
 | `baseline-cost` | قياس تكلفة Firestore | متوسطة |
 | `sync-pipeline` | مزامنة Firestore → SQLite | منخفضة |
