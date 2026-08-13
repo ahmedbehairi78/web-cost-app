@@ -38,4 +38,6 @@ contextBridge.exposeInMainWorld('webCostDesktop', {
     landscape?: boolean;
     pageSize?: string;
   }) => ipcRenderer.invoke('print-report-pdf', payload) as Promise<PrintReportPdfResult>,
+  /** Clear hosted-SPA HTTP cache and reload every app window — does not quit. */
+  applySpaUpdate: () => ipcRenderer.invoke('apply-spa-update') as Promise<boolean>,
 });

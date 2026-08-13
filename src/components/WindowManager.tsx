@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, Suspense, useState, Component } from 'react';
 import { doc, getDoc } from 'firebase/firestore';
-import { lazyWithRetry } from '../lib/lazyImport';
+import { lazyWithRetry, isChunkLoadError } from '../lib/lazyImport';
 import { CalcProvider, CalcTitleBarExtras } from './Calculator';
 import { X, Minus, Maximize2, Minimize2, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { cn } from '../lib/utils';
@@ -19,6 +19,7 @@ import {
   playWindowMinimize,
   playWindowRestore,
 } from '../lib/uiSound';
+import { applyHostedSpaUpdate, markSpaUpdateAvailable } from '../lib/spaBuild';
 
 const DashboardLazy = lazyWithRetry(() => import('./Dashboard').then(m => ({ default: m.Dashboard })));
 const GeneralLedgerLazy = lazyWithRetry(() => import('./GeneralLedger').then(m => ({ default: m.GeneralLedger })));
@@ -113,10 +114,12 @@ function WindowErrorFallback({
   onRetry,
   onClose,
 }: { error: Error | null; onRetry: () => void; onClose: () => void }) {
-  const { language } = useLanguage();
-  const ar = language === 'ar';
-  const isChunkError = error?.message.includes('Failed to fetch dynamically imported module')
-    || error?.message.includes('Importing a module script failed');
+  const { t } = useLanguage();
+  const [applying, setApplying] = useState(false);
+  const isChunkError = isChunkLoadError(error);
+  useEffect(() => {
+    if (isChunkError) markSpaUpdateAvailable();
+  }, [isChunkError]);
   return (
     <div className="flex flex-col items-center justify-center h-full gap-4 p-8 text-center select-none">
       <div className="w-14 h-14 bg-red-500/10 rounded-full flex items-center justify-center">
@@ -125,8 +128,8 @@ function WindowErrorFallback({
       <div>
         <p className="font-semibold text-gray-700 dark:text-gray-200 mb-1">
           {isChunkError
-            ? (ar ? 'تحديث جديد — يلزم إعادة تحميل الصفحة' : 'App updated — reload required')
-            : (ar ? 'حدث خطأ في هذه النافذة' : 'This window encountered an error')}
+            ? t('spa_chunk_update_title')
+            : t('window_error_generic')}
         </p>
         {error && (
           <p className="text-xs text-gray-400 font-mono max-w-xs break-all">
@@ -138,11 +141,16 @@ function WindowErrorFallback({
         {isChunkError ? (
           <button
             type="button"
-            onClick={() => window.location.reload()}
-            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
+            disabled={applying}
+            onClick={() => {
+              if (applying) return;
+              setApplying(true);
+              void applyHostedSpaUpdate();
+            }}
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors disabled:opacity-60"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            {ar ? 'إعادة تحميل التطبيق' : 'Reload App'}
+            {applying ? t('notifications_spa_update_applying') : t('spa_chunk_update_action')}
           </button>
         ) : (
           <button
@@ -151,14 +159,14 @@ function WindowErrorFallback({
             className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
-            {ar ? 'إعادة المحاولة' : 'Retry'}
+            {t('window_error_retry')}
           </button>
         )}
         <button
           onClick={onClose}
           className="px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 text-sm rounded-lg transition-colors"
         >
-          {ar ? 'إغلاق النافذة' : 'Close Window'}
+          {t('window_error_close')}
         </button>
       </div>
     </div>

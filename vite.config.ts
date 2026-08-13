@@ -1,14 +1,37 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
+import fs from 'node:fs';
 import path from 'path';
-import {defineConfig, loadEnv} from 'vite';
+import {defineConfig, loadEnv, type Plugin} from 'vite';
 /// <reference types="vitest" />
+
+function spaBuildManifestPlugin(buildId: string): Plugin {
+  return {
+    name: 'spa-build-manifest',
+    apply: 'build',
+    writeBundle() {
+      const id =
+        buildId
+        || process.env.VITE_SPA_BUILD_ID
+        || process.env.RAILWAY_GIT_COMMIT_SHA
+        || `build-${Date.now()}`;
+      const dest = path.resolve(__dirname, 'dist', 'spa-build.json');
+      fs.mkdirSync(path.dirname(dest), {recursive: true});
+      fs.writeFileSync(
+        dest,
+        `${JSON.stringify({id, builtAt: new Date().toISOString()})}\n`,
+        'utf8',
+      );
+    },
+  };
+}
 
 export default defineConfig(({mode}) => {
   const env = loadEnv(mode, '.', '');
   const localApiPort = env.LOCAL_API_PORT || env.VITE_LOCAL_API_PORT || '3001';
+  const spaBuildId = (env.VITE_SPA_BUILD_ID || process.env.RAILWAY_GIT_COMMIT_SHA || '').trim();
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [react(), tailwindcss(), spaBuildManifestPlugin(spaBuildId)],
     define: {
       'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
     },

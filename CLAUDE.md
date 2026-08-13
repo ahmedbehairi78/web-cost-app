@@ -189,7 +189,8 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `docs/RAILWAY_DEPLOY.md` | Step-by-step Railway deploy (Postgres + env vars + migrate + Electron URL) |
 | `electron/main.ts` | Thin Electron shell — **multi app windows** (`createAppWindow`, same `persist:webcost`); **Ctrl+N** / IPC `open-new-window` (shortcut via **`input.code === 'KeyN'`** — layout-safe for Arabic keyboard); **OAuth popup** lifecycle only for non-app windows; F12 · Ctrl+Shift+R (`KeyR`) · `WEB_COST_APP_URL` / `production-url.json` |
 | `electron/updater.ts` | `electron-updater` — GitHub Releases · `createRequire` (CJS) · skip if load fails |
-| `src/lib/electronShell.ts` | `isElectronShell` · `requestOpenNewWindow` · `requestWindowMaximize` · `requestAppQuit` · desktop notifications · `Login.tsx` uses `signInWithPopup` in Electron |
+| `src/lib/electronShell.ts` | `isElectronShell` · `requestOpenNewWindow` · `requestApplySpaUpdate` · `requestAppQuit` · desktop notifications · `Login.tsx` uses `signInWithPopup` in Electron |
+| `src/lib/spaBuild.ts` | Hosted SPA build id + Railway update bell (`spa-build.json`) — click → cache clear + login; **no auto-reload / quit** |
 | `server/src/migration/verifyMigrationCounts.ts` | Post-migrate verification; **PASS with warnings** when Postgres has extra GL rows after `backfill-gl` |
 
 ### Components
@@ -975,6 +976,27 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — إشعار تحديث Railway دون إغلاق Electron ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** نشر Railway كان يغلق التطبيق فجأة (إعادة تحميل تلقائية عند 404 للـ chunk + كاش HTTP). المطلوب: تنبيه في الجرس → المستخدم يبدأ التحديث → شاشة الدخول بعد الانتهاء. **لا** `app.quit`.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **كشف** | `dist/spa-build.json` (`VITE_SPA_BUILD_ID` / `RAILWAY_GIT_COMMIT_SHA`) · استطلاع كل 60ث + عند التركيز · `Cache-Control: no-store` |
+| **تنبيه** | جرس التنبيهات يدمج بنداً عاجلاً `spa_update` — النقر يستدعي `applyHostedSpaUpdate()` |
+| **تطبيق** | `performAppLogout({ quitElectron: false })` ثم IPC `apply-spa-update` (مسح كاش + `reloadIgnoringCache` لكل النوافذ) · قشرة قديمة: `/?spa=timestamp` |
+| **لا تراجع** | `lazyImport` **لا** يستدعي `window.location.reload()` عند 404 — يضع التنبيه فقط. مسار `electron-updater` / GitHub Setup.exe كما هو |
+
+```powershell
+npm run test -- src/lib/spaBuild.test.ts
+npm run electron:build:shell
+# git push → Railway · جرس → «يتوفر تحديث جديد» → تحديث → شاشة الدخول
+```
 
 ---
 
@@ -2044,7 +2066,7 @@ Operational master data often lives in **Firestore** first; SQLite holds the fin
 - **Dev origin:** Use **`http://localhost:3000`** only (not `127.0.0.1`) — `devOriginGuard.ts` redirects; Vite `strictPort: true`.
 - **Stale local API (`EADDRINUSE` :3001):** see combined **:3000 + :3001** note above. Sanity: unauthenticated `GET /api/settings/push-to-production/preview` should return **401**, not **404**.
 - **Local vs Electron GL counts:** Local **`DATABASE_URL`** and Railway/Electron are **different databases** until **Push to production**. Electron count = Railway truth for production users.
-- **Electron UI after deploy:** Setup.exe loads **hosted SPA** (`production-url.json` → Railway) — **`git push` + Railway redeploy** updates content; **`electron:publish`** updates **shell only** (OAuth, cache policy). Stale UI = Chromium cache in `persist:webcost` — full quit + reopen; **Ctrl+Shift+R** (shell with `reloadIgnoringCache`); packaged shell clears HTTP cache **at most once per calendar day** (`spa-http-cache-cleared-day.txt` in userData) — not on every launch (perf). **Data fixes** (migrations, `local:backfill-boq-rates`) must run on **Railway Postgres**, not local DB. See **`docs/RAILWAY_DEPLOY.md`** «الإصلاحات لا تظهر على Electron».
+- **Electron UI after deploy:** Setup.exe loads **hosted SPA**. After Railway redeploy a **notification bell** item (`spa_update`) appears — click starts the update (clear HTTP cache + reload all windows) then **password login**. Do **not** auto-`location.reload()` on chunk 404 (`lazyImport.ts`). Packaged shell still clears HTTP cache at most once per calendar day on **launch**; user-triggered update always clears cache via IPC `apply-spa-update`. `electron:publish` still required for **shell** changes. **Data fixes** must run on **Railway Postgres**. See **`docs/RAILWAY_DEPLOY.md`**.
 - **`useUserAccessScope` + password login:** Gating role on Firebase `onAuthStateChanged` resets admin to `user` on Electron — empty Inventory project picker / «فشل تحميل المشاريع». Fix (2026-06-26): local mode uses `PermissionsContext.role` + `/auth/me` for contracts only. **`POST /auth/login`** must call `req.session.save()` before response (same as `firebase-session`).
 - **`App.tsx` hook order (TDZ):** any `useEffect`/`useCallback` that references `userPermissions`, `userRole`, or `defaultModuleRef` must appear **after** those declarations. Violating this causes **`ReferenceError: Cannot access '…' before initialization`** at runtime (minified bundle).
 - **`boqApi.list` query string:** always pass `?contractId=` or `?projectId=` (e.g. `` boqApi.list(`?projectId=${id}`) ``). Passing a bare id (`boqApi.list(contractId)`) hits `GET /boq-items/:id` → **404** and empty quick-link BOQ lists in consumption.

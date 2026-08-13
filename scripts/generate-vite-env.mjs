@@ -84,5 +84,12 @@ if (missing.length > 0) {
   process.exit(1);
 }
 
+const spaBuildId = (
+  process.env.VITE_SPA_BUILD_ID
+  || process.env.RAILWAY_GIT_COMMIT_SHA
+  || `build-${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)}`
+).trim();
+lines.push(`VITE_SPA_BUILD_ID=${spaBuildId}`);
+
 fs.writeFileSync(out, `${lines.join('\n')}\n`, 'utf8');
-console.log(`[generate-vite-env] wrote ${out} (${lines.length} keys)`);
+console.log(`[generate-vite-env] wrote ${out} (${lines.length} keys, spa ${spaBuildId})`);

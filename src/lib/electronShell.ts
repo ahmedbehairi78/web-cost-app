@@ -21,6 +21,8 @@ type WebCostDesktopBridge = {
     landscape?: boolean;
     pageSize?: string;
   }) => Promise<DesktopPrintReportPdfResult>;
+  /** Clear HTTP cache and reload every app window without quitting. */
+  applySpaUpdate?: () => Promise<boolean>;
 };
 
 function desktopBridge(): WebCostDesktopBridge | undefined {
@@ -104,6 +106,20 @@ export async function getSystemIdleSeconds(): Promise<number | null> {
     return typeof n === 'number' && Number.isFinite(n) ? Math.max(0, n) : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Clear Chromium HTTP cache and reload every desktop window (no `app.quit`).
+ * Returns false in the browser or on an older shell without this IPC.
+ */
+export async function requestApplySpaUpdate(): Promise<boolean> {
+  const fn = desktopBridge()?.applySpaUpdate;
+  if (!fn) return false;
+  try {
+    return (await fn()) === true;
+  } catch {
+    return false;
   }
 }
 

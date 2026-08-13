@@ -213,7 +213,12 @@ export function createApp() {
   const publicDir = path.resolve(process.cwd(), 'dist');
   app.use(express.static(publicDir, {
     setHeaders(res, filePath) {
-      if (filePath.endsWith(`${path.sep}index.html`) || filePath.endsWith('index.html')) {
+      if (
+        filePath.endsWith(`${path.sep}index.html`)
+        || filePath.endsWith('index.html')
+        || filePath.endsWith(`${path.sep}spa-build.json`)
+        || filePath.endsWith('spa-build.json')
+      ) {
         res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
         // Allow the Google sign-in (signInWithPopup) window to close itself.
         res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');

@@ -10,11 +10,13 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemedToaster } from './components/ThemedToaster';
 import { enforceDevLocalhostOrigin } from './lib/devOriginGuard';
 import { clearChunkReloadFlag } from './lib/lazyImport';
+import { startSpaUpdateWatcher } from './lib/spaBuild';
 import { installExcelLikeInputBehavior } from './lib/excelLikeInputs';
 import { MobileApprovalApp } from './pages/mobile/MobileApprovalApp';
 
 enforceDevLocalhostOrigin();
 clearChunkReloadFlag();
+startSpaUpdateWatcher();
 
 const uninstallExcelLikeInputs = installExcelLikeInputBehavior();
 if (import.meta.hot) {

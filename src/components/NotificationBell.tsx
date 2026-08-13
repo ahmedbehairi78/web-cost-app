@@ -16,6 +16,13 @@ import {
 import { permissionKeyForModuleView } from '../lib/moduleViewPermissions';
 import { MODULE_LABELS } from '../constants/modules';
 import { notifyDesktopUrgent } from '../lib/electronShell';
+import {
+  applyHostedSpaUpdate,
+  buildSpaUpdateNotificationItem,
+  isSpaUpdateAvailable,
+  isSpaUpdateNotificationType,
+  subscribeSpaUpdateAvailable,
+} from '../lib/spaBuild';
 import { ShellAnchoredDropdown } from './ShellAnchoredDropdown';
 
 const POLL_MS = 90_000;
@@ -35,6 +42,8 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
   const [items, setItems] = useState<AppNotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [spaUpdate, setSpaUpdate] = useState(isSpaUpdateAvailable);
+  const [applyingSpa, setApplyingSpa] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
@@ -55,6 +64,20 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
       setLoading(false);
     }
   }, [language, t]);
+
+  useEffect(() => subscribeSpaUpdateAvailable(() => setSpaUpdate(true)), []);
+
+  useEffect(() => {
+    if (!spaUpdate) return;
+    const item = buildSpaUpdateNotificationItem();
+    const title = language === 'ar' ? item.titleAr : item.titleEn;
+    notifyDesktopUrgent(title, t('notifications_title'), item.key);
+  }, [spaUpdate, language, t]);
+
+  const displayItems = spaUpdate
+    ? [buildSpaUpdateNotificationItem(), ...items.filter((i) => !isSpaUpdateNotificationType(i.type))]
+    : items;
+  const displayUnread = unreadCount + (spaUpdate ? 1 : 0);
 
   useEffect(() => {
     void refresh();
@@ -87,6 +110,14 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
     playTap();
     setOpen(false);
 
+    if (isSpaUpdateNotificationType(item.type)) {
+      if (applyingSpa) return;
+      setApplyingSpa(true);
+      toast.loading(t('notifications_spa_update_applying'), { id: 'spa-update' });
+      void applyHostedSpaUpdate();
+      return;
+    }
+
     const target = resolveNotificationNavigation(item);
     if (!canNavigateToNotificationTarget(permissions, target, { isAdmin })) {
       const permKey = permissionKeyForModuleView(target.moduleId, target.viewId);
@@ -104,7 +135,7 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
     applyNotificationNavigationPending(item, target);
     void notificationsApi.markRead([item.key]).then(() => void refresh());
     openWindow(target.moduleId, target.viewId);
-  }, [permissions, isAdmin, language, t, openWindow, refresh]);
+  }, [permissions, isAdmin, language, t, openWindow, refresh, applyingSpa]);
 
   const handleDismiss = (item: AppNotificationItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -147,10 +178,10 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
         {loading && <span className="text-xs opacity-60">…</span>}
       </div>
       <div className="overflow-y-auto flex-1">
-        {items.length === 0 ? (
+        {displayItems.length === 0 ? (
           <p className="text-sm text-center py-8 opacity-60 px-4">{t('notifications_empty')}</p>
         ) : (
-          items.map((item, ni) => (
+          displayItems.map((item, ni) => (
             <div
               key={item.key || `notif-${ni}`}
               role="button"
@@ -188,6 +219,7 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
                   </span>
                 )}
               </span>
+              {!isSpaUpdateNotificationType(item.type) && (
               <button
                 type="button"
                 data-notif-dismiss
@@ -197,6 +229,7 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
               >
                 <X size={12} />
               </button>
+              )}
             </div>
           ))
         )}
@@ -219,9 +252,9 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
       >
         <span className="relative flex-shrink-0">
           <Bell size={isTopNav ? 16 : 14} />
-          {unreadCount > 0 && (
+          {displayUnread > 0 && (
             <span className="absolute -top-1.5 -end-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-              {unreadCount > 99 ? '99+' : unreadCount}
+              {displayUnread > 99 ? '99+' : displayUnread}
             </span>
           )}
         </span>

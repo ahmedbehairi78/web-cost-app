@@ -426,6 +426,28 @@ ipcMain.handle('clear-desktop-session', async () => {
   await clearDesktopAuthCookies();
 });
 
+/**
+ * Hosted SPA update (Railway deploy): clear HTTP cache then reload every window.
+ * Never quits — the SPA signs out first and lands on the password login screen.
+ */
+ipcMain.handle('apply-spa-update', async () => {
+  try {
+    const ses = session.fromPartition(DESKTOP_SESSION_PARTITION);
+    await ses.clearCache();
+  } catch (err) {
+    console.warn('[electron] apply-spa-update clearCache failed', err);
+  }
+  for (const win of appWindows) {
+    if (win.isDestroyed()) continue;
+    try {
+      win.webContents.reloadIgnoringCache();
+    } catch (err) {
+      console.warn('[electron] apply-spa-update reload failed', err);
+    }
+  }
+  return true;
+});
+
 ipcMain.handle('open-new-window', () => {
   createAppWindow({ reuseSession: true });
   return true;

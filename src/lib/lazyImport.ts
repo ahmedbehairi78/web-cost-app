@@ -1,8 +1,9 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from 'react';
+import { markSpaUpdateAvailable } from './spaBuild';
 
 const CHUNK_RELOAD_KEY = 'web-cost-app:chunk-reload';
 
-function isChunkLoadError(error: unknown): boolean {
+export function isChunkLoadError(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);
   return (
     msg.includes('Failed to fetch dynamically imported module')
@@ -12,20 +13,25 @@ function isChunkLoadError(error: unknown): boolean {
   );
 }
 
-/** Retry once with full page reload when a lazy chunk 404s after deploy. */
+/**
+ * After a Railway deploy, hashed chunks 404. Do not auto-reload (that looks like a crash).
+ * Surface an in-app notification so the user starts the update and lands on the login screen.
+ */
 export function importWithChunkRetry<T>(importer: () => Promise<T>): Promise<T> {
   return importer().catch((error: unknown) => {
-    if (isChunkLoadError(error) && !sessionStorage.getItem(CHUNK_RELOAD_KEY)) {
-      sessionStorage.setItem(CHUNK_RELOAD_KEY, '1');
-      window.location.reload();
-      return new Promise<T>(() => {});
+    if (isChunkLoadError(error)) {
+      markSpaUpdateAvailable();
     }
     throw error;
   });
 }
 
 export function clearChunkReloadFlag(): void {
-  sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  try {
+    sessionStorage.removeItem(CHUNK_RELOAD_KEY);
+  } catch {
+    /* ignore */
+  }
 }
 
 export function lazyWithRetry<T extends ComponentType<object>>(

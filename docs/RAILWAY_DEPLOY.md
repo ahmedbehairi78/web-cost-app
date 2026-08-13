@@ -205,7 +205,7 @@ npm run electron:dev
 | السبب | الحل |
 |--------|------|
 | **لم يكتمل نشر Railway** | Railway → Deployments → آخر build **Success** · افتح نفس الرابط في **Chrome** (نافذة خاصة) وقارن |
-| **كاش Chromium في Electron** | أغلق التطبيق **بالكامل** (من Task Manager) ثم افتحه · أو **F12** → Reload · القشرة تمسح HTTP cache **مرة واحدة يومياً كحد أقصى** + **Ctrl+Shift+R** = reload بدون كاش |
+| **كاش Chromium في Electron** | جرس التنبيهات → «يتوفر تحديث جديد» → اضغط للتحديث (يمسح الكاش ويعيد شاشة الدخول). **Ctrl+Shift+R** ما زال يعمل. القشرة تمسح HTTP cache **مرة/يوم عند الإقلاع** فقط |
 | **تغييرات بيانات فقط** (backfill BOQ · migrate) | الكود وحده لا يكفي — على Railway: `prisma migrate deploy` (تلقائي عند الإقلاع) + **الإعدادات → قاعدة البيانات → استيراد أسعار BOQ من Firestore** (admin + `FIREBASE_SERVICE_ACCOUNT_JSON` على خدمة API) · أو **`npm run local:backfill-boq-rates -- --live`** ضد **`DATABASE_PUBLIC_URL`** · أو **Push to production** من محلي |
 | **التطوير محلي ≠ Electron** | Electron يقرأ **Postgres على Railway** · `localhost:3000` يقرأ **Postgres محلي** — أعداد GL/BOQ تختلف حتى Push |
 
