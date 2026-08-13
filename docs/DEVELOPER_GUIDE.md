@@ -444,7 +444,9 @@ npm run local:export-backup  # Postgres المحلي
 | بند | تفصيل |
 |-----|--------|
 | UI | مخزون → رصيد → **`OpeningInventoryImportPanel`** (يعزل تاريخ الاستيراد عن جدول الرصيد) · قالب / استيراد (يتطلب مخزن 127 مربوط) |
-| Excel | كود الصنف · الكمية · متوسط التكلفة — `inventoryOpeningExcel.ts` |
+| Excel | كود الصنف · الكمية · متوسط التكلفة — `inventoryOpeningExcel.ts` (**ليس** عمود `الرصيد` في شجرة الأصناف) |
+| UI فارغ | `ProjectWarehouseLinkCard` يظهر لربط 127… قبل الاستيراد |
+| ملف خاطئ | ملف شجرة الأصناف يُرفض برسالة واضحة |
 | API | `POST /api/inventory/project/:projectId/opening-import` |
 | GL | قيد واحد `INV-OPEN-…` — Dr 127… / Cr جاري الشركاء `31401001` |
 | تكرار | يتخطّى الأصناف التي لها صف `project_inventory` مسبقاً |

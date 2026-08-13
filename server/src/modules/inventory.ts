@@ -23,7 +23,6 @@ import {
   getAvailableQuantity,
   getInventoryByContractMaterial,
   getProjectAvailableQuantity,
-  getProjectInventoryByMaterial,
   num,
   toMoney,
   upsertProjectInventoryReceipt,
@@ -228,7 +227,7 @@ inventoryRouter.post(
   asyncHandler(async (req, res) => {
     if (!canImportOpeningBalances(req.user)) {
       res.status(403).json({
-        error: 'Only admin, projects manager, or users with inventory.create can import opening balances',
+        error: 'لا صلاحية لاستيراد الأرصدة الافتتاحية (يلزم inventory.create)',
       });
       return;
     }
@@ -294,85 +293,111 @@ inventoryRouter.post(
       totalAmount?: number;
     };
 
-    const result = await prisma.$transaction(async (tx) => {
-      let imported = 0;
-      let skipped = 0;
-      const errors: string[] = [];
-      let totalAmount = 0;
+    const result = await prisma.$transaction(
+      async (tx) => {
+        let imported = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+        let totalAmount = 0;
 
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const code = String(row.materialCategoryCode ?? '').trim();
-        const quantity = Number(row.quantity);
-        const avgUnitCost = Number(row.avgUnitCost);
-        const rowLabel = `Row ${i + 1}`;
+        const codes = [
+          ...new Set(
+            rows
+              .map((row) => String(row.materialCategoryCode ?? '').trim())
+              .filter((code) => code.length > 0),
+          ),
+        ];
+        const materials =
+          codes.length > 0
+            ? await tx.materialCategory.findMany({
+                where: { code: { in: codes } },
+                select: { id: true, code: true, name: true, unit: true },
+              })
+            : [];
+        const materialByCode = new Map(materials.map((m) => [m.code.trim().toLowerCase(), m]));
+        const materialIds = materials.map((m) => m.id);
+        const existingRows =
+          materialIds.length > 0
+            ? await tx.projectInventory.findMany({
+                where: { projectId, materialCategoryId: { in: materialIds } },
+                select: { materialCategoryId: true },
+              })
+            : [];
+        const existingIds = new Set(existingRows.map((r) => r.materialCategoryId));
+        const importedIds = new Set<number>();
 
-        if (!code) {
-          errors.push(`${rowLabel}: material category code is required`);
-          continue;
+        for (let i = 0; i < rows.length; i++) {
+          const row = rows[i];
+          const code = String(row.materialCategoryCode ?? '').trim();
+          const quantity = Number(row.quantity);
+          const avgUnitCost = Number(row.avgUnitCost);
+          const rowLabel = `صف ${i + 1}`;
+
+          if (!code) {
+            errors.push(`${rowLabel}: كود الصنف مطلوب`);
+            continue;
+          }
+          if (!Number.isFinite(quantity) || quantity <= EPSILON) {
+            errors.push(`${rowLabel} (${code}): الكمية يجب أن تكون أكبر من صفر`);
+            continue;
+          }
+          if (!Number.isFinite(avgUnitCost) || avgUnitCost < 0) {
+            errors.push(`${rowLabel} (${code}): متوسط التكلفة مطلوب (رقم ≥ 0)`);
+            continue;
+          }
+
+          const material = materialByCode.get(code.toLowerCase());
+          if (!material) {
+            errors.push(`${rowLabel} (${code}): الصنف غير موجود في شجرة الأصناف`);
+            continue;
+          }
+
+          if (existingIds.has(material.id) || importedIds.has(material.id)) {
+            skipped += 1;
+            continue;
+          }
+
+          const qty = roundMoney(quantity);
+          const unitCost = roundMoney(avgUnitCost);
+          const lineTotal = roundMoney(qty * unitCost);
+
+          await upsertProjectInventoryReceipt(
+            tx,
+            projectId,
+            material.id,
+            material.name,
+            material.unit || 'عدد',
+            qty,
+            unitCost,
+            { referenceType: 'opening_balance', referenceId: reference },
+          );
+
+          importedIds.add(material.id);
+          imported += 1;
+          totalAmount = roundMoney(totalAmount + lineTotal);
         }
-        if (!Number.isFinite(quantity) || quantity <= EPSILON) {
-          errors.push(`${rowLabel} (${code}): quantity must be greater than zero`);
-          continue;
-        }
-        if (!Number.isFinite(avgUnitCost) || avgUnitCost < 0) {
-          errors.push(`${rowLabel} (${code}): avg unit cost must be a non-negative number`);
-          continue;
-        }
 
-        const material = await tx.materialCategory.findFirst({
-          where: { code },
-          select: { id: true, code: true, name: true, unit: true },
-        });
-        if (!material) {
-          errors.push(`${rowLabel} (${code}): material category not found`);
-          continue;
-        }
+        const out: ImportResult = { imported, skipped, errors };
 
-        const existing = await getProjectInventoryByMaterial(tx, projectId, material.id);
-        if (existing) {
-          skipped += 1;
-          continue;
+        if (imported > 0 && totalAmount > 0) {
+          const transactionId = await postOpeningInventoryJournal(tx, {
+            date,
+            reference,
+            projectId,
+            projectName: project.projectName,
+            totalAmount,
+            warehouse,
+            userId: req.user?.id,
+          });
+          out.transactionId = transactionId;
+          out.reference = reference;
+          out.totalAmount = totalAmount;
         }
 
-        const qty = roundMoney(quantity);
-        const unitCost = roundMoney(avgUnitCost);
-        const lineTotal = roundMoney(qty * unitCost);
-
-        await upsertProjectInventoryReceipt(
-          tx,
-          projectId,
-          material.id,
-          material.name,
-          material.unit || 'عدد',
-          qty,
-          unitCost,
-          { referenceType: 'opening_balance', referenceId: reference },
-        );
-
-        imported += 1;
-        totalAmount = roundMoney(totalAmount + lineTotal);
-      }
-
-      const out: ImportResult = { imported, skipped, errors };
-
-      if (imported > 0 && totalAmount > 0) {
-        const transactionId = await postOpeningInventoryJournal(tx, {
-          date,
-          reference,
-          projectId,
-          projectName: project.projectName,
-          totalAmount,
-          warehouse,
-          userId: req.user?.id,
-        });
-        out.transactionId = transactionId;
-        out.reference = reference;
-        out.totalAmount = totalAmount;
-      }
-
-      return out;
-    });
+        return out;
+      },
+      { timeout: 120_000, maxWait: 15_000 },
+    );
 
     res.json(result);
   }),

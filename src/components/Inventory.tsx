@@ -36,6 +36,7 @@ import { ProjectWarehouseMovements } from './inventory/ProjectWarehouseMovements
 import { InventorySetupGuide } from './inventory/InventorySetupGuide';
 import { ConsumptionPrintNamesModal, type ConsumptionPrintNames } from './inventory/ConsumptionPrintNamesModal';
 import { OpeningInventoryImportPanel } from './inventory/OpeningInventoryImportPanel';
+import { ProjectWarehouseLinkCard } from './inventory/ProjectWarehouseLinkCard';
 import {
   type Theme,
   type ProjectInventoryItem,
@@ -967,14 +968,27 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
             </p>
           </div>
         ) : inventoryRows.length === 0 ? (
-          <div>
+          <div className="space-y-4">
+            <ProjectWarehouseLinkCard
+              theme={theme}
+              ar={ar}
+              selectedProject={selectedProject}
+              linked={linkedWarehouseAccount}
+              accounts={selectableWarehouseAccounts}
+              selectedAccountId={selectedWarehouseAccountId}
+              onSelectAccountId={setSelectedWarehouseAccountId}
+              loading={warehouseActionLoading}
+              onCreate={() => { void handleCreateAndLinkWarehouse(); }}
+              onLink={() => { void handleLinkExistingWarehouse(); }}
+              onUnlink={() => { void handleDeleteLinkedWarehouse(); }}
+            />
             <InventorySetupGuide theme={theme} />
             <div className={splitEmptyPaneCls(theme)}>
               <Package className="w-14 h-14 mx-auto mb-3 opacity-25" />
               <p className={cn('text-sm', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
                 {ar
-                  ? 'لا يوجد مخزون مشروع بعد — سجّل فاتورة مشتريات أو استورد أرصدة افتتاحية'
-                  : 'No project warehouse stock yet — post a purchase invoice or import opening balances'}
+                  ? 'لا يوجد مخزون مشروع بعد — اربط حساب 127… ثم استورد أرصدة افتتاحية من الشريط الجانبي (أو سجّل فاتورة مشتريات)'
+                  : 'No project warehouse stock yet — link a 127… account then import opening balances from the sidebar (or post a purchase invoice)'}
               </p>
             </div>
           </div>
@@ -984,95 +998,19 @@ function InventoryBalance({ contracts, contractsLoading, myContractIds, onRefres
           </div>
         ) : (
           <>
-            <div
-              className={cn(
-                'rounded-xl border p-4 flex flex-col gap-3',
-                theme === 'dark' ? 'border-gray-700 bg-gray-900/40' : 'border-gray-200 bg-white'
-              )}
-            >
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div>
-                    <p className={cn('text-sm font-bold', theme === 'dark' ? 'text-gray-100' : 'text-gray-800')}>
-                      {ar ? 'حساب مخزن المشروع' : 'Project Warehouse Account'}
-                    </p>
-                    <p className={cn('text-xs mt-1', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
-                      {linkedWarehouseAccount
-                        ? `${linkedWarehouseAccount.accountCode} — ${
-                            ar
-                              ? linkedWarehouseAccount.accountName
-                              : linkedWarehouseAccount.accountNameEn || linkedWarehouseAccount.accountName
-                          }`
-                        : ar
-                          ? 'لا يوجد حساب مخزن مربوط بهذا المشروع بعد.'
-                          : 'No warehouse account is linked to this project yet.'}
-                    </p>
-                  </div>
-                  <ManualHelpButton topicId="inventory.receipt.purchase" size={14} />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <select
-                  value={selectedWarehouseAccountId}
-                  onChange={(e) => setSelectedWarehouseAccountId(e.target.value)}
-                  title={ar ? 'اختيار حساب المخزن من شجرة الحسابات' : 'Select warehouse account from chart of accounts'}
-                  aria-label={ar ? 'اختيار حساب المخزن من شجرة الحسابات' : 'Select warehouse account from chart of accounts'}
-                  className={cn(inputCls(theme), 'min-w-72')}
-                >
-                  <option value="">
-                    {ar ? '— اختر حساب مخزن من شجرة الحسابات —' : '— Select warehouse account from COA —'}
-                  </option>
-                  {selectableWarehouseAccounts.map((a, ai) => (
-                    <option key={compositeListKey(a.accountCode, a.id, ai, 'wh-coa')} value={a.id || a.accountCode}>
-                      {a.accountCode} — {ar ? a.accountName : a.accountNameEn || a.accountName}
-                      {String(a.projectId || '').trim() === selectedProject ? (ar ? ' (مربوط حالياً)' : ' (linked)') : ''}
-                    </option>
-                  ))}
-                </select>
-
-                <button
-                  type="button"
-                  onClick={handleCreateAndLinkWarehouse}
-                  disabled={warehouseActionLoading || !!linkedWarehouseAccount}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  {warehouseActionLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-                  {ar ? 'إضافة مخزن' : 'Add Warehouse'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleLinkExistingWarehouse}
-                  disabled={warehouseActionLoading || !selectedWarehouseAccountId}
-                  className={cn(
-                    'px-3 py-2 rounded-lg text-sm border transition-colors disabled:opacity-50',
-                    theme === 'dark'
-                      ? 'border-gray-600 text-gray-200 hover:bg-gray-800'
-                      : 'border-gray-300 text-gray-700 hover:bg-gray-50'
-                  )}
-                >
-                  {ar ? 'ربط الحساب المختار' : 'Link Selected Account'}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleDeleteLinkedWarehouse}
-                  disabled={warehouseActionLoading || !linkedWarehouseAccount}
-                  className="px-3 py-2 rounded-lg text-sm border border-red-400 text-red-500 hover:bg-red-500/10 transition-colors disabled:opacity-50"
-                >
-                  {ar ? 'حذف المخزن' : 'Delete Warehouse'}
-                </button>
-              </div>
-
-              {selectableWarehouseAccounts.length === 0 && (
-                <p className="text-[11px] text-amber-500">
-                  {ar
-                    ? 'لا توجد حسابات مخزن متاحة تحت 127 بكود 8 أرقام. استخدم زر إضافة مخزن لإنشاء حساب جديد.'
-                    : 'No available 8-digit warehouse accounts under 127. Use Add Warehouse to create one.'}
-                </p>
-              )}
-            </div>
+            <ProjectWarehouseLinkCard
+              theme={theme}
+              ar={ar}
+              selectedProject={selectedProject}
+              linked={linkedWarehouseAccount}
+              accounts={selectableWarehouseAccounts}
+              selectedAccountId={selectedWarehouseAccountId}
+              onSelectAccountId={setSelectedWarehouseAccountId}
+              loading={warehouseActionLoading}
+              onCreate={() => { void handleCreateAndLinkWarehouse(); }}
+              onLink={() => { void handleLinkExistingWarehouse(); }}
+              onUnlink={() => { void handleDeleteLinkedWarehouse(); }}
+            />
 
             <div className={cn('border rounded-xl overflow-hidden', theme === 'dark' ? 'border-gray-700' : 'border-gray-200')}>
               <div className="overflow-x-auto">

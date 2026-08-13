@@ -6,7 +6,7 @@ import { useLanguage } from '../../context/LanguageContext';
 import { inventoryApi } from '../../services/local/modulesApi';
 import {
   exportOpeningInventoryTemplate,
-  parseOpeningInventoryFile,
+  parseOpeningInventoryWorkbook,
 } from '../../lib/inventoryOpeningExcel';
 import { ApiError } from '../../lib/apiClient';
 import toast from 'react-hot-toast';
@@ -43,14 +43,18 @@ export function OpeningInventoryImportPanel({
     setOpeningImportLoading(true);
     try {
       const buffer = await file.arrayBuffer();
-      const parsed = parseOpeningInventoryFile(buffer);
-      if (parsed.length === 0) {
+      const parsed = parseOpeningInventoryWorkbook(buffer);
+      if (parsed.isMaterialsTreeFile) {
+        toast.error(t('inventory_opening_wrong_file'));
+        return;
+      }
+      if (parsed.rows.length === 0) {
         toast.error(t('inventory_opening_empty_file'));
         return;
       }
       const result = await inventoryApi.importOpeningBalances(projectId, {
         date: openingImportDate,
-        rows: parsed.map((r) => ({
+        rows: parsed.rows.map((r) => ({
           materialCategoryCode: r.materialCategoryCode,
           quantity: r.quantity,
           avgUnitCost: r.avgUnitCost,
@@ -107,6 +111,11 @@ export function OpeningInventoryImportPanel({
       <p className={cn('text-[10px] leading-snug', theme === 'dark' ? 'text-gray-500' : 'text-gray-500')}>
         {t('inventory_opening_hint')}
       </p>
+      {!hasWarehouse && (
+        <p className="text-[11px] font-medium text-amber-600">
+          {t('inventory_opening_need_warehouse')}
+        </p>
+      )}
       <div className="flex gap-2">
         <button
           type="button"

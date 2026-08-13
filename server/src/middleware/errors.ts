@@ -40,6 +40,11 @@ function prismaError(error: unknown): { status: number; message: string } | null
           message:
             'تعذّر الاتصال بقاعدة البيانات. تأكد أن PostgreSQL يعمل على localhost:5432 ثم أعد تشغيل npm run dev:local.',
         };
+      case 'P2028':
+        return {
+          status: 503,
+          message: 'العملية استغرقت وقتاً طويلاً. أعد المحاولة أو قسّم ملف الاستيراد.',
+        };
       default:
         return { status: 400, message: error.message };
     }

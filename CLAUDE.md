@@ -1032,6 +1032,25 @@ npm run test -- src/lib/materialsTreeExcel.test.ts src/lib/operationsManual.test
 
 ---
 
+## 🔴 HANDOFF — استيراد أرصدة افتتاحية لكل مشروع ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** عمود `الرصيد` في شجرة الأصناف **لا** يُستورد. المسار الصحيح: مخزون → رصيد المخزن → مشروع → **استيراد أرصدة افتتاحية**. الزر كان معطّلاً لأن ربط حساب **127…** كان مخفياً والشاشة فارغة.
+
+### المسار
+
+1. شجرة الأصناف (تعريفات فقط).
+2. **إضافة مخزن / ربط 127…** على شاشة الرصيد الفارغة.
+3. قالب **كود الصنف · الكمية · متوسط التكلفة** ثم الاستيراد لهذا المشروع.
+
+ملف شجرة الأصناف يُرفض برسالة واضحة. لا تخلط `الرصيد` من قالب الأصناف مع هذا الاستيراد.
+
+```powershell
+npm run test -- src/lib/inventoryOpeningExcel.test.ts
+# رصيد المخزن → إضافة مخزن → قالب أرصدة → استيراد
+```
+
+---
+
 ## 🔴 HANDOFF — الوضع الافتراضي: شركة فارغة + شجرة حسابات ✅ (2026-08-13)
 
 > **جلسة 2026-08-13:** مسح المجموعات من Electron ترك مشاريع · عقود · BOQ · أصناف · بنوك · طلبات شراء · تنبيهات لأن تلك الجداول خارج `CLEAR_DATA_GROUPS`. زر **الوضع الافتراضي** يفرّغ Postgres بالكامل ثم يزرع COA مع الإبقاء على `myline78@gmail.com`.
@@ -1919,7 +1938,9 @@ Client: `src/lib/materialsTreeExcel.ts` → `materialsApi.importTree(rows)`. Mig
 
 | Piece | Detail |
 |-------|--------|
-| Excel | `src/lib/inventoryOpeningExcel.ts` — columns: Category Code / كود الصنف · Quantity / الكمية · Avg Unit Cost / متوسط التكلفة |
+| Excel | `src/lib/inventoryOpeningExcel.ts` — columns: Category Code / كود الصنف · Quantity / الكمية · Avg Unit Cost / متوسط التكلفة. **Not** the materials-tree `الرصيد` column. |
+| UI empty | `ProjectWarehouseLinkCard` on empty balance screen so 127… can be linked before import |
+| Wrong file | Materials-tree workbook is rejected (`isMaterialsTreeFile`) |
 | API | `POST /api/inventory/project/:projectId/opening-import` — admin / PM / `inventory.create` + project access |
 | Stock | `upsertProjectInventoryReceipt` with `referenceType: 'opening_balance'`; **skip** if `project_inventory` row already exists |
 | GL | One journal `INV-OPEN-{projectCode}-…` — Dr project **127…** / Cr **جاري الشركاء `31401001`** (`openingInventoryJournal.ts`) |

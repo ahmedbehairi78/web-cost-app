@@ -8,16 +8,16 @@ export function InventorySetupGuide({ theme }: { theme: Theme }) {
   const ar = language === 'ar';
   const steps = ar
     ? [
-        { n: '1', title: 'شجرة الأصناف', body: 'من تبويب «الأصناف» هنا أو من أسفل موديول المشاريع — أنشئ مجموعات وأصناف المواد.' },
-        { n: '2', title: 'ربط BOQ', body: 'في جدول الكميات → زر الحزمة على البند — اختر الأصناف المسموح صرفها لهذا البند.' },
-        { n: '3', title: 'فاتورة موزعة', body: 'التكاليف الفعلية → فاتورة مشتريات → اختر الصنف لكل بند واحفظ بحالة مؤكدة لتسجيل الوارد في المخزون.' },
-        { n: '4', title: 'صرف وتحويل', body: 'من رصيد المخزون: «أمر صرف جديد» أو «صرف» على صف؛ من تبويب التحويلات: نقل بين العقود.' },
+        { n: '1', title: 'شجرة الأصناف', body: 'من تبويب «الأصناف» عرّف المجموعات والأصناف. عمود الرصيد في ذلك الملف يُتجاهل.' },
+        { n: '2', title: 'حساب مخزن 127', body: 'من هذه الشاشة: «إضافة مخزن» أو ربط حساب 127… بالمشروع — بدون ذلك زر استيراد الأرصدة يبقى معطّلاً.' },
+        { n: '3', title: 'أرصدة افتتاحية', body: 'من الشريط الجانبي: نزّل «قالب أرصدة افتتاحية» (كود الصنف · الكمية · متوسط التكلفة) ثم «استيراد أرصدة افتتاحية» لهذا المشروع فقط.' },
+        { n: '4', title: 'صرف وتحويل', body: 'بعد ظهور الرصيد: «أمر صرف جديد» أو تبويب التحويلات. فاتورة المشتريات تسجّل الوارد اللاحق.' },
       ]
     : [
-        { n: '1', title: 'Materials tree', body: 'Use the Materials tab here (or Projects module) to define groups and categories.' },
-        { n: '2', title: 'Link BOQ', body: 'In BOQ → Package on a line → pick allowed materials for that item.' },
-        { n: '3', title: 'Distributed invoice', body: 'Actual Costs → purchase invoice → material per line → save as confirmed to post stock.' },
-        { n: '4', title: 'Issue & return', body: 'Balance tab: consumption order; History tab: returns. Legacy contract transfers are frozen.' },
+        { n: '1', title: 'Materials tree', body: 'Use the Materials tab to define groups and categories. The Balance column in that file is ignored.' },
+        { n: '2', title: '127 warehouse account', body: 'On this screen: Add Warehouse or link a 127… account to the project — otherwise opening-balance import stays disabled.' },
+        { n: '3', title: 'Opening balances', body: 'Sidebar: download the opening-balances template (Category Code · Quantity · Avg Unit Cost) then Import opening balances for this project only.' },
+        { n: '4', title: 'Issue & transfer', body: 'After stock appears: new consumption order or Transfers tab. Later receipts go through purchase invoices.' },
       ];
 
   return (

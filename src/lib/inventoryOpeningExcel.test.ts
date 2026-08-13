@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as XLSX from 'xlsx';
-import { parseOpeningInventoryFile } from './inventoryOpeningExcel';
+import { parseOpeningInventoryFile, parseOpeningInventoryWorkbook } from './inventoryOpeningExcel';
 
 function toUint8(written: unknown): Uint8Array {
   if (written instanceof Uint8Array) return written;
@@ -61,5 +61,35 @@ describe('parseOpeningInventoryFile', () => {
       quantity: 3,
       avgUnitCost: 500.5,
     });
+  });
+
+  it('skips rows without quantity or unit cost instead of sending NaN', () => {
+    const rows = parseFromRows([
+      { 'كود الصنف': 'A-1', الكمية: '', 'متوسط التكلفة': 10 },
+      { 'كود الصنف': 'A-2', الكمية: 5, 'متوسط التكلفة': '' },
+      { 'كود الصنف': 'A-3', الكمية: 2, 'متوسط التكلفة': 12 },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.materialCategoryCode).toBe('A-3');
+  });
+
+  it('rejects the materials-tree workbook instead of reading الرصيد', () => {
+    const ws = XLSX.utils.json_to_sheet([
+      {
+        'كود المجموعة': 'BLK',
+        Code: 'Block / Building',
+        'اسم المجموعة': 'بناء',
+        'كود الصنف': 'BLK-001',
+        'اسم الصنف': 'اسمنت',
+        الوحدة: 'شيكارة',
+        الرصيد: 40,
+      },
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Materials');
+    const written = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    const parsed = parseOpeningInventoryWorkbook(toUint8(written));
+    expect(parsed.isMaterialsTreeFile).toBe(true);
+    expect(parsed.rows).toHaveLength(0);
   });
 });
