@@ -191,7 +191,7 @@ npm run test -- src/lib/shellWindowPolicy.test.ts
 | `activity`, `sample_data` | admin |
 | `coa` | `settings` + `ledger.view` |
 
-- **صيانة البيانات:** المسح بالمجموعات **لا** يفرّغ المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. للشركة الفارغة استخدم **«الوضع الافتراضي»** → `POST /api/financial-maintenance/factory-reset` (يُبقى `myline78@gmail.com` + شجرة الحسابات القياسية). Electron = Railway Postgres؛ `dev:local` = Postgres المحلي.
+- **صيانة البيانات:** المسح بالمجموعات **لا** يفرّغ المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. للشركة الفارغة استخدم **«الوضع الافتراضي»** → `POST /api/financial-maintenance/factory-reset` (يُبقى `myline78@gmail.com` + شجرة الحسابات القياسية). بعد النجاح: رسالة «تم العودة إلى الوضع الافتراضي» وزر «إعادة الدخول» — لا `quit` فوري. Electron = Railway Postgres؛ `dev:local` = Postgres المحلي.
 - **`SETTINGS_ADMIN_VIEW_IDS`** في `canOpenModuleView(..., { isAdmin })`.
 - **`TopNavBar`**: كل sub-view يمرّ عبر `canOpenModuleView`.
 - **نوافذ عائمة متسلسلة:** `SettingsFloatingDialog` (portal + `SHELL_MODAL_Z` / `SHELL_MODAL_STACK_Z`) لـ Backup · Clear · User · `AdminSensitiveVerifyModal`. الأب يُخفى أثناء التحقق ثم يعود. تأكيد تعطيل مركز تكلفة عبر `useConfirm()` (لا `window.confirm`).

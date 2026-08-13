@@ -407,6 +407,12 @@ ipcMain.handle('app-quit', () => {
   app.quit();
 });
 
+/** Close every window and start a fresh instance on the login screen. */
+ipcMain.handle('app-relaunch', () => {
+  app.relaunch();
+  app.quit();
+});
+
 ipcMain.handle('clear-desktop-session', async () => {
   await clearDesktopAuthCookies();
 });

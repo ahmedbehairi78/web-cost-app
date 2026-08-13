@@ -351,7 +351,10 @@ const translations: Record<Language, Record<string, string>> = {
     settings_factory_reset_keep:
       'يُبقى حساب الأدمن myline78@gmail.com (وكلمة المرور الحالية) مع صلاحيات كاملة. الحساب الحالي يُبقى أيضاً إن لم يكن هو نفس البريد حتى لا تُقفل الجلسة.',
     settings_factory_reset_running: 'جارٍ ضبط المصنع، لا تغلق الصفحة…',
-    settings_factory_reset_success: 'تم ضبط المصنع. الحسابات المتبقية: {emails}. سجّل الدخول من جديد.',
+    settings_factory_reset_success: 'تم ضبط المصنع. الحسابات المتبقية: {emails}.',
+    settings_factory_reset_done_title: 'تم العودة إلى الوضع الافتراضي',
+    settings_factory_reset_done_body: 'يجب إعادة الدخول الآن. اضغط الزر لإغلاق التطبيق وفتح شاشة تسجيل الدخول.',
+    settings_factory_reset_relogin_btn: 'إعادة الدخول',
     settings_factory_reset_confirm_hint: 'اكتب ضبط المصنع أو FACTORY للمتابعة (لا يهم حجم الحروف).',
     settings_factory_reset_stale_api:
       'مسار ضبط المصنع غير موجود على الـ API. أوقف العملية على المنفذ 3001 ثم أعد npm run local:api (أو انشر Railway للكترون).',
@@ -2319,7 +2322,7 @@ const translations: Record<Language, Record<string, string>> = {
       'بعد المسح الجزئي: أعد seed COA من Settings إن لزم · backfill-gl · verify-postgres.',
     manual_settings_database_maintenance_step_6_title: 'الوضع الافتراضي (شركة فارغة)',
     manual_settings_database_maintenance_step_6_body:
-      'زر «الوضع الافتراضي — شركة فارغة» يفرّغ كل جداول Postgres (بما فيها المشاريع والعقود وBOQ والأصناف وحسابات البنوك وطلبات الشراء والتنبيهات وبيانات الشركة) ثم يزرع شجرة الحسابات القياسية. يُبقى myline78@gmail.com. اكتب «ضبط المصنع» + تحقق الهوية. بعدها سجّل الدخول من جديد. Electron يطبّق على قاعدة Railway؛ npm run dev:local على Postgres المحلي.',
+      'زر «الوضع الافتراضي — شركة فارغة» يفرّغ كل جداول Postgres (بما فيها المشاريع والعقود وBOQ والأصناف وحسابات البنوك وطلبات الشراء والتنبيهات وبيانات الشركة) ثم يزرع شجرة الحسابات القياسية. يُبقى myline78@gmail.com. اكتب «ضبط المصنع» + تحقق الهوية. بعد النجاح تظهر رسالة «تم العودة إلى الوضع الافتراضي» وزر «إعادة الدخول» — لا يُغلق التطبيق فوراً. الزر يغلق Electron ويعيد فتح شاشة الدخول (أو يعيد تحميل المتصفح). Electron يطبّق على قاعدة Railway؛ npm run dev:local على Postgres المحلي.',
     manual_settings_users_manage_title: 'إدارة المستخدمين والصلاحيات',
     manual_settings_users_manage_summary:
       'إنشاء/تعديل users: role، permissions CRUD، assignedContractIds — Google sign-in فقط.',
@@ -2744,7 +2747,10 @@ const translations: Record<Language, Record<string, string>> = {
     settings_factory_reset_keep:
       'Keeps admin myline78@gmail.com (and the current password) with full permissions. The signed-in account is also kept if it is a different email so you are not locked out.',
     settings_factory_reset_running: 'Resetting to factory default, do not close…',
-    settings_factory_reset_success: 'Factory reset complete. Remaining accounts: {emails}. Sign in again.',
+    settings_factory_reset_success: 'Factory reset complete. Remaining accounts: {emails}.',
+    settings_factory_reset_done_title: 'Returned to factory default',
+    settings_factory_reset_done_body: 'You must sign in again now. The button closes the app and reopens the login screen.',
+    settings_factory_reset_relogin_btn: 'Sign in again',
     settings_factory_reset_confirm_hint: 'Type FACTORY or ضبط المصنع to continue (letter case does not matter).',
     settings_factory_reset_stale_api:
       'Factory-reset API route is missing. Stop the process on port 3001 then restart npm run local:api (or deploy Railway for Electron).',
@@ -4714,7 +4720,7 @@ const translations: Record<Language, Record<string, string>> = {
       'After a partial wipe: re-seed COA from Settings if needed · backfill-gl · verify-postgres.',
     manual_settings_database_maintenance_step_6_title: 'Factory default (empty company)',
     manual_settings_database_maintenance_step_6_body:
-      'Factory default — empty company truncates all Postgres tables (projects, contracts, BOQ, materials, bank accounts, purchase requests, notifications, company settings) then seeds the standard COA. Keeps myline78@gmail.com. Type FACTORY + identity verify. Then sign in again. Electron hits Railway; npm run dev:local hits local Postgres.',
+      'Factory default — empty company truncates all Postgres tables (projects, contracts, BOQ, materials, bank accounts, purchase requests, notifications, company settings) then seeds the standard COA. Keeps myline78@gmail.com. Type FACTORY + identity verify. After success a dialog says you returned to factory default — the app does not quit immediately. Use Sign in again to close Electron and reopen the login screen (or reload in the browser). Electron hits Railway; npm run dev:local hits local Postgres.',
     manual_settings_users_manage_title: 'User management & permissions',
     manual_settings_users_manage_summary:
       'Create/edit users: role, CRUD permissions, assignedContractIds — Google sign-in only.',

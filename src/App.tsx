@@ -15,10 +15,10 @@ import { Login } from './components/Login';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, onIdTokenChanged, signOut, getRedirectResult } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, CheckCircle2, LogIn, Loader2 } from 'lucide-react';
 import { useLanguage } from './context/LanguageContext';
 import { cn } from './lib/utils';
-import { isAppTheme, shellAppBackground, shellSidebarWidth, usesTopNav, ERP_GRADIENT_BG, SHELL_MAIN_CLASS } from './lib/shellTheme';
+import { SHELL_MODAL_STACK_Z, isAppTheme, shellAppBackground, shellSidebarWidth, usesTopNav, ERP_GRADIENT_BG, SHELL_MAIN_CLASS } from './lib/shellTheme';
 import { isErpTheme } from './lib/erpBrand';
 import { type AppUser, type UserPermissions, ALL_PERMISSIONS, DEFAULT_PERMISSIONS, type UserRole } from './types';
 import { DEFAULT_MODULE, MODULE_LABELS, NONE_DEFAULT_MODULE, isNoDefaultModule } from './constants/modules';
@@ -65,12 +65,18 @@ import {
 import {
   performAppLogout,
   performColdStartAuthReset,
+  performFactoryResetReentry,
   readSessionUserLock,
   writeSessionUserLock,
   mustPasswordLogin,
   clearFreshLoginRequired,
 } from './lib/sessionLogout';
-import { API_UNAUTHORIZED_EVENT, isApiUnauthorizedLogoutSuppressed } from './lib/apiSession';
+import {
+  API_UNAUTHORIZED_EVENT,
+  FACTORY_RESET_DONE_EVENT,
+  clearApiUnauthorizedLogoutSuppress,
+  isApiUnauthorizedLogoutSuppressed,
+} from './lib/apiSession';
 import { useIdleLogout } from './hooks/useIdleLogout';
 import { OfflineStatusBar } from './components/offline/OfflineStatusBar';
 import { PendingSyncPanel, usePendingSyncPanelState } from './components/offline/PendingSyncPanel';
@@ -1108,8 +1114,86 @@ export default function App() {
             />
           </>
         )}
+        <FactoryResetReentryGate onFreezeShell={closeAllWindows} />
       </ErpWorkspaceProvider>
     </>
+  );
+}
+
+/** Full-screen prompt after factory reset — modules are frozen; session is already gone. */
+function FactoryResetReentryGate({ onFreezeShell }: { onFreezeShell: () => void }) {
+  const erp = useErpWorkspace();
+  const { t, theme, dir } = useLanguage();
+  const [keptEmails, setKeptEmails] = useState<string[] | null>(null);
+  const [reentering, setReentering] = useState(false);
+
+  useEffect(() => {
+    const onDone = (e: Event) => {
+      const emails = (e as CustomEvent<{ keptEmails?: string[] }>).detail?.keptEmails ?? [];
+      onFreezeShell();
+      erp.closeWorkspace();
+      setKeptEmails(emails);
+    };
+    window.addEventListener(FACTORY_RESET_DONE_EVENT, onDone);
+    return () => window.removeEventListener(FACTORY_RESET_DONE_EVENT, onDone);
+  }, [erp, onFreezeShell]);
+
+  if (keptEmails === null) return null;
+
+  const isDark = theme === 'dark';
+
+  return (
+    <div
+      className={cn(
+        'fixed inset-0 flex items-center justify-center p-4',
+        SHELL_MODAL_STACK_Z,
+      )}
+      dir={dir}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="absolute inset-0 bg-black/70" />
+      <div
+        className={cn(
+          'relative w-full max-w-lg rounded-2xl border shadow-2xl p-6 space-y-4',
+          isDark ? 'bg-[#1a1d23] border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900',
+        )}
+      >
+        <div className="flex items-center gap-2 text-emerald-500">
+          <CheckCircle2 size={22} />
+          <h3 className="text-lg font-bold">{t('settings_factory_reset_done_title')}</h3>
+        </div>
+        <div
+          className={cn(
+            'rounded-xl border p-4 space-y-2 text-sm',
+            isDark ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-emerald-50 border-emerald-200',
+          )}
+        >
+          <p className={isDark ? 'text-emerald-300' : 'text-emerald-800'}>
+            {t('settings_factory_reset_done_body')}
+          </p>
+          {keptEmails.length > 0 && (
+            <p className={cn('text-xs', isDark ? 'text-emerald-400/80' : 'text-emerald-700')}>
+              {t('settings_factory_reset_success').replace('{emails}', keptEmails.join(', '))}
+            </p>
+          )}
+        </div>
+        <button
+          type="button"
+          disabled={reentering}
+          onClick={() => {
+            if (reentering) return;
+            setReentering(true);
+            clearApiUnauthorizedLogoutSuppress();
+            void performFactoryResetReentry();
+          }}
+          className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+        >
+          {reentering ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+          {t('settings_factory_reset_relogin_btn')}
+        </button>
+      </div>
+    </div>
   );
 }
 

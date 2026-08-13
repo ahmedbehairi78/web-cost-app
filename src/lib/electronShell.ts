@@ -7,6 +7,7 @@ type WebCostDesktopBridge = {
   /** Secondary Electron window opened via Ctrl+N / New GUI — reuse session cookies. */
   reuseSession?: boolean;
   quitApp?: () => Promise<void>;
+  relaunchApp?: () => Promise<void>;
   clearSession?: () => Promise<void>;
   maximizeWindow?: () => Promise<boolean>;
   openNewWindow?: () => Promise<boolean>;
@@ -85,17 +86,33 @@ export function requestRevealDesktopWindow(): void {
 }
 
 /** Clear persisted session cookies/storage in the desktop partition (cold start / logout). */
-export function clearDesktopSessionStorage(): void {
+export function clearDesktopSessionStorage(): Promise<void> {
   const bridge = desktopBridge();
   if (bridge?.clearSession) {
-    void bridge.clearSession().catch(() => undefined);
+    return bridge.clearSession().catch(() => undefined);
   }
+  return Promise.resolve();
 }
 /** Close the desktop shell entirely (no-op in browser). */
 export function requestAppQuit(): void {
   const bridge = desktopBridge();
   if (bridge?.quitApp) {
     void bridge.quitApp().catch(() => undefined);
+  }
+}
+
+/**
+ * Quit and start a fresh Electron instance (login screen).
+ * Returns false when the packaged shell is too old (no IPC) — caller should reload.
+ */
+export async function requestAppRelaunch(): Promise<boolean> {
+  const bridge = desktopBridge();
+  if (!bridge?.relaunchApp) return false;
+  try {
+    await bridge.relaunchApp();
+    return true;
+  } catch {
+    return false;
   }
 }
 

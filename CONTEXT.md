@@ -198,7 +198,7 @@ web-cost-app/
 
 **لا تراجع:** استخدم `usePermissions().isAdmin` في `Settings.tsx` — لا `authApi.me()` منفصل للدور. ERP: `TopNavBar` يمرّر `{ isAdmin }` إلى `canOpenModuleView`.
 
-**الوضع الافتراضي (2026-08-13):** مسح الوحدات بالمجموعات **لا** يحذف المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. زر **«الوضع الافتراضي — شركة فارغة»** (`POST /api/financial-maintenance/factory-reset`) يفرّغ Postgres ثم يزرع شجرة الحسابات ويبقي `myline78@gmail.com`. Electron = Railway؛ `dev:local` = Postgres المحلي.
+**الوضع الافتراضي (2026-08-13):** مسح الوحدات بالمجموعات **لا** يحذف المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. زر **«الوضع الافتراضي — شركة فارغة»** (`POST /api/financial-maintenance/factory-reset`) يفرّغ Postgres ثم يزرع شجرة الحسابات ويبقي `myline78@gmail.com`. بعد النجاح تظهر رسالة + زر **إعادة الدخول** (لا إغلاق مفاجئ). Electron = Railway؛ `dev:local` = Postgres المحلي.
 
 **حفظ إعدادات العرض (2026-06-26):**
 

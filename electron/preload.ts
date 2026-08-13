@@ -19,6 +19,7 @@ contextBridge.exposeInMainWorld('webCostDesktop', {
   /** Secondary OS window — keep Express cookies; skip cold-start logout. */
   reuseSession,
   quitApp: () => ipcRenderer.invoke('app-quit') as Promise<void>,
+  relaunchApp: () => ipcRenderer.invoke('app-relaunch') as Promise<void>,
   clearSession: () => ipcRenderer.invoke('clear-desktop-session') as Promise<void>,
   maximizeWindow: () => ipcRenderer.invoke('window-maximize') as Promise<boolean>,
   openNewWindow: () => ipcRenderer.invoke('open-new-window') as Promise<boolean>,

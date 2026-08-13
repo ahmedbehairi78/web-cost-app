@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { cn } from '../../lib/utils';
+import { cn, listKey } from '../../lib/utils';
 import type { ContractProgressPieSlice } from '../../lib/dashboardMetrics';
 import {
   frontOuterWallPath,
@@ -98,7 +98,7 @@ export function DashboardPie3D({
             </filter>
           </defs>
 
-          {painted.map((slice) => {
+          {painted.map((slice, sliceIdx) => {
             const selected = selectedContractId === slice.id;
             const hovered = hoverId === slice.id;
             const dimmed =
@@ -117,7 +117,7 @@ export function DashboardPie3D({
 
             return (
               <g
-                key={slice.id}
+                key={listKey(slice.id, sliceIdx, 'pie3d')}
                 opacity={opacity}
                 filter="url(#pie3d-soft)"
                 className="cursor-pointer"
@@ -263,10 +263,10 @@ export function DashboardPie3D({
       >
         {slices
           .filter((s) => s.completedValue > 0)
-          .map((s) => {
+          .map((s, i) => {
             const active = selectedContractId === s.contractId;
             return (
-              <li key={s.contractId}>
+              <li key={listKey(s.contractId, i, 'pie-leg')}>
                 <button
                   type="button"
                   className={cn(

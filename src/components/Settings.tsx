@@ -40,6 +40,7 @@ import {
   PenLine,
   FlaskConical,
   RotateCcw,
+  LogIn,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { IndirectCostCentersPanel } from './settings/IndirectCostCentersPanel';
@@ -92,7 +93,7 @@ import { FIRESTORE_BACKUP_COLLECTIONS, POSTGRES_BACKUP_COLLECTIONS } from '../co
 import { isAppTheme, isSoftLikeTheme } from '../lib/shellTheme';
 import { consumePendingShellView } from '../lib/shellNavigation';
 import { authApi } from '../services/local/authApi';
-import { performAppLogout } from '../lib/sessionLogout';
+import { performAppLogout, performFactoryResetReentry } from '../lib/sessionLogout';
 import { labelBackupImportSkip } from '../lib/backupImportSkipLabels';
 import {
   isFullVisibleShellModulesWhitelist,
@@ -112,6 +113,7 @@ import {
 } from '../lib/backupImportReport';
 import {
   clearApiUnauthorizedLogoutSuppress,
+  notifyFactoryResetDone,
   suppressApiUnauthorizedLogout,
 } from '../lib/apiSession';
 import { ApiError } from '../lib/apiClient';
@@ -1284,6 +1286,9 @@ function FactoryResetModal({
   const { t } = useLanguage();
   const [confirmText, setConfirmText] = useState('');
   const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+  const [keptEmails, setKeptEmails] = useState<string[]>([]);
+  const [reentering, setReentering] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
   const [lastError, setLastError] = useState('');
 
@@ -1296,15 +1301,10 @@ function FactoryResetModal({
     try {
       const result = await financialMaintenanceApi.factoryReset();
       await clearAllOfflineClientData();
-      suppressApiUnauthorizedLogout();
-      toast.success(
-        t('settings_factory_reset_success').replace(
-          '{emails}',
-          (result.keptEmails ?? []).join(', '),
-        ),
-      );
-      onClose();
-      await performAppLogout();
+      notifyFactoryResetDone(result.keptEmails ?? []);
+      setKeptEmails(result.keptEmails ?? []);
+      setDone(true);
+      setRunning(false);
     } catch (e) {
       const msg =
         e instanceof ApiError && e.status === 404
@@ -1321,9 +1321,16 @@ function FactoryResetModal({
   };
 
   const handleReset = () => {
-    if (!confirmed || running) return;
+    if (!confirmed || running || done) return;
     setLastError('');
     setVerifyOpen(true);
+  };
+
+  const handleReenter = () => {
+    if (reentering) return;
+    setReentering(true);
+    clearApiUnauthorizedLogoutSuppress();
+    void performFactoryResetReentry();
   };
 
   const panelCls = cn(
@@ -1339,17 +1346,19 @@ function FactoryResetModal({
         theme={theme}
         dir={dir}
         layer="base"
-        closeOnBackdrop={!running}
-        onClose={onClose}
+        closeOnBackdrop={!running && !done}
+        onClose={done ? undefined : onClose}
         panelClassName="max-w-lg"
       >
         <div className={panelCls} dir={dir}>
           <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-2 text-red-500">
-              <RotateCcw size={22} />
-              <h3 className="text-lg font-bold">{t('settings_factory_reset_title')}</h3>
+            <div className={cn('flex items-center gap-2', done ? 'text-emerald-500' : 'text-red-500')}>
+              {done ? <CheckCircle2 size={22} /> : <RotateCcw size={22} />}
+              <h3 className="text-lg font-bold">
+                {done ? t('settings_factory_reset_done_title') : t('settings_factory_reset_title')}
+              </h3>
             </div>
-            {!running && (
+            {!running && !done && (
               <button
                 type="button"
                 onClick={onClose}
@@ -1361,68 +1370,99 @@ function FactoryResetModal({
             )}
           </div>
 
-          <div
-            className={cn(
-              'rounded-xl border p-4 mb-5 space-y-2 text-sm',
-              theme === 'dark' ? 'bg-red-950/30 border-red-900/50' : 'bg-red-50 border-red-200',
-            )}
-          >
-            <p className="text-red-400">{t('settings_factory_reset_body')}</p>
-            <p className="font-bold text-red-500">{t('settings_factory_reset_keep')}</p>
-          </div>
-
-          {lastError && !running && (
-            <div className={cn('rounded-xl border p-3 mb-4 text-sm', theme === 'dark' ? 'bg-red-950/40 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-800')}>
-              {lastError}
-            </div>
-          )}
-
-          {running && (
-            <div className="flex items-center justify-center gap-3 py-4 text-red-400">
-              <Loader2 size={20} className="animate-spin" />
-              <span className="font-bold text-sm">{t('settings_factory_reset_running')}</span>
-            </div>
-          )}
-
-          {!running && (
-            <>
-              <p className="text-sm text-gray-400 mb-2">
-                {t('settings_factory_reset_confirm_hint')}
-              </p>
-              <input
-                type="text"
-                value={confirmText}
-                onChange={(e) => setConfirmText(e.target.value)}
-                placeholder={language === 'ar' ? 'ضبط المصنع أو FACTORY' : 'FACTORY or ضبط المصنع'}
+          {done ? (
+            <div className="space-y-4">
+              <div
                 className={cn(
-                  'w-full border rounded-xl py-2 px-3 text-sm outline-none mb-4 transition-colors',
-                  theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900',
-                  confirmed ? 'border-red-500' : '',
+                  'rounded-xl border p-4 space-y-2 text-sm',
+                  theme === 'dark' ? 'bg-emerald-950/30 border-emerald-900/50' : 'bg-emerald-50 border-emerald-200',
                 )}
-              />
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className={cn(
-                    'flex-1 py-2 rounded-xl text-sm font-bold border transition-colors',
-                    theme === 'dark'
-                      ? 'border-gray-700 text-gray-400 hover:bg-gray-800'
-                      : 'border-gray-300 text-gray-500 hover:bg-gray-100',
-                  )}
-                >
-                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleReset}
-                  disabled={!confirmed}
-                  className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:text-red-700 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
-                >
-                  <RotateCcw size={16} />
-                  {t('settings_factory_reset_btn')}
-                </button>
+              >
+                <p className={theme === 'dark' ? 'text-emerald-300' : 'text-emerald-800'}>
+                  {t('settings_factory_reset_done_body')}
+                </p>
+                {keptEmails.length > 0 && (
+                  <p className={cn('text-xs', theme === 'dark' ? 'text-emerald-400/80' : 'text-emerald-700')}>
+                    {t('settings_factory_reset_success').replace('{emails}', keptEmails.join(', '))}
+                  </p>
+                )}
               </div>
+              <button
+                type="button"
+                onClick={handleReenter}
+                disabled={reentering}
+                className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-500 disabled:bg-blue-900 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+              >
+                {reentering ? <Loader2 size={18} className="animate-spin" /> : <LogIn size={18} />}
+                {t('settings_factory_reset_relogin_btn')}
+              </button>
+            </div>
+          ) : (
+            <>
+              <div
+                className={cn(
+                  'rounded-xl border p-4 mb-5 space-y-2 text-sm',
+                  theme === 'dark' ? 'bg-red-950/30 border-red-900/50' : 'bg-red-50 border-red-200',
+                )}
+              >
+                <p className="text-red-400">{t('settings_factory_reset_body')}</p>
+                <p className="font-bold text-red-500">{t('settings_factory_reset_keep')}</p>
+              </div>
+
+              {lastError && !running && (
+                <div className={cn('rounded-xl border p-3 mb-4 text-sm', theme === 'dark' ? 'bg-red-950/40 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-800')}>
+                  {lastError}
+                </div>
+              )}
+
+              {running && (
+                <div className="flex items-center justify-center gap-3 py-4 text-red-400">
+                  <Loader2 size={20} className="animate-spin" />
+                  <span className="font-bold text-sm">{t('settings_factory_reset_running')}</span>
+                </div>
+              )}
+
+              {!running && (
+                <>
+                  <p className="text-sm text-gray-400 mb-2">
+                    {t('settings_factory_reset_confirm_hint')}
+                  </p>
+                  <input
+                    type="text"
+                    value={confirmText}
+                    onChange={(e) => setConfirmText(e.target.value)}
+                    placeholder={language === 'ar' ? 'ضبط المصنع أو FACTORY' : 'FACTORY or ضبط المصنع'}
+                    className={cn(
+                      'w-full border rounded-xl py-2 px-3 text-sm outline-none mb-4 transition-colors',
+                      theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900',
+                      confirmed ? 'border-red-500' : '',
+                    )}
+                  />
+                  <div className="flex gap-3">
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className={cn(
+                        'flex-1 py-2 rounded-xl text-sm font-bold border transition-colors',
+                        theme === 'dark'
+                          ? 'border-gray-700 text-gray-400 hover:bg-gray-800'
+                          : 'border-gray-300 text-gray-500 hover:bg-gray-100',
+                      )}
+                    >
+                      {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleReset}
+                      disabled={!confirmed}
+                      className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:text-red-700 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                    >
+                      <RotateCcw size={16} />
+                      {t('settings_factory_reset_btn')}
+                    </button>
+                  </div>
+                </>
+              )}
             </>
           )}
         </div>
@@ -1431,7 +1471,7 @@ function FactoryResetModal({
       <AdminSensitiveVerifyModal
         open={verifyOpen}
         onOpenChange={(v) => {
-          if (running) return;
+          if (running || done) return;
           setVerifyOpen(v);
         }}
         language={language}
