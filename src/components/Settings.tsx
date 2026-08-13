@@ -117,6 +117,7 @@ import {
 import { ApiError } from '../lib/apiClient';
 import { SettingsFloatingDialog } from './settings/SettingsFloatingDialog';
 import { clearAllOfflineClientData } from '../lib/offline';
+import { isFactoryResetConfirmWord } from '../lib/factoryResetConfirm';
 
 const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
@@ -1284,34 +1285,44 @@ function FactoryResetModal({
   const [confirmText, setConfirmText] = useState('');
   const [running, setRunning] = useState(false);
   const [verifyOpen, setVerifyOpen] = useState(false);
-  const runRef = useRef<(() => Promise<void>) | null>(null);
+  const [lastError, setLastError] = useState('');
 
-  const CONFIRM_WORD = language === 'ar' ? 'ضبط المصنع' : 'FACTORY';
-  const confirmed = confirmText === CONFIRM_WORD;
+  const confirmed = isFactoryResetConfirmWord(confirmText);
+
+  const runFactoryReset = async () => {
+    setVerifyOpen(false);
+    setRunning(true);
+    setLastError('');
+    try {
+      const result = await financialMaintenanceApi.factoryReset();
+      await clearAllOfflineClientData();
+      suppressApiUnauthorizedLogout();
+      toast.success(
+        t('settings_factory_reset_success').replace(
+          '{emails}',
+          (result.keptEmails ?? []).join(', '),
+        ),
+      );
+      onClose();
+      await performAppLogout();
+    } catch (e) {
+      const msg =
+        e instanceof ApiError && e.status === 404
+          ? t('settings_factory_reset_stale_api')
+          : e instanceof ApiError
+            ? e.message
+            : e instanceof Error
+              ? e.message
+              : String(e);
+      setLastError(msg);
+      toast.error(msg);
+      setRunning(false);
+    }
+  };
 
   const handleReset = () => {
     if (!confirmed || running) return;
-    runRef.current = async () => {
-      setRunning(true);
-      try {
-        const result = await financialMaintenanceApi.factoryReset();
-        await clearAllOfflineClientData();
-        suppressApiUnauthorizedLogout();
-        toast.success(
-          t('settings_factory_reset_success').replace(
-            '{emails}',
-            (result.keptEmails ?? []).join(', '),
-          ),
-        );
-        onClose();
-        await performAppLogout();
-      } catch (e) {
-        const msg =
-          e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
-        toast.error(msg);
-        setRunning(false);
-      }
-    };
+    setLastError('');
     setVerifyOpen(true);
   };
 
@@ -1360,6 +1371,12 @@ function FactoryResetModal({
             <p className="font-bold text-red-500">{t('settings_factory_reset_keep')}</p>
           </div>
 
+          {lastError && !running && (
+            <div className={cn('rounded-xl border p-3 mb-4 text-sm', theme === 'dark' ? 'bg-red-950/40 border-red-800 text-red-300' : 'bg-red-50 border-red-200 text-red-800')}>
+              {lastError}
+            </div>
+          )}
+
           {running && (
             <div className="flex items-center justify-center gap-3 py-4 text-red-400">
               <Loader2 size={20} className="animate-spin" />
@@ -1370,21 +1387,13 @@ function FactoryResetModal({
           {!running && (
             <>
               <p className="text-sm text-gray-400 mb-2">
-                {language === 'ar' ? (
-                  <>
-                    اكتب <strong className="text-red-400">{CONFIRM_WORD}</strong> للمتابعة:
-                  </>
-                ) : (
-                  <>
-                    Type <strong className="text-red-400">{CONFIRM_WORD}</strong> to continue:
-                  </>
-                )}
+                {t('settings_factory_reset_confirm_hint')}
               </p>
               <input
                 type="text"
                 value={confirmText}
                 onChange={(e) => setConfirmText(e.target.value)}
-                placeholder={CONFIRM_WORD}
+                placeholder={language === 'ar' ? 'ضبط المصنع أو FACTORY' : 'FACTORY or ضبط المصنع'}
                 className={cn(
                   'w-full border rounded-xl py-2 px-3 text-sm outline-none mb-4 transition-colors',
                   theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900',
@@ -1422,16 +1431,12 @@ function FactoryResetModal({
       <AdminSensitiveVerifyModal
         open={verifyOpen}
         onOpenChange={(v) => {
+          if (running) return;
           setVerifyOpen(v);
-          if (!v) runRef.current = null;
         }}
         language={language}
         theme={theme}
-        onVerified={async () => {
-          const fn = runRef.current;
-          runRef.current = null;
-          if (fn) await fn();
-        }}
+        onVerified={runFactoryReset}
       />
     </>
   );
@@ -3209,6 +3214,23 @@ export function Settings() {
 
                   {dangerOpen && (
                     <div className={cn('p-5 space-y-4', theme === 'dark' ? 'bg-[#1a1d23]' : 'bg-white')}>
+                      {isLocalBackend && (
+                        <div className={cn('border-2 rounded-2xl p-4 space-y-3', theme === 'dark' ? 'border-red-800 bg-red-950/20' : 'border-red-300 bg-red-50')}>
+                          <p className="font-bold text-sm text-red-500">{t('settings_factory_reset_btn')}</p>
+                          <p className={cn('text-xs', theme === 'dark' ? 'text-gray-400' : 'text-gray-600')}>
+                            {t('settings_factory_reset_hint')}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setShowFactoryModal(true)}
+                            className="w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-red-600 hover:bg-red-500 text-white text-sm font-bold transition-colors"
+                          >
+                            <RotateCcw size={16} />
+                            {t('settings_factory_reset_btn')}
+                          </button>
+                        </div>
+                      )}
+
                       <p className={cn('text-sm', theme === 'dark' ? 'text-gray-400' : 'text-gray-500')}>
                         {isLocalBackend
                           ? (language === 'ar'
@@ -3284,27 +3306,6 @@ export function Settings() {
                             ? 'تفريغ الحركات المالية والتشغيلية (Postgres)'
                             : 'Wipe financial & operational (Postgres)'}
                         </button>
-                      )}
-
-                      {isLocalBackend && (
-                        <div className="space-y-2">
-                          <button
-                            type="button"
-                            onClick={() => setShowFactoryModal(true)}
-                            className={cn(
-                              'w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 text-sm font-bold transition-colors',
-                              theme === 'dark'
-                                ? 'border-red-800 bg-red-950/40 text-red-300 hover:bg-red-950/70'
-                                : 'border-red-400 bg-red-50 text-red-800 hover:bg-red-100',
-                            )}
-                          >
-                            <RotateCcw size={16} />
-                            {t('settings_factory_reset_btn')}
-                          </button>
-                          <p className={cn('text-xs', theme === 'dark' ? 'text-gray-500' : 'text-gray-500')}>
-                            {t('settings_factory_reset_hint')}
-                          </p>
-                        </div>
                       )}
 
                       <button
