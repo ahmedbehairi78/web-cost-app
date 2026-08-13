@@ -43,7 +43,7 @@ function parseNotifyTypes(value: unknown): string[] | null {
 }
 
 function userMatchesNotifyType(
-  role: string,
+  _role: string,
   permissions: UserPermissions,
   notifyTypes: string[] | null,
   notifyType: NotifyEventType,
@@ -51,33 +51,24 @@ function userMatchesNotifyType(
   if (notifyTypes && !notifyTypes.includes(notifyType)) return false;
 
   if (notifyType === 'transfer_pending_projects') {
-    return role === 'admin' || role === 'projects_manager';
+    return moduleAccess(permissions, 'inventory').edit;
   }
   if (notifyType === 'transfer_pending_b') {
-    return (
-      role === 'admin'
-      || role === 'projects_manager'
-      || hasReferenceRead(permissions, 'inventory')
-    );
+    return hasReferenceRead(permissions, 'inventory');
   }
   if (notifyType === 'mos_draft') {
-    return (
-      role === 'admin'
-      || role === 'projects_manager'
-      || hasReferenceRead(permissions, 'billing')
-    );
+    return hasReferenceRead(permissions, 'billing');
+  }
+  if (notifyType === 'vo_submitted') {
+    return moduleAccess(permissions, 'boq').edit;
   }
   if (notifyType === 'subcontractor_ipc_pending') {
-    return role === 'admin' || role === 'projects_manager';
+    return moduleAccess(permissions, 'costs_ipc').edit || moduleAccess(permissions, 'costs').edit;
   }
   if (notifyType === 'custody_settlement_pending') {
-    if (role === 'admin') return true;
     return hasReferenceRead(permissions, 'ledger') && hasModuleWrite(permissions, 'ledger');
   }
   if (notifyType === 'purchase_request_pending') {
-    if (role === 'admin' || role === 'projects_manager' || role === 'project_accountant') {
-      return true;
-    }
     return moduleAccess(permissions, 'purchase_requests').edit;
   }
   return false;
@@ -111,13 +102,11 @@ async function userCanReceiveForContext(
   const assigned = getAssignedContractIds(user);
 
   if (ctx.notifyType === 'transfer_pending_b' && ctx.toProjectId) {
-    if (user.role === 'admin' || user.role === 'projects_manager') return true;
     if (accessibleProjects === null) return true;
     return accessibleProjects.includes(ctx.toProjectId);
   }
 
   if (ctx.notifyType === 'transfer_pending_projects') {
-    if (user.role !== 'admin' && user.role !== 'projects_manager') return false;
     if (accessibleProjects === null) return true;
     const relevant =
       (ctx.fromProjectId && accessibleProjects.includes(ctx.fromProjectId))
@@ -126,13 +115,11 @@ async function userCanReceiveForContext(
   }
 
   if (ctx.notifyType === 'mos_draft' && ctx.contractId) {
-    if (user.role === 'admin' || user.role === 'projects_manager') return true;
     if (assigned === null) return true;
     return assigned.includes(ctx.contractId);
   }
 
   if (ctx.notifyType === 'subcontractor_ipc_pending' && ctx.contractId) {
-    if (user.role !== 'admin' && user.role !== 'projects_manager') return false;
     if (assigned === null) return true;
     return assigned.includes(ctx.contractId);
   }
@@ -152,7 +139,6 @@ async function userCanReceiveForContext(
 }
 
 function canApproveCustodySettlementUser(user: Express.Request['user']): boolean {
-  if (user.role === 'admin') return true;
   return hasModuleWrite(user.permissions, 'ledger');
 }
 

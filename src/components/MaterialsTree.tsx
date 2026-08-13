@@ -69,8 +69,8 @@ function sidebarBtnCls(theme: AppTheme) {
 
 export function MaterialsTree() {
   const { language, theme, t, dir } = useLanguage();
-  const { isAdmin, role } = usePermissions();
-  const canEdit = isAdmin || role === 'projects_manager';
+  const { can } = usePermissions();
+  const canEdit = can('inventory').edit;
   const ar = language === 'ar';
   const importInputRef = useRef<HTMLInputElement>(null);
 

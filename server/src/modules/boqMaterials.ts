@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { requireAuth, requirePermission, requireReferenceRead, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireReferenceRead, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -268,7 +268,7 @@ boqMaterialsRouter.get(
 /** نسخ روابط من بند آخر (وراثة) */
 boqMaterialsRouter.post(
   '/:boqItemId/inherit',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('boq'),
   asyncHandler(async (req, res) => {
     const targetBoqItemId = req.params.boqItemId;
     const body = req.body as { sourceBoqItemId: string };
@@ -308,7 +308,7 @@ boqMaterialsRouter.post(
 
 boqMaterialsRouter.put(
   '/:boqItemId',
-  requireRole('admin', 'projects_manager', 'project_accountant'),
+  requireModuleWrite('boq'),
   asyncHandler(async (req, res) => {
     const boqItemId = req.params.boqItemId;
     const body = req.body as { materialCategoryIds: number[] };

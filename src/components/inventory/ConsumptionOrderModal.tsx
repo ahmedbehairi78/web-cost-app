@@ -3,6 +3,7 @@ import { ManualHelpButton } from '../help/ManualHelpButton';
 import { Loader2, Plus, Printer, Trash2 } from 'lucide-react';
 import { cn, listKey } from '../../lib/utils';
 import { useLanguage } from '../../context/LanguageContext';
+import { usePermissions } from '../../context/PermissionsContext';
 import { useChartOfAccountsRef } from '../../hooks/useChartOfAccountsRef';
 import { useReportDocumentPreview } from '../../hooks/useReportDocumentPreview';
 import {
@@ -34,7 +35,6 @@ import {
 } from './ConsumptionAllocationModal';
 import { QuickLinkMaterialModal } from './QuickLinkMaterialModal';
 import toast from 'react-hot-toast';
-import { useUserAccessScope } from '../../hooks/useUserAccessScope';
 import type { AppTheme } from '../../lib/shellTheme';
 import { clearFormDraft } from '../../lib/offline';
 import { businessTodayYmd } from '../../lib/businessCalendar';
@@ -223,11 +223,8 @@ export function ConsumptionOrderModal({
 }) {
   const { language, theme, t, dir } = useLanguage();
   const ar = language === 'ar';
-  const { role, isAdmin } = useUserAccessScope();
-  const canQuickLink =
-    isAdmin ||
-    role === 'projects_manager' ||
-    role === 'project_accountant';
+  const { can } = usePermissions();
+  const canQuickLink = can('boq').edit || can('inventory').edit;
 
   const moneyLocale = 'en-US';
   const formatMoneyPrint = (value: number) => formatMoneyLib(value, moneyLocale);

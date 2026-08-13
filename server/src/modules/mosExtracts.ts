@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { requireAuth, requirePermission, requireAnyPermission, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireAnyPermission, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -173,7 +173,7 @@ mosExtractsRouter.post(
 // POST /api/mos-extracts/:id/approve — admin أو projects_manager فقط
 mosExtractsRouter.post(
   '/:id/approve',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('billing'),
   asyncHandler(async (req, res) => {
     const row = await prisma.materialOnSiteExtract.findUnique({ where: { id: req.params.id } });
     if (!row) {

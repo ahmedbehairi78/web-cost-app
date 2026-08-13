@@ -59,14 +59,18 @@ export function computeProjectInventoryBalance(row: {
 
 export function getAssignedContractIds(user: Express.Request['user']): string[] | null {
   if (!user) return null;
-  if (user.role === 'admin' || user.role === 'projects_manager') return null;
-  if (Array.isArray(user.assignedContractIds)) return user.assignedContractIds;
-  try {
-    const ids = JSON.parse((user as unknown as Record<string, string>).assignedContractIds ?? '[]');
-    return Array.isArray(ids) ? ids : [];
-  } catch {
-    return [];
+  let ids: string[] = [];
+  if (Array.isArray(user.assignedContractIds)) {
+    ids = user.assignedContractIds.map(String).filter(Boolean);
+  } else {
+    try {
+      const parsed = JSON.parse((user as unknown as Record<string, string>).assignedContractIds ?? '[]');
+      ids = Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+    } catch {
+      ids = [];
+    }
   }
+  return ids.length === 0 ? null : ids;
 }
 
 export function assertContractAccess(user: Express.Request['user'], contractId: string): void {

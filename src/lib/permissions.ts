@@ -1,16 +1,15 @@
 import {
   ALL_PERMISSIONS as FULL_ACCESS,
+  DEFAULT_PERMISSIONS,
   type ModuleCrudPermission,
   type PermissionKey,
   type UserRole,
   type UserPermissions,
 } from '../types';
 import {
-  DEFAULT_MODULE,
   NONE_DEFAULT_MODULE,
   STARTUP_MODULES,
   isNoDefaultModule,
-  normalizeDefaultModule,
 } from '../constants/modules';
 import { LEGACY_SHELL_MODULE_MAP } from './shellNavigation';
 import {
@@ -134,9 +133,8 @@ const PERMISSION_MODULE_IDS = new Set<PermissionKey>([
 export function canOpenModule(
   permissions: UserPermissions,
   moduleId: string,
-  opts?: { isAdmin?: boolean },
+  _opts?: { isAdmin?: boolean },
 ): boolean {
-  if (opts?.isAdmin) return true;
   if (SHELL_UTILITY_MODULE_IDS.has(moduleId)) return true;
   if (!PERMISSION_MODULE_IDS.has(moduleId as PermissionKey)) return false;
   return hasModuleView(permissions, moduleId as PermissionKey);
@@ -199,6 +197,11 @@ export function defaultShellViewForModule(
   return firstPermittedModuleView(permissions, moduleId, opts);
 }
 
+/** System administration (users, backup, wipe) — stored `settings` flag, not a role name. */
+export function hasSettingsAccess(permissions: UserPermissions): boolean {
+  return permissions.settings === true;
+}
+
 /** True when any module is enabled (view/create/edit or boolean module on). */
 export function hasAnyGrantedPermission(permissions: UserPermissions): boolean {
   if (permissions.dashboard || permissions.reports || permissions.settings) return true;
@@ -208,30 +211,20 @@ export function hasAnyGrantedPermission(permissions: UserPermissions): boolean {
   });
 }
 
-/**
- * Stored Firestore permissions missing or not yet admin-customized.
- * Includes role presets when doc has role but all modules still off (legacy DEFAULT_PERMISSIONS).
- */
-export function permissionsNeedBootstrap(raw: unknown, role?: UserRole): boolean {
+/** Stored permissions missing — do not fill from role presets. */
+export function permissionsNeedBootstrap(raw: unknown, _role?: UserRole): boolean {
   if (raw === undefined || raw === null) return true;
   if (typeof raw !== 'object' || Array.isArray(raw)) return true;
-  if (Object.keys(raw as Record<string, unknown>).length === 0) return true;
-  const r = role ?? 'user';
-  if (r === 'projects_manager' || r === 'project_accountant') {
-    const normalized = normalizeUserPermissions(raw);
-    if (!hasAnyGrantedPermission(normalized)) return true;
-  }
-  return false;
+  return Object.keys(raw as Record<string, unknown>).length === 0;
 }
 
-/** Resolve permissions from Firestore user doc (same logic as App login). */
+/** Resolve stored JSON only — role names never grant modules. */
 export function resolvePermissionsFromUserData(data: {
   role?: unknown;
   permissions?: unknown;
 }): UserPermissions {
-  const role = String(data.role ?? 'user') as UserRole;
-  if (permissionsNeedBootstrap(data.permissions, role)) {
-    return role === 'admin' ? { ...FULL_ACCESS } : buildPermissionsForRole(role);
+  if (permissionsNeedBootstrap(data.permissions)) {
+    return { ...DEFAULT_PERMISSIONS };
   }
   return normalizeUserPermissions(data.permissions);
 }
@@ -245,36 +238,24 @@ export function firstPermittedStartupModule(
 ): string {
   if (isNoDefaultModule(preferred)) return NONE_DEFAULT_MODULE;
 
-  const isAdmin = role === 'admin';
   const navOk = (moduleId: string) => isShellModuleNavVisible(moduleId, visibleShellModules);
 
   if (preferred && preferred !== 'settings') {
     const shellId = LEGACY_SHELL_MODULE_MAP[preferred]?.moduleId ?? preferred;
     if (navOk(shellId)) {
-      if (isAdmin) return normalizeDefaultModule(preferred);
       if (shellId === 'technical' || shellId === 'ledger') {
-        if (canOpenShellModule(permissions, shellId, { isAdmin })) return shellId;
+        if (canOpenShellModule(permissions, shellId)) return shellId;
       } else if (hasModuleView(permissions, shellId as PermissionKey)) {
         return shellId;
       }
     }
   }
 
-  if (isAdmin) {
-    const fallback = DEFAULT_MODULE;
-    if (navOk(fallback)) return fallback;
-    for (const mod of STARTUP_MODULES) {
-      if (mod.id === 'settings') continue;
-      if (navOk(mod.id)) return mod.id;
-    }
-    return NONE_DEFAULT_MODULE;
-  }
-
   for (const mod of STARTUP_MODULES) {
     if (mod.id === 'settings') continue;
     if (!navOk(mod.id)) continue;
     if (mod.id === 'technical' || mod.id === 'ledger') {
-      if (canOpenShellModule(permissions, mod.id, { isAdmin })) return mod.id;
+      if (canOpenShellModule(permissions, mod.id)) return mod.id;
     } else if (hasModuleView(permissions, mod.id as PermissionKey)) {
       return mod.id;
     }

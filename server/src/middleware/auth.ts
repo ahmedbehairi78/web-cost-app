@@ -4,6 +4,7 @@ import { findUserByEmailInsensitive, findUserById } from '../auth/users.js';
 import {
   hasModuleWrite,
   hasReferenceRead,
+  hasSettingsAccess,
   normalizeUserPermissions,
   type PermissionKey,
   type UserPermissions,
@@ -72,7 +73,7 @@ export function requireReferenceRead(...keys: PermissionKey[]) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    if (req.user.role === 'admin') {
+    if (hasSettingsAccess(req.user.permissions) && keys.includes('settings')) {
       next();
       return;
     }
@@ -98,10 +99,6 @@ export function requireModuleWrite(...keys: PermissionKey[]) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    if (req.user.role === 'admin') {
-      next();
-      return;
-    }
     const perms = req.user.permissions as UserPermissions;
     const ok = keys.some((k) => hasModuleWrite(perms, k));
     if (ok) {
@@ -117,14 +114,19 @@ export function requirePermission(permission: PermissionKey) {
   return requireReferenceRead(permission);
 }
 
-/** يتحقق أن المستخدم لديه أحد الأدوار المحددة */
+/** System administration — `settings` permission (replaces role === admin). */
+export function requireSettingsAccess() {
+  return requireReferenceRead('settings');
+}
+
+/** يتحقق أن المستخدم لديه أحد الأدوار المحددة — لم يعد admin يتجاوز التحقق. */
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       res.status(401).json({ error: 'Authentication required' });
       return;
     }
-    if (req.user.role === 'admin' || roles.includes(req.user.role)) {
+    if (roles.includes('admin') && hasSettingsAccess(req.user.permissions)) {
       next();
       return;
     }

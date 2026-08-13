@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { Prisma } from '@prisma/client';
-import { requireAuth, requirePermission, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireModuleWrite } from '../middleware/auth.js';
 import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
@@ -241,7 +241,7 @@ billingRouter.get(
 
 billingRouter.post(
   '/:id/approve',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('billing'),
   asyncHandler(async (req, res) => {
     try {
       await approveBillingIpc(req.params.id, req.user?.id);

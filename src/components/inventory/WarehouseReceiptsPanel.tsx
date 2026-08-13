@@ -56,10 +56,9 @@ export function WarehouseReceiptsPanel({
 }) {
   const { language, theme, dir, t } = useLanguage();
   const ar = language === 'ar';
-  const { isAdmin, role, can } = usePermissions();
+  const { can } = usePermissions();
   const canCreate = can('inventory').create;
-  const canReject =
-    isAdmin || role === 'projects_manager' || can('costs').edit === true;
+  const canReject = can('inventory').edit || can('costs_invoice').edit || can('costs').edit;
 
   const [receipts, setReceipts] = useState<WarehouseReceipt[]>([]);
   const [projects, setProjects] = useState<ProjectOption[]>([]);

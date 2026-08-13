@@ -24,7 +24,8 @@ interface Props {
 }
 
 export function GLChartOfAccounts({ accounts, loading, theme, language, dir, allowCreate = true, allowEdit = true, onAccountsChanged }: Props) {
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const isAdmin = can('ledger').edit;
   const confirmDlg = useConfirm();
   const [verifyOpen, setVerifyOpen] = useState(false);
   const resetSeedRef = useRef<(() => Promise<void>) | null>(null);

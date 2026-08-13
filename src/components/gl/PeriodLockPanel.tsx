@@ -26,7 +26,8 @@ function shiftQuarter(ref: Date, delta: number): Date {
 
 export function PeriodLockPanel({ theme, compact = false }: Props) {
   const { t, dir } = useLanguage();
-  const { isAdmin } = usePermissions();
+  const { can } = usePermissions();
+  const isAdmin = can('overhead').edit;
   const [periods, setPeriods] = useState<AccountingPeriodLockRow[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [loading, setLoading] = useState(true);

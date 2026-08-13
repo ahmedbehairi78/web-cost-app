@@ -13,7 +13,11 @@ type UserAccessScope = {
   assignedContractIds: string[];
   assignedProjectIds: string[];
   isAdmin: boolean;
+  /** Non-empty assigned contracts — filter lists to those contracts. Empty = all contracts. */
+  isContractScoped: boolean;
+  /** @deprecated alias of isContractScoped — do not use role names for access. */
   isProjectsManager: boolean;
+  /** @deprecated alias of isContractScoped — do not use role names for access. */
   isProjectAccountant: boolean;
 };
 
@@ -22,12 +26,13 @@ const DEFAULT_SCOPE: UserAccessScope = {
   assignedContractIds: [],
   assignedProjectIds: [],
   isAdmin: false,
+  isContractScoped: false,
   isProjectsManager: false,
   isProjectAccountant: false,
 };
 
 export function useUserAccessScope(): UserAccessScope {
-  const { role: permissionsRole } = usePermissions();
+  const { role: permissionsRole, isAdmin: settingsAdmin } = usePermissions();
   const [firestoreRole, setFirestoreRole] = useState<UserRole>('user');
   const [assignedContractIds, setAssignedContractIds] = useState<string[]>([]);
   const [assignedProjectIds, setAssignedProjectIds] = useState<string[]>([]);
@@ -110,17 +115,19 @@ export function useUserAccessScope(): UserAccessScope {
   }, []);
 
   const role = isLocalBackend ? permissionsRole : firestoreRole;
+  const isContractScoped = assignedContractIds.length > 0;
 
   return useMemo(
     () => ({
       role,
       assignedContractIds,
       assignedProjectIds,
-      isAdmin: role === 'admin',
-      isProjectsManager: role === 'projects_manager',
-      isProjectAccountant: role === 'project_accountant',
+      isAdmin: settingsAdmin,
+      isContractScoped,
+      isProjectsManager: false,
+      isProjectAccountant: isContractScoped,
     }),
-    [role, assignedContractIds, assignedProjectIds],
+    [role, assignedContractIds, assignedProjectIds, settingsAdmin, isContractScoped],
   );
 }
 

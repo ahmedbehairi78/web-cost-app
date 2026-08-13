@@ -39,13 +39,12 @@ describe('moduleViewPermissions', () => {
     expect(canOpenModuleView(ledgerOnly, 'costs', 'invoice')).toBe(false);
   });
 
-  it('settings sub-views use settings flag; admin-only tabs need admin', () => {
+  it('settings sub-views use settings flag', () => {
     const withSettings = { ...DEFAULT_PERMISSIONS, settings: true };
     expect(canOpenModuleView(withSettings, 'settings', 'database')).toBe(true);
     expect(canOpenModuleView(withSettings, 'settings', 'users')).toBe(true);
-    expect(canOpenModuleView(withSettings, 'settings', 'cost_centers')).toBe(false);
-    expect(canOpenModuleView(withSettings, 'settings', 'activity')).toBe(false);
-    expect(canOpenModuleView(withSettings, 'settings', 'cost_centers', { isAdmin: true })).toBe(true);
+    expect(canOpenModuleView(withSettings, 'settings', 'cost_centers')).toBe(true);
+    expect(canOpenModuleView(withSettings, 'settings', 'activity')).toBe(true);
     expect(canOpenModuleView(DEFAULT_PERMISSIONS, 'settings', 'database')).toBe(false);
   });
 

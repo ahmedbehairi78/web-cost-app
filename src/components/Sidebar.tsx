@@ -259,7 +259,7 @@ export function Sidebar({
             variant="sidebar"
             isActive={activeModuleId === 'purchase_requests'}
             isOpen={openModuleIds.has('purchase_requests')}
-            canCreate={isAdmin || moduleAccess(permissions, 'purchase_requests').create}
+            canCreate={moduleAccess(permissions, 'purchase_requests').create}
           />
         )}
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { guideTranslations } from '../context/LanguageContext';
-import { DEFAULT_PERMISSIONS } from '../types';
+import { ALL_PERMISSIONS, DEFAULT_PERMISSIONS } from '../types';
 import { buildPermissionsForRole, crudOn } from './permissions';
 import {
   MANUAL_TOPICS,
@@ -94,8 +94,8 @@ describe('operationsManual permissions', () => {
     expect(ids.has('settings.database.backup')).toBe(false);
   });
 
-  it('admin resolves full topic list', () => {
-    expect(resolveManualTopics({ permissions: DEFAULT_PERMISSIONS, isAdmin: true }).length).toBe(
+  it('full permissions resolve full topic list', () => {
+    expect(resolveManualTopics({ permissions: ALL_PERMISSIONS }).length).toBe(
       MANUAL_TOPICS.length,
     );
   });

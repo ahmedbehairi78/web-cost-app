@@ -110,17 +110,13 @@ function priorityToneClass(priority: string): string {
 
 export function PurchaseRequests() {
   const { t, language, theme, dir } = useLanguage();
-  const { permissions, role, isAdmin } = usePermissions();
+  const { permissions } = usePermissions();
   const isAr = language === 'ar';
   const { isErpShell, activeViewId, erp } = useErpModuleView('purchase_requests', 'open');
 
   const prAccess = moduleAccess(permissions, 'purchase_requests');
-  const canEditStatus =
-    isAdmin
-    || role === 'projects_manager'
-    || role === 'project_accountant'
-    || prAccess.edit;
-  const canCreate = prAccess.create !== false || isAdmin;
+  const canEditStatus = prAccess.edit;
+  const canCreate = prAccess.create;
 
   /** Avoid open→executed flash: ERP remounts per viewId; shell menu sets pending view. */
   const [tab, setTab] = useState<TabId>(() => {

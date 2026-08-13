@@ -2,7 +2,7 @@ import { getModuleMenu } from '../constants/moduleMenus';
 import type { PermissionKey, UserPermissions } from '../types';
 import { canOpenModule, hasModuleView } from './permissions';
 
-/** Settings sidebar / ERP menu entries that require `role === 'admin'`. */
+/** Settings sidebar / ERP menu entries that require the `settings` permission. */
 export const SETTINGS_ADMIN_VIEW_IDS = new Set(['cost_centers', 'activity', 'sample_data']);
 
 /** Maps ERP menu sub-view → permission key(s). Settings uses a single `settings` flag for all views. */
@@ -114,7 +114,7 @@ export const PERMISSION_MENU_HINTS: Partial<
     { ar: 'قاعدة البيانات', en: 'Database' },
     { ar: 'إدارة المستخدمين', en: 'User management' },
     { ar: 'شجرة الحسابات', en: 'Chart of accounts' },
-    { ar: 'مراكز التكلفة · سجل النشاط · بيانات تجريبية (admin)', en: 'Cost centers · Activity · Sample data (admin)' },
+    { ar: 'مراكز التكلفة · سجل النشاط · بيانات تجريبية', en: 'Cost centers · Activity · Sample data' },
   ],
   assets: [
     { ar: 'سجل الأصول الثابتة', en: 'Fixed assets register' },
@@ -136,15 +136,14 @@ export const PERMISSION_MENU_HINTS: Partial<
 function permissionKeysAllowView(
   permissions: UserPermissions,
   keys: PermissionKey | readonly PermissionKey[],
-  opts?: { isAdmin?: boolean },
+  _opts?: { isAdmin?: boolean },
 ): boolean {
-  if (opts?.isAdmin) return true;
   const list = Array.isArray(keys) ? keys : [keys];
   return list.some((key) => {
     if (key === 'dashboard' || key === 'reports' || key === 'settings') {
       return permissions[key] === true;
     }
-    return canOpenModule(permissions, key, opts);
+    return canOpenModule(permissions, key);
   });
 }
 
@@ -153,23 +152,21 @@ export function canOpenModuleView(
   permissions: UserPermissions,
   moduleId: string,
   viewId: string,
-  opts?: { isAdmin?: boolean },
+  _opts?: { isAdmin?: boolean },
 ): boolean {
-  if (opts?.isAdmin) return true;
   if (moduleId === 'purchase_requests') return true;
 
   if (moduleId === 'settings') {
-    if (!hasModuleView(permissions, 'settings') && !opts?.isAdmin) return false;
-    if (viewId === 'coa' && !permissionKeysAllowView(permissions, 'ledger', opts)) return false;
-    if (SETTINGS_ADMIN_VIEW_IDS.has(viewId) && !opts?.isAdmin) return false;
-    return hasModuleView(permissions, 'settings') || opts?.isAdmin === true;
+    if (!hasModuleView(permissions, 'settings')) return false;
+    if (viewId === 'coa' && !hasModuleView(permissions, 'ledger')) return false;
+    return true;
   }
 
   const moduleMap = MODULE_VIEW_PERMISSION_MAP[moduleId];
   const keys = moduleMap?.[viewId];
-  if (keys) return permissionKeysAllowView(permissions, keys, opts);
+  if (keys) return permissionKeysAllowView(permissions, keys);
 
-  return canOpenModule(permissions, moduleId, opts);
+  return canOpenModule(permissions, moduleId);
 }
 
 /** First sub-view the user may open for a shell module (for default navigation). */

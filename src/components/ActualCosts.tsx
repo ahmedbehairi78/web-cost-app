@@ -443,10 +443,10 @@ export function ActualCosts() {
     void fetchSettings();
   }, [language]);
 
-  const { isProjectAccountant, isProjectsManager, assignedContractIds } = useUserAccessScope();
+  const { isProjectAccountant, assignedContractIds } = useUserAccessScope();
   const { can, isAdmin } = usePermissions();
+  const canApproveCustody = can('ledger').create || can('ledger').edit;
   const canPostCustody = can('costs_custody').create || can('ledger').create;
-  const canApproveCustody = isAdmin || can('ledger').create;
 
   const TAB_PERM_KEY: Record<ActiveTab, 'costs_invoice' | 'costs_ipc' | 'costs_custody'> = {
     invoice: 'costs_invoice',
@@ -1071,7 +1071,7 @@ export function ActualCosts() {
     activeTab === 'invoice' && editingPurchase?.type === 'invoice' && Boolean(editingPurchase.transactionId);
   const entryFormReadOnly = ipcFormReadOnly || invoiceFormReadOnly;
   const canApproveEditingIpc =
-    (isAdmin || isProjectsManager)
+    can('costs_ipc').edit
     && editingPurchase?.type === 'ipc'
     && editingIpcStatus === 'submitted';
 
@@ -1228,10 +1228,10 @@ export function ActualCosts() {
 
   const canApproveIpcTransaction = useCallback(
     (tx: PurchaseTransaction) =>
-      (isAdmin || isProjectsManager)
+      can('costs_ipc').edit
       && tx.type === 'ipc'
       && resolveIpcWorkflowStatus(tx) === 'submitted',
-    [isAdmin, isProjectsManager],
+    [can],
   );
 
   const beginIpcApproval = useCallback(

@@ -18,6 +18,7 @@ import {
   ALL_PERMISSIONS,
   DEFAULT_PERMISSIONS,
   hasAnyGrantedPermission,
+  hasSettingsAccess,
   normalizeUserPermissions,
   permissionsNeedBootstrap,
   resolvePermissionsFromUserData,
@@ -363,11 +364,8 @@ authRouter.post(
       email,
       displayName: displayName ?? null,
       passwordHash: await hashLoginPassword(password),
-      role,
-      permissions: resolvePermissionsFromUserData({
-        role,
-        permissions: role === 'admin' ? ALL_PERMISSIONS : permissions,
-      }),
+      role: 'user',
+      permissions: resolvePermissionsFromUserData({ permissions }),
     });
     const { passwordHash: _ph, ...safe } = user;
     res.status(201).json(serialize(safe));
@@ -409,7 +407,7 @@ authRouter.post(
       });
       return;
     }
-    if (cleanPassword.length > 0 && req.user?.role !== 'admin') {
+    if (cleanPassword.length > 0 && !hasSettingsAccess(req.user?.permissions)) {
       res.status(403).json({ error: 'admin_required_for_password' });
       return;
     }
@@ -420,7 +418,7 @@ authRouter.post(
     const localPermissions =
       permissions !== undefined && permissions !== null
         ? normalizeUserPermissions(permissions)
-        : resolvePermissionsFromUserData({ role: localRole });
+        : { ...DEFAULT_PERMISSIONS };
     const contractIds = Array.isArray(assignedContractIds)
       ? assignedContractIds.filter((id): id is string => typeof id === 'string')
       : [];

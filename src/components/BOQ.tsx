@@ -35,7 +35,6 @@ import { isLocalBackend } from '../lib/dataBackend';
 import { ApiError } from '../lib/apiClient';
 import { boqApi, billingApi, contractsApi, inventoryApi, projectsApi, settingsApi, boqMaterialsApi, NetworkQueuedError } from '../services/local/modulesApi';
 import { consumePendingBoqFocus } from '../lib/shellNavigation';
-import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { useVoPrintPreview } from '../hooks/useVoPrintPreview';
 import { buildVoPrintData } from '../lib/voPrintData';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
@@ -201,9 +200,8 @@ function buildBoqApiPayload(
 export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const { t, language, theme, dir, locale, formatMoney } = useLanguage();
   const { isAdmin, can } = usePermissions();
-  const { isProjectsManager } = useUserAccessScope();
   const canWriteVo = isLocalBackend && (can('boq').create || can('boq').edit);
-  const canApproveVo = isLocalBackend && (isAdmin || isProjectsManager);
+  const canApproveVo = isLocalBackend && can('boq').edit;
   const canReadBillingProgress = can('billing').view || can('billing').create || can('billing').edit;
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
   const [voRefreshKey, setVoRefreshKey] = useState(0);

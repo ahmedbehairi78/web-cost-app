@@ -27,7 +27,6 @@ warehouseReceiptsRouter.use(withIdempotency());
 const inventoryUsePerm = requireAnyPermission('inventory', 'costs', 'transfers');
 
 function canApproveReceipt(user: NonNullable<Request['user']>): boolean {
-  if (user.role === 'admin' || user.role === 'projects_manager') return true;
   return moduleAccess(normalizeUserPermissions(user.permissions), 'costs').edit === true;
 }
 

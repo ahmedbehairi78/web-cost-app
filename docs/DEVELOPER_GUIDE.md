@@ -287,13 +287,13 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
    ```
 4. **أضِف التسمية والترتيب** في `src/constants/modules.ts`:
    - في `STARTUP_MODULES` (يظهر في الـ Sidebar وقائمة موديول البدء) — أو فقط في `MODULE_LABELS` لو أداة مساعدة لا تظهر في البدء.
-5. **الصلاحيات**: أضِف مفتاح الموديول إلى `UserPermissions` في `src/types.ts` و`DEFAULT_PERMISSIONS`/`ALL_PERMISSIONS`، وعالِجه في `src/lib/permissions.ts` (`buildPermissionsForRole`, `moduleAccess`). الـ Sidebar يفلتر عبر `moduleAccess(permissions, id).view`.
+5. **الصلاحيات**: أضِف مفتاح الموديول إلى `UserPermissions` في `src/types.ts` و`DEFAULT_PERMISSIONS`/`ALL_PERMISSIONS`، وعالِجه في `src/lib/permissions.ts` (`moduleAccess`). لا تضف حزم أدوار. الـ Sidebar يفلتر عبر `moduleAccess(permissions, id).view`.
 6. **(اختياري) موضوع دليل الاستخدام**: أضِف `ManualTopicId` + مدخلًا في `MANUAL_TOPICS` (`src/lib/operationsManual.ts`)، ومفاتيح `manual_*` في `LanguageContext`، وزر `<ManualHelpButton topicId="…" />` على الشاشة. ثم `npm run test -- src/lib/operationsManual.test.ts`.
 7. **عزل الأعطال**: كل نافذة ملفوفة تلقائيًا بـ `WindowErrorBoundary` — لا حاجة لإجراء إضافي، لكن لا تترك أخطاء غير معالَجة تتسرّب.
 
 > أدوات الـ shell (`display` / `calculator` / `manual`) مرئية لكل المستخدمين المسجّلين بلا فحص صلاحيات — راجع `SHELL_UTILITY_MODULE_IDS`.
 >
-> **أوامر الشراء (`purchase_requests`, 2026-08-02):** نافذة مستقلة في الشريط لكل المستخدمين المسجّلين (`canOpenShellModule` / `canOpenModuleView` دائماً true). التنفيذ = تغيير حالة فقط (لا فاتورة / لا GL). BOQ picker عبر `GET /api/purchase-requests/boq-picker` يعيد **كود + وصف** فقط. إشعارات `purchase_request_pending` + واتساب لمستخدمي `purchase_requests.edit` (أو أدوار admin/PM/accountant). ملفات: `PurchaseRequests.tsx` · `server/src/modules/purchaseRequests.ts` · migration `20260802120000_purchase_requests`.
+> **أوامر الشراء (`purchase_requests`, 2026-08-02):** نافذة مستقلة في الشريط لكل المستخدمين المسجّلين (`canOpenShellModule` / `canOpenModuleView` دائماً true). التنفيذ = تغيير حالة فقط (لا فاتورة / لا GL). BOQ picker عبر `GET /api/purchase-requests/boq-picker` يعيد **كود + وصف** فقط. إشعارات `purchase_request_pending` + واتساب لمستخدمي `purchase_requests.edit`. ملفات: `PurchaseRequests.tsx` · `server/src/modules/purchaseRequests.ts` · migration `20260802120000_purchase_requests`.
 
 ---
 
@@ -389,7 +389,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 | التبويب | الحالة | GL |
 |---------|--------|-----|
 | **فاتورة مشتريات** | حفظ → ترحيل فوري (أو read-only إن `transactionId`) · **آجلة/نقدية** (`paymentType`) | `recordPurchaseToProjectInventory` / `recordFixedAssetPurchase` — Cr مورد **21101…** أو عهدة **12102…** |
-| **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (admin / projects_manager) |
+| **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) |
 | **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (admin أو `ledger.create`) |
 
 - **معاينة:** النقر على صف فاتورة/IPC في الجدول يفتح النافذة — المرحّلة = للقراءة فقط.
@@ -412,6 +412,17 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 | وراثة روابط | بند جديد / VO جديد | `POST …/inherit` · VO يرجع `newBoqItemIds` |
 
 **صلاحية الربط الفوري:** `admin` | `projects_manager` | `project_accountant`. لا تعرض تكاليف أو أسعار بيع في نافذة الربط الفوري.
+
+### 6.4.1 نسخة احتياطية Postgres كاملة (2026-08-13)
+
+قبل رفع بيانات شركة فعلية: صدّر لقطة كاملة (كل الموديولات + المستخدمون + الصلاحيات + **`passwordHash` bcrypt** — ليست كلمة السر نصاً). تفضيلات العرض في `settings` كمفاتيح `user_prefs:*`.
+
+```powershell
+npm run prod:export-backup   # Railway
+npm run local:export-backup  # Postgres المحلي
+```
+
+الملفات تحت `D:\cost web app\backups\<stamp>-production\` (أو `-local`). الاسترجاع من **الإعدادات → قاعدة البيانات → استيراد** — وضع **استبدال** يعيد كلمات الدخول؛ **دمج** يُبقي الهاش الحالي للمستخدم الموجود. لا تُصدَّر `sessions` ولا `idempotency_keys` (جلسات/إعادة محاولة فقط).
 
 ### 6.5.0b أرصدة مخزون افتتاحية (2026-08-05)
 

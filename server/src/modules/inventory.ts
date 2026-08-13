@@ -31,7 +31,6 @@ import {
 
 function canImportOpeningBalances(user: Express.Request['user']): boolean {
   if (!user) return false;
-  if (user.role === 'admin' || user.role === 'projects_manager') return true;
   return moduleAccess(user.permissions, 'inventory').create === true;
 }
 

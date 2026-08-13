@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
-import { requireAuth, requirePermission, requireAnyPermission, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireAnyPermission, requireModuleWrite } from '../middleware/auth.js';
 import { withIdempotency } from '../middleware/idempotency.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
@@ -286,7 +286,7 @@ mosCertificatesRouter.post(
 // POST /api/mos-certificates/:id/approve
 mosCertificatesRouter.post(
   '/:id/approve',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('billing'),
   asyncHandler(async (req, res) => {
     const row = await prisma.mosCertificate.findUnique({
       where: { id: req.params.id },

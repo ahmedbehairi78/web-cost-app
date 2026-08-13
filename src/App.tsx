@@ -31,9 +31,9 @@ import {
   canOpenModuleView,
   defaultShellViewForModule,
   permissionKeyForModuleView,
-  buildPermissionsForRole,
   firstPermittedStartupModule,
   hasAnyGrantedPermission,
+  hasSettingsAccess,
   normalizeUserPermissions,
   permissionsNeedBootstrap,
   resolvePermissionsFromUserData,
@@ -194,7 +194,7 @@ export default function App() {
     const resolved = resolveShellNavigation(moduleId, viewId);
     moduleId = normalizeShellModuleId(resolved.moduleId);
     viewId = resolved.viewId;
-    const isAdminUser = userRole === 'admin';
+    const isAdminUser = hasSettingsAccess(userPermissions);
     if (!canOpenShellModule(userPermissions, moduleId, { isAdmin: isAdminUser })) {
       denyModuleAccess(moduleId);
       return;
@@ -322,9 +322,9 @@ export default function App() {
 
   const applyLocalAppUser = useCallback(async (localUser: AppUser) => {
     const role = localUser.role;
-    const effectivePermissions = permissionsNeedBootstrap(localUser.permissions, role)
-      ? buildPermissionsForRole(role)
-      : normalizeUserPermissions(localUser.permissions);
+    const effectivePermissions = resolvePermissionsFromUserData({
+      permissions: localUser.permissions,
+    });
     setUserRole(role);
     setUserPermissions(effectivePermissions);
     let savedDefaultModule = DEFAULT_MODULE;
@@ -437,7 +437,7 @@ export default function App() {
   const restoreMinimized = useCallback((id: string) => {
     setWindows(prev => {
       const win = prev.find(w => w.id === id);
-      if (win && !canOpenShellModule(userPermissions, win.moduleId, { isAdmin: userRole === 'admin' })) {
+      if (win && !canOpenShellModule(userPermissions, win.moduleId, { isAdmin: hasSettingsAccess(userPermissions) })) {
         denyModuleAccess(win.moduleId);
         return prev;
       }
@@ -668,12 +668,12 @@ export default function App() {
               try {
                 const idToken = await firebaseUser.getIdToken();
                 const localUser = await authApi.firebaseSession(idToken);
-                if (localUser.role !== 'user') {
+                if (hasAnyGrantedPermission(resolvePermissionsFromUserData({ permissions: localUser.permissions }))) {
                   const ar = languageRef.current === 'ar';
                   toast.error(
                     ar
-                      ? 'تم إنشاء ملف Firebase بصلاحيات افتراضية. اطلب من المدير حفظ المستخدم من الإعدادات لمزامنة الدور والصلاحيات.'
-                      : 'Firebase profile was created with default access. Ask an admin to re-save your user in Settings to sync role and permissions.'
+                      ? 'تم إنشاء ملف Firebase بصلاحيات افتراضية. اطلب من المدير حفظ المستخدم من الإعدادات لمزامنة الصلاحيات.'
+                      : 'Firebase profile was created with default access. Ask an admin to re-save your user in Settings to sync permissions.'
                   );
                 }
               } catch (syncErr: unknown) {
@@ -702,27 +702,19 @@ export default function App() {
             };
 
             if (localUser) {
-              const localRole = localUser.role;
-              if (localRole !== role && localRole !== 'user') {
-                const ar = languageRef.current === 'ar';
-                toast.error(
-                  ar
-                    ? `دورك في النظام المحلي (${localRole}) لا يطابق ملف Firebase (${role}). جاري استخدام صلاحيات النظام المحلي؛ اطلب من المدير إعادة حفظ المستخدم من الإعدادات.`
-                    : `Local role (${localRole}) differs from Firebase (${role}). Using local permissions; ask an admin to re-save your user in Settings.`
-                );
-              }
-
-              if (localRole !== 'user') {
-                role = localRole;
-                effectivePermissions = permissionsNeedBootstrap(localUser.permissions, localRole)
-                  ? buildPermissionsForRole(localRole)
-                  : normalizeUserPermissions(localUser.permissions);
-              }
-
+              const localPermissions = resolvePermissionsFromUserData({
+                permissions: localUser.permissions,
+              });
               const localContractIds = Array.isArray(localUser.assignedContractIds)
                 ? localUser.assignedContractIds.filter((id): id is string => typeof id === 'string')
                 : [];
               const fsContractIds = Array.isArray(data.assignedContractIds) ? data.assignedContractIds : [];
+
+              if (hasAnyGrantedPermission(localPermissions)) {
+                role = localUser.role;
+                effectivePermissions = localPermissions;
+              }
+
               if (
                 localContractIds.length > 0
                 && JSON.stringify([...localContractIds].sort()) !== JSON.stringify([...fsContractIds].sort())
@@ -730,15 +722,14 @@ export default function App() {
                 loginPatch.assignedContractIds = localContractIds;
               }
 
-              const fsRole = String(data.role || 'user');
-              const needsProfileSync =
-                permissionsNeedBootstrap(data.permissions, role)
-                || (localRole !== 'user' && fsRole !== localRole);
-              if (needsProfileSync) {
+              if (
+                permissionsNeedBootstrap(data.permissions)
+                || JSON.stringify(normalizeUserPermissions(data.permissions)) !== JSON.stringify(localPermissions)
+              ) {
                 loginPatch.role = role;
                 loginPatch.permissions = effectivePermissions;
               }
-            } else if (permissionsNeedBootstrap(data.permissions, role)) {
+            } else if (permissionsNeedBootstrap(data.permissions)) {
               loginPatch.role = role;
               loginPatch.permissions = effectivePermissions;
             }
@@ -900,7 +891,7 @@ export default function App() {
     requestRevealDesktopWindow();
   }, [authChecked, isAuthenticated, loading, startupPrefsReady]);
 
-  const canOpenDefault = userRole === 'admin' || hasAnyGrantedPermission(userPermissions);
+  const canOpenDefault = hasAnyGrantedPermission(userPermissions);
   /** Splash after login only — not when the user closes all module windows manually.
    *  Secondary New GUI windows skip this entirely (no login card flash). */
   const enteringApp =
@@ -922,7 +913,7 @@ export default function App() {
   useLayoutEffect(() => {
     if (usesTopNav(theme)) return;
     if (!startupPrefsReady || loading || !isAuthenticated) return;
-    const canOpenDefault = userRole === 'admin' || hasAnyGrantedPermission(userPermissions);
+    const canOpenDefault = hasAnyGrantedPermission(userPermissions);
     if (!canOpenDefault) return;
     if (startupLayoutOpenedRef.current === 'sidebar') return;
 
@@ -963,8 +954,8 @@ export default function App() {
     );
   }
 
-  const isAdmin      = userRole === 'admin';
-  const hasGrantedAccess = isAdmin || hasAnyGrantedPermission(userPermissions);
+  const isAdmin      = hasSettingsAccess(userPermissions);
+  const hasGrantedAccess = hasAnyGrantedPermission(userPermissions);
 
   // شاشة الانتظار: حساب مسجّل لكن بدون صلاحيات — فقط تبديل اللغة وتسجيل الخروج
   if (!hasGrantedAccess) {
@@ -1282,7 +1273,7 @@ function ErpShellContent({
   useLayoutEffect(() => {
     if (!usesTopNav(theme)) return;
     if (!startupPrefsReady || loading || !isAuthenticated) return;
-    const canOpenDefault = userRole === 'admin' || hasAnyGrantedPermission(userPermissions);
+    const canOpenDefault = hasAnyGrantedPermission(userPermissions);
     if (!canOpenDefault) return;
     if (startupLayoutOpenedRef.current === 'topnav') return;
 

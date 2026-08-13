@@ -31,6 +31,8 @@
     "local:migrate": "tsx server/src/scripts/migrateToPostgres.ts",
     "local:import-banks": "tsx server/src/scripts/importBanksFromBackup.ts",
     "local:export-firestore-users": "tsx server/src/scripts/exportFirestoreUsers.ts",
+    "local:export-backup": "tsx server/src/scripts/exportPostgresBackup.ts",
+    "prod:export-backup": "tsx server/src/scripts/exportPostgresBackup.ts --production",
     "local:verify-postgres": "tsx server/src/scripts/verifyPostgresGoldenPaths.ts",
     "local:mobile-test-state": "tsx scripts/peek-mobile-test-state.ts",
     "local:compare-data": "tsx server/src/scripts/compareDataSources.ts",

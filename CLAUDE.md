@@ -142,7 +142,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/services/local/modulesApi.ts` | Client-side API wrappers (`banksApi`, `settingsApi`, `projectInventoryTransfersApi` → `/inventory/project-transfers`, `inventoryApi`, …) |
 | `server/src/modules/settings.ts` | `GET/PUT /api/settings/company_info` · `GET/PATCH /api/settings/user-preferences` (+ `visibleShellModules` on GET) · **admin** `GET/PATCH /api/settings/user-preferences/:userId` · `GET /api/settings/backup-export` · **`GET/POST /api/settings/push-to-production/*`** |
 | `server/src/migration/pushToProduction.ts` | Preview + push local Postgres → Railway via `PRODUCTION_DATABASE_URL` |
-| `server/src/migration/buildPostgresBackup.ts` | Full Postgres snapshot — **78** collection keys (inventory · warehouse receipts · payroll · fixed assets · OHA · custody · MOS · VO · …); v3 JSON via **`GET /api/settings/backup-export`** |
+| `server/src/migration/buildPostgresBackup.ts` | Full Postgres snapshot — **78** collection keys including **warehouse receipts** + **`users.passwordHash`**; v3 JSON via **`GET /api/settings/backup-export`** or **`npm run local:export-backup`** / **`prod:export-backup`** |
 | `server/src/migration/backupCollections.ts` · `src/constants/backupCollections.ts` | **`POSTGRES_BACKUP_COLLECTIONS`** / **`FIRESTORE_BACKUP_COLLECTIONS`** |
 | `server/src/lib/dataMaintenanceWipes.ts` | Postgres wipe handlers per module group — used by **`POST /api/financial-maintenance/wipe`** |
 | `server/src/migration/importPostgresBackup.ts` | Full Postgres restore from backup JSON |
@@ -383,20 +383,22 @@ Cloud Firestore security rules **cannot** reliably evaluate `permissions[variabl
 
 **Server `hasPermission`:** `server/src/permissions.ts` treats CRUD maps as enabled when **any** of `view|create|edit` is true (not only flat booleans).
 
-**Roles** (defined in `src/lib/permissions.ts` + `server/src/permissions.ts`):
+**Access is stored checkboxes only** (`users.permissions` JSON). Role names (`admin` / `projects_manager` / `project_accountant` / `user`) remain on the user row for bootstrap/legacy but **do not grant modules**. Settings → Users has no role preset buttons.
 
-| Role | Key Capabilities |
-|------|-----------------|
-| `admin` | Full access to everything |
-| `projects_manager` | projects, boq, billing (view costs), view/approve inventory transfers, view subcontractor |
-| `project_accountant` | costs, billing, inventory (full), subcontractor (full) — **writes** scoped to `assignedContractIds` for Actual Costs IPC/invoice; **inventory consumption** scoped by **project** (any contract in an accessible project). Legacy inventory **transfers** still use assigned contracts only. |
-| `user` | dashboard only (awaiting admin approval) |
+| Gate | Source |
+|------|--------|
+| Open module / API | `moduleAccess(permissions, key).view` / `.create` / `.edit` |
+| System admin (users, backup, wipe, cost centers) | `permissions.settings === true` (`hasSettingsAccess`) |
+| Approve IPC / VO / MOS / transfers / period lock | matching module **`.edit`** (`costs_ipc`, `boq`, `billing`, `inventory`, `overhead`) |
+| Contract scope | empty `assignedContractIds` = **all contracts**; non-empty = those contracts only |
 
-**Module permissions** include `inventory` and `subcontractor` as `ModuleCrudPermission` entries in `UserPermissions`. Sidebar filters items via `moduleAccess(permissions, id).view`.
+`can()` in `PermissionsContext` never bypasses via role. `isAdmin` in the UI means **settings** permission.
 
-`useUserAccessScope` hook exposes `role`, `assignedContractIds`, `isAdmin`, `isProjectsManager`, `isProjectAccountant` — use it to scope queries and guard writes client-side.
+`useUserAccessScope` exposes `isContractScoped` (assigned contracts length > 0). `isProjectAccountant` is an alias of that for list filtering. Do not use `role === 'admin'` for module access.
 
-**Password / Electron login (local mode):** `useUserAccessScope` must read **`role` from `PermissionsContext`** (set by `App.tsx` from Postgres session), not from `onAuthStateChanged` alone — Electron password login has **no Firebase user**. `assignedContractIds` still come from `authApi.me()`. Inventory uses `userRole === 'admin' || userRole === 'projects_manager'` → unrestricted contract scope (`myContractIds = null`).
+**Password / Electron login (local mode):** permissions come from Postgres session (`PermissionsContext`). `assignedContractIds` from `authApi.me()`. Empty assigned list → unrestricted (`myContractIds = null`).
+
+**BOOTSTRAP_ADMIN_EMAIL:** first login may still write `ALL_PERMISSIONS` + `role: admin` when stored JSON is empty.
 
 ### Date Handling
 
@@ -973,6 +975,32 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — نسخة Postgres كاملة قبل رفع بيانات الشركة ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** تصدير كامل قبل إدخال أرصدة مخزون فعلية. إصلاح فجوة: `warehouse_receipts` / `warehouse_receipt_lines` كانت في قائمة المجموعات لكن **لا تُجلب** في `buildPostgresBackup`.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **تصدير** | `warehouse_receipts` + lines داخل `buildPostgresBackup` + تحقق أن كل مفتاح في `POSTGRES_BACKUP_COLLECTIONS` موجود |
+| **CLI** | `npm run local:export-backup` · `npm run prod:export-backup` → `../backups/<stamp>-<local\|production>/` |
+| **مستخدمون** | `role` · `permissions` · `assignedContractIds` · **`passwordHash` (bcrypt)** — ليست كلمة السر نصاً |
+| **لقطة 2026-08-13** | Railway + local: **78** مجموعة · **1431** سجل · **7/7** مستخدمين بـ hash |
+
+### لا تراجع
+
+- لا تحذف `passwordHash` من تصدير `users`.
+- لا تُبقِ مفتاحاً في `POSTGRES_BACKUP_COLLECTIONS` دون `findMany` مطابق.
+- الاسترجاع **replace** يعيد كلمات الدخول؛ **merge** يُبقي الهاش الحالي إن وُجد المستخدم.
+
+```powershell
+npm run prod:export-backup
+# ملف: D:\cost web app\backups\<stamp>-production\postgres-full-production.json
+```
 
 ---
 

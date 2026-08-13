@@ -83,7 +83,7 @@ import { ActivityLogPanel } from './ActivityLogPanel';
 import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
 import { financialMaintenanceApi, settingsApi, contractsApi } from '../services/local/modulesApi';
 import { useApiQuery } from '../hooks/useApiQuery';
-import { buildPermissionsForRole, crudOff, crudOn, moduleAccess, normalizeUserPermissions } from '../lib/permissions';
+import { crudOff, crudOn, moduleAccess, normalizeUserPermissions } from '../lib/permissions';
 import { PERMISSION_MENU_HINTS } from '../lib/moduleViewPermissions';
 import { usePermissions } from '../context/PermissionsContext';
 import { isLocalBackend } from '../lib/dataBackend';
@@ -1560,9 +1560,9 @@ const PERMISSION_GROUPS: PermGroupDef[] = [
           { ar: 'قاعدة البيانات', en: 'Database' },
           { ar: 'إدارة المستخدمين', en: 'User management' },
           { ar: 'شجرة الحسابات', en: 'Chart of accounts' },
-          { ar: 'مراكز التكلفة غير المباشرة (admin)', en: 'Indirect cost centers (admin)' },
-          { ar: 'سجل النشاط (admin)', en: 'Activity log (admin)' },
-          { ar: 'بيانات تجريبية (admin)', en: 'Sample data (admin)' },
+          { ar: 'مراكز التكلفة غير المباشرة', en: 'Indirect cost centers' },
+          { ar: 'سجل النشاط', en: 'Activity log' },
+          { ar: 'بيانات تجريبية', en: 'Sample data' },
         ],
       },
     ],
@@ -1883,7 +1883,7 @@ function UserModal({ user, contracts, language, theme, onClose, onSave }: UserMo
   const { t } = useLanguage();
   const [email, setEmail] = useState(user?.email ?? '');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<UserRole>(user?.role ?? 'user');
+  const role: UserRole = user?.role ?? 'user';
   const [permissions, setPermissions] = useState<UserPermissions>(
     normalizeUserPermissions(user?.permissions ?? emptyPermissions())
   );
@@ -2100,53 +2100,12 @@ function UserModal({ user, contracts, language, theme, onClose, onSave }: UserMo
             </div>
           )}
 
-          {/* Role */}
-          <div className="mb-5">
-            <label className="block text-xs font-bold text-gray-400 uppercase mb-2">
-              {language === 'ar' ? 'الصلاحية' : 'Role'}
-            </label>
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
-              {(['user', 'project_accountant', 'projects_manager', 'admin'] as const).map((r) => (
-                <button
-                  key={r}
-                  type="button"
-                  onClick={() => {
-                    setRole(r);
-                    setPermissions(buildPermissionsForRole(r));
-                  }}
-                  className={cn(
-                    'py-2 rounded-xl border text-sm font-bold transition-all',
-                    role === r
-                      ? 'bg-blue-600 border-blue-500 text-white'
-                      : theme === 'dark'
-                        ? 'border-gray-700 text-gray-400 hover:border-gray-500'
-                        : 'border-gray-300 text-gray-500 hover:border-gray-400'
-                  )}
-                >
-                  {r === 'admin'
-                    ? (language === 'ar' ? 'مدير نظام' : 'Admin')
-                    : r === 'projects_manager'
-                      ? (language === 'ar' ? 'مسؤول مشاريع' : 'Projects Manager')
-                      : r === 'project_accountant'
-                        ? (language === 'ar' ? 'محاسب مشروع' : 'Project Accountant')
-                        : (language === 'ar' ? 'مستخدم' : 'User')}
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="mb-5">
             <label className="block text-xs font-bold text-gray-400 uppercase mb-1">
-              {language === 'ar' ? 'العقود المسموح بها' : 'Allowed Contracts'}
+              {t('user_contracts_label')}
             </label>
             <p className="text-xs text-gray-500 mb-2">
-              {role === 'admin' || role === 'projects_manager'
-                ? (language === 'ar'
-                  ? 'اختياري — ترك الكل دون تحديد يعني جميع العقود. يمكن تحديد عقود لتوثيق النطاق أو للاستخدام في التقارير.'
-                  : 'Optional — leave all unchecked for every contract. Select specific contracts to document scope or use in reports.')
-                : (language === 'ar'
-                  ? 'حدّد العقود التي يمكن للمستخدم الوصول إليها في التكاليف والمخازن والتقارير. بدون تحديد = لا وصول للعقود.'
-                  : 'Select contracts this user may access in costs, inventory, and reports. None selected = no contract access.')}
+              {t('user_contracts_hint')}
             </p>
             <div className={cn(
               'max-h-48 overflow-y-auto rounded-xl border p-3 space-y-2',
@@ -2606,9 +2565,10 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
     contact?: { phoneRaw: string; whatsappOptIn: boolean },
     visibleShellModules?: string[] | null,
   ) => {
-    const createsOrPromotesAdmin =
-      role === 'admin' && (!editingUser || editingUser.role !== 'admin');
-    const sensitive = createsOrPromotesAdmin;
+    const grantingSettings =
+      permissions.settings === true
+      && (!editingUser || editingUser.permissions.settings !== true);
+    const sensitive = grantingSettings;
 
     if (sensitive && !viewerIsAdmin) {
       toast.error(language === 'ar' ? 'لا تملك صلاحية هذا الإجراء.' : 'You do not have permission for this action.');
@@ -2639,7 +2599,7 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
   };
 
   const handleDeleteUser = async (user: AppUser) => {
-    if (user.role === 'admin' && viewerIsAdmin) {
+    if (user.permissions.settings === true && viewerIsAdmin) {
       pendingUserOpRef.current = () => executeDeleteUser(user);
       setAdminUserVerifyOpen(true);
       return;
@@ -2668,7 +2628,7 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
         <div className="flex items-center gap-3 min-w-0">
           <div className={cn(
             'w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shrink-0',
-            u.role === 'admin' ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
+            u.permissions.settings ? 'bg-blue-600 text-white' : 'bg-gray-700 text-gray-300'
           )}>
             {u.email.charAt(0).toUpperCase()}
           </div>
@@ -2687,23 +2647,14 @@ function UsersSection({ language, theme, t, viewerIsAdmin }: UsersSectionProps) 
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className={cn(
-                'text-xs font-bold',
-                u.role === 'admin' ? 'text-blue-400' : 'text-gray-400'
-              )}>
-                {u.role === 'admin'
-                  ? (language === 'ar' ? 'مدير نظام' : 'Admin')
-                  : u.role === 'projects_manager'
-                    ? (language === 'ar' ? 'مسؤول مشاريع' : 'Projects Manager')
-                    : u.role === 'project_accountant'
-                      ? (language === 'ar' ? 'محاسب مشروع' : 'Project Accountant')
-                      : (language === 'ar' ? 'مستخدم' : 'User')}
-              </span>
-              {u.role !== 'admin' && (
-                <span className="text-xs text-gray-500 truncate" title={activeModules}>
-                  · {activeModules || (language === 'ar' ? 'بدون صلاحيات' : 'No access')}
+              {u.permissions.settings && (
+                <span className="text-xs font-bold text-blue-400">
+                  {t('user_settings_badge')}
                 </span>
               )}
+              <span className="text-xs text-gray-500 truncate" title={activeModules}>
+                {activeModules || (language === 'ar' ? 'بدون صلاحيات' : 'No access')}
+              </span>
             </div>
             {isLocalBackend && u.phoneE164 && (
               <div className="flex items-center gap-1.5 mt-1">

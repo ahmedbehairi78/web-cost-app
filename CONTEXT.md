@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-09 (شعارات كفر المستخلص لكل مشروع · Cover-JLL)
+**آخر تحديث:** 2026-08-13 (نسخة Postgres كاملة · إصلاح تصدير استلام المخزن)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -145,19 +145,19 @@ web-cost-app/
 
 ## 4. نظام الصلاحيات
 
-### الأدوار
-| الدور | ملخص |
+### مصدر الصلاحيات (2026-08-13)
+الوصول = مربعات **عرض / إنشاء / تعديل** المخزّنة في `users.permissions` فقط. أسماء الأدوار (`admin` · `projects_manager` · `project_accountant` · `user`) باقية في العمود للتوافق ولا تمنح موديولات. إعدادات النظام (مستخدمون · نسخ احتياطي) = `settings: true`. العقود: قائمة فارغة = كل العقود.
+
+### الأدوار (عمود قديم — لا يُستخدم للوصول)
+| الدور | ملاحظة |
 |---|---|
-| `admin` | كامل |
-| `projects_manager` | مشاريع + BOQ + اعتماد تحويلات مخزون (مشاريع) |
-| `project_accountant` | تكاليف + مخازن + باطن — **عقوده المعينة فقط** |
-| `user` | بانتظار تفعيل من الإعدادات |
+| `admin` / غيره | لا يُفتح منه مسار ولا اعتماد — استخدم JSON الصلاحيات |
 
 ### مفاتيح CRUD
 `dashboard` | `ledger` | `projects` | `boq` | `billing` | `costs` | `suppliers` | `banks` | **`inventory`** | **`transfers`** | **`subcontractor`** | `reports` | `settings`
 
 - قراءة/إنشاء تحويلات المشاريع: `inventory` **أو** `transfers` **أو** `costs`.
-- اعتماد نهائي (`approve-projects`): **`projects_manager`** أو **`admin`** فقط.
+- اعتماد نهائي (`approve-projects`): **`inventory.edit`**.
 
 ### التطبيق
 - Firestore Rules + `useUserAccessScope` + `requirePermission` على API المحلي.

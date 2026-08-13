@@ -66,7 +66,6 @@ import {
 import { mergeCompanyPrintInfoWithProject } from '../lib/projectCoverLogos';
 import { formatQuantity } from '../lib/formatQuantity';
 import type { StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
-import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { MosExtractModal } from './billing/MosExtractModal';
 import { MosExtractDetail } from './billing/MosExtractDetail';
 import type { MosCertificate } from '../types';
@@ -382,9 +381,8 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     void fetchSettings();
   }, [language]);
 
-  const { isAdmin } = usePermissions();
-  const { isAdmin: isAdminScope, isProjectsManager } = useUserAccessScope();
-  const canApproveMos = isAdminScope || isProjectsManager;
+  const { can, isAdmin } = usePermissions();
+  const canApproveMos = can('billing').edit;
   const canApproveIpc = isLocalBackend && canApproveMos;
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [selectedContractId, setSelectedContractId] = useState<string>('');

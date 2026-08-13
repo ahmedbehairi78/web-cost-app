@@ -100,7 +100,6 @@ export function createCrudRouter(
   });
 
   function assertWrite(req: Request, res: Response): boolean {
-    if (req.user?.role === 'admin') return true;
     const ok = writePerms.some((k) => hasModuleWrite(req.user?.permissions, k));
     if (!ok) {
       res.status(403).json({ error: 'Write access denied for this resource' });

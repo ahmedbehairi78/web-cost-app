@@ -1,15 +1,17 @@
 import { Router } from 'express';
-import { requireAnyPermission, requireAuth, requireRole } from '../middleware/auth.js';
+import { requireAnyPermission, requireAuth, requireModuleWrite } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
+
+import { moduleAccess } from '../permissions.js';
 
 export const materialsRouter = Router();
 materialsRouter.use(requireAuth);
 
 function canManageMaterials(user: Express.Request['user']): boolean {
   if (!user) return false;
-  return user.role === 'admin' || user.role === 'projects_manager';
+  return moduleAccess(user.permissions, 'inventory').edit === true;
 }
 
 type CategoryWithGroup = {
@@ -49,7 +51,7 @@ materialsRouter.get(
 
 materialsRouter.post(
   '/groups',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('inventory'),
   asyncHandler(async (req, res) => {
     if (!canManageMaterials(req.user)) {
       res.status(403).json({ error: 'Only admin or projects manager can manage materials' });
@@ -74,7 +76,7 @@ materialsRouter.post(
 
 materialsRouter.put(
   '/groups/:id',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('inventory'),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const body = req.body as { code?: string; name?: string };
@@ -131,7 +133,7 @@ materialsRouter.get(
 
 materialsRouter.post(
   '/categories',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('inventory'),
   asyncHandler(async (req, res) => {
     const body = req.body as { groupId: number; code: string; name: string; unit: string };
     if (!body.groupId || !body.code?.trim() || !body.name?.trim() || !body.unit?.trim()) {
@@ -163,7 +165,7 @@ materialsRouter.post(
 
 materialsRouter.put(
   '/categories/:id',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('inventory'),
   asyncHandler(async (req, res) => {
     const id = Number(req.params.id);
     const body = req.body as { groupId?: number; code?: string; name?: string; unit?: string };
@@ -207,7 +209,7 @@ type ImportRow = {
 
 materialsRouter.post(
   '/import',
-  requireRole('admin', 'projects_manager'),
+  requireModuleWrite('inventory'),
   asyncHandler(async (req, res) => {
     if (!canManageMaterials(req.user)) {
       res.status(403).json({ error: 'Only admin or projects manager can manage materials' });
