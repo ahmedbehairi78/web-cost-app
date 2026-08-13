@@ -352,6 +352,9 @@ const translations: Record<Language, Record<string, string>> = {
       'يُبقى حساب الأدمن myline78@gmail.com (وكلمة المرور الحالية) مع صلاحيات كاملة. الحساب الحالي يُبقى أيضاً إن لم يكن هو نفس البريد حتى لا تُقفل الجلسة.',
     settings_factory_reset_running: 'جارٍ ضبط المصنع، لا تغلق الصفحة…',
     settings_factory_reset_success: 'تم ضبط المصنع. الحسابات المتبقية: {emails}. سجّل الدخول من جديد.',
+    settings_factory_reset_confirm_hint: 'اكتب ضبط المصنع أو FACTORY للمتابعة (لا يهم حجم الحروف).',
+    settings_factory_reset_stale_api:
+      'مسار ضبط المصنع غير موجود على الـ API. أوقف العملية على المنفذ 3001 ثم أعد npm run local:api (أو انشر Railway للكترون).',
     indirect_centers_next_code: 'الكود التالي',
     cost_center: 'مركز التكلفة',
     cost_center_optional: 'مركز التكلفة (اختياري)',
@@ -2739,6 +2742,9 @@ const translations: Record<Language, Record<string, string>> = {
       'Keeps admin myline78@gmail.com (and the current password) with full permissions. The signed-in account is also kept if it is a different email so you are not locked out.',
     settings_factory_reset_running: 'Resetting to factory default, do not close…',
     settings_factory_reset_success: 'Factory reset complete. Remaining accounts: {emails}. Sign in again.',
+    settings_factory_reset_confirm_hint: 'Type FACTORY or ضبط المصنع to continue (letter case does not matter).',
+    settings_factory_reset_stale_api:
+      'Factory-reset API route is missing. Stop the process on port 3001 then restart npm run local:api (or deploy Railway for Electron).',
     indirect_centers_next_code: 'Next code',
     cost_center: 'Cost center',
     cost_center_optional: 'Cost center (optional)',
