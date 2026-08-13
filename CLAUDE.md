@@ -976,6 +976,58 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — الوضع الافتراضي: شركة فارغة + شجرة حسابات ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** مسح المجموعات من Electron ترك مشاريع · عقود · BOQ · أصناف · بنوك · طلبات شراء · تنبيهات لأن تلك الجداول خارج `CLEAR_DATA_GROUPS`. زر **الوضع الافتراضي** يفرّغ Postgres بالكامل ثم يزرع COA مع الإبقاء على `myline78@gmail.com`.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **API** | `POST /api/financial-maintenance/factory-reset` — `TRUNCATE … CASCADE` لكل جداول التطبيق + sessions/idempotency · إعادة المستخدم المحتفظ به · `bootstrapCoaIfEmpty` |
+| **إبقاء** | `FACTORY_KEEP_ADMIN_EMAIL` الافتراضي `myline78@gmail.com` + الحساب الحالي إن اختلف (منع القفل) · `passwordHash` · `ALL_PERMISSIONS` · عقود فارغة |
+| **UI** | إعدادات → قاعدة البيانات → «الوضع الافتراضي — شركة فارغة» · تأكيد «ضبط المصنع» / `FACTORY` + تحقق الهوية · خروج إجباري · مسح IndexedDB للمسودات/الطابور |
+| **طباعة** | `PrintSettingsPanel` بلا بيانات شركة النيل الوهمية عند غياب `company_info` |
+
+### لا تراجع
+
+- لا تعتمد على مسح المجموعات لتفريغ الشركة — المشاريع/الأصناف/البنوك/PRs خارج تلك المجموعات.
+- لا تحذف `_prisma_migrations`.
+- Electron يطبّق على **Railway**؛ `dev:local` على **Postgres المحلي**.
+
+```powershell
+npm run test -- server/src/lib/factoryReset.test.ts src/lib/operationsManual.test.ts src/lib/offline/offline.test.ts
+# إعدادات → صيانة البيانات → الوضع الافتراضي → ضبط المصنع → دخول myline78@gmail.com
+```
+
+---
+
+## 🔴 HANDOFF — نسخة Postgres كاملة قبل رفع بيانات الشركة ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** تصدير كامل قبل إدخال أرصدة مخزون فعلية. إصلاح فجوة: `warehouse_receipts` / `warehouse_receipt_lines` كانت في قائمة المجموعات لكن **لا تُجلب** في `buildPostgresBackup`.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **تصدير** | `warehouse_receipts` + lines داخل `buildPostgresBackup` + تحقق أن كل مفتاح في `POSTGRES_BACKUP_COLLECTIONS` موجود |
+| **CLI** | `npm run local:export-backup` · `npm run prod:export-backup` → `../backups/<stamp>-<local\|production>/` |
+| **مستخدمون** | `role` · `permissions` · `assignedContractIds` · **`passwordHash` (bcrypt)** — ليست كلمة السر نصاً |
+| **لقطة 2026-08-13** | Railway + local: **78** مجموعة · **1431** سجل · **7/7** مستخدمين بـ hash |
+
+### لا تراجع
+
+- لا تحذف `passwordHash` من تصدير `users`.
+- لا تُبقِ مفتاحاً في `POSTGRES_BACKUP_COLLECTIONS` دون `findMany` مطابق.
+- الاسترجاع **replace** يعيد كلمات الدخول؛ **merge** يُبقي الهاش الحالي إن وُجد المستخدم.
+
+```powershell
+npm run prod:export-backup
+# ملف: D:\cost web app\backups\<stamp>-production\postgres-full-production.json
+```
+
+---
+
 ## 🔴 HANDOFF — صافي كفر المستخلص Cover-JLL (Sub − استقطاعات − PP) ✅ (2026-08-11)
 
 > **جلسة 2026-08-11:** صافي المستحق كان يُحسب من أعمال **الفترة** فقط دون خصم Previous Payments، بينما الكفر يعرض استقطاعات على **Sub-Total** التراكمي — عدم تطابق.
@@ -1662,7 +1714,8 @@ Golden path: سجّل دخول → Ctrl+N (لوحة عربية أو إنجليز
 
 - **Backup & Restore** — **local/Railway:** **`GET /api/settings/backup-export`** exports **full Postgres** (`POSTGRES_BACKUP_COLLECTIONS`, v3 — excludes `sessions`; includes **`passwordHash`** on `users` for restore). **`POST /api/settings/backup-import`** (admin) restores JSON — **`merge`** upserts (keeps existing DB password if user already exists) · **`replace`** truncates backup tables then imports (`importPostgresBackup.ts` restores **`passwordHash`** from backup when present; **`usesNormalizedChildTables`** — GL lines from **`journal_entries`** only, not duplicated from nested `transactions.entries`) and **destroys the Express session** (`requiresReLogin: true`). Client shows a **full restore report** (counts + skip reasons via `BackupImportReportPanel` / `backupImportReport.ts` sessionStorage) and **suppresses forced 401 logout** (`suppressApiUnauthorizedLogout`) until the user clicks «متابعة لتسجيل الدخول». After re-login the last report remains under Settings → Database until dismissed. Generic upsert strips payload **`id`** from Prisma `update` (avoids mass `_upsert_error` on merge). Orphan `journal_entries.costCenterId` cleared; missing parent tx → skip `journal_entries_missing_transaction`. **Cloud legacy:** Firestore **`FIRESTORE_BACKUP_COLLECTIONS`** export/import in browser.
 - **Push to production (Railway)** — **`PushToProductionPanel`** (local dev + `admin` only). Merges **local Postgres → Railway Postgres** (upsert by doc id). Requires **`PRODUCTION_DATABASE_URL`** in `.env` (Railway **`DATABASE_PUBLIC_URL`**, `*.proxy.rlwy.net` — **not** `postgres.railway.internal`). Also accepts env alias **`DATABASE_PUBLIC_URL`**. Disabled when `NODE_ENV=production`. Does **not** overwrite Railway **`users`**. Does **not** delete GL rows that exist on Railway only. Google re-auth before push (`AdminSensitiveVerifyModal`).
-- **Data Maintenance** — **`CLEAR_DATA_GROUPS`** (Firestore cloud **or** Postgres local) + `ClearDataModal` (type **حذف** / **DELETE** + Google verify). Postgres: **`POST /api/financial-maintenance/wipe`** `{ groups[] }` via **`dataMaintenanceWipes.ts`** (financial · warehouse · custody · payroll · fixed_assets · materials_tree · …). Users/sessions never wiped.
+- **Data Maintenance** — **`CLEAR_DATA_GROUPS`** (Firestore cloud **or** Postgres local) + `ClearDataModal` (type **حذف** / **DELETE** + Google verify). Postgres: **`POST /api/financial-maintenance/wipe`** `{ groups[] }` via **`dataMaintenanceWipes.ts`** (financial · warehouse · custody · payroll · fixed_assets · materials_tree · …). Group wipe **does not** delete `users` · `sessions` · `settings` · `bank_accounts` · `purchase_requests` · `warehouse_receipts` · notifications — leftover master data can remain.
+- **Factory default (empty company)** — Settings → Database → **«الوضع الافتراضي — شركة فارغة»**. `POST /api/financial-maintenance/factory-reset` (`factoryReset.ts`) **TRUNCATE … CASCADE** all Prisma `@@map` tables plus `sessions` / `idempotency_keys` (never `_prisma_migrations`), restores **`myline78@gmail.com`** (`FACTORY_KEEP_ADMIN_EMAIL`) with **`ALL_PERMISSIONS`** + password hash, plus the signed-in actor if different (lockout guard), re-seeds COA (`bootstrapCoaIfEmpty`) and default fixed-asset groups. Confirm word **ضبط المصنع** / **FACTORY** + identity verify. Session destroyed (`requiresReLogin`). Client also clears IndexedDB drafts/outbox. Hits **the API’s Postgres** (Electron/Railway vs `dev:local` are different DBs).
 - **`warehouse_movements`** group (visible when `isLocalBackend`): label **حركات وأوامر المخازن** — calls **`POST /api/inventory-maintenance/purge`** with `deleteMovements` + **`resetBalances: true`** (clears consumption/return/transfer/movement SQLite data **and** warehouse balance rows). Does **not** delete `material_groups` / `material_categories` or `127…` warehouse COA. Does **not** delete Firestore `purchase_transactions` / `transactions` — purge those separately if full reset needed.
 
 ### Push to production — API (local dev only)

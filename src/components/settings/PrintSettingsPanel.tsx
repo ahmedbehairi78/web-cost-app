@@ -32,20 +32,20 @@ type PrintSettingsState = {
   reportPrintProfiles?: StoredReportPrintProfiles;
 };
 
-const DEFAULTS: PrintSettingsState = {
-  companyName: 'شركة النيل للمقاولات والاستثمار العقاري',
-  companyNameEn: 'Nile Construction & Real Estate',
-  taxId: '123-456-789',
-  address: 'القاهرة، مصر',
-  addressEn: 'Cairo, Egypt',
+const EMPTY_DEFAULTS: PrintSettingsState = {
+  companyName: '',
+  companyNameEn: '',
+  taxId: '',
+  address: '',
+  addressEn: '',
   headerLogo: DEFAULT_HEADER_LOGO,
   headerLogoLeft: '',
   headerLogoRight: '',
   coverContractLabel: 'CONSTRUCTION CONTRACT',
   coverPreparedBy: '',
   coverApprovedBy: '',
-  footerText: 'نظام إدارة التكاليف - جميع الحقوق محفوظة © 2026',
-  footerTextEn: 'Cost Management System - All Rights Reserved © 2026',
+  footerText: '',
+  footerTextEn: '',
 };
 
 type PrintSettingsPanelProps = {
@@ -57,7 +57,7 @@ type PrintSettingsPanelProps = {
 
 export function PrintSettingsPanel({ theme, cardSurface, inputCls, mutedText }: PrintSettingsPanelProps) {
   const { language, dir, t } = useLanguage();
-  const [printSettings, setPrintSettings] = useState<PrintSettingsState>(DEFAULTS);
+  const [printSettings, setPrintSettings] = useState<PrintSettingsState>(EMPTY_DEFAULTS);
   const [loading, setLoading] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -67,21 +67,21 @@ export function PrintSettingsPanel({ theme, cardSurface, inputCls, mutedText }: 
         if (isLocalBackend) {
           const res = await settingsApi.getCompanyInfo();
           if (res.value) {
-            setPrintSettings({ ...DEFAULTS, ...res.value });
+            setPrintSettings({ ...EMPTY_DEFAULTS, ...res.value });
           } else {
-            setPrintSettings(DEFAULTS);
+            setPrintSettings(EMPTY_DEFAULTS);
           }
           return;
         }
         const settingsDoc = await getDoc(doc(db, 'settings', 'company_info'));
         if (settingsDoc.exists()) {
-          setPrintSettings({ ...DEFAULTS, ...(settingsDoc.data() as PrintSettingsState) });
+          setPrintSettings({ ...EMPTY_DEFAULTS, ...(settingsDoc.data() as PrintSettingsState) });
         } else {
-          setPrintSettings(DEFAULTS);
+          setPrintSettings(EMPTY_DEFAULTS);
         }
       } catch (err) {
         console.warn('Could not load company print settings:', err);
-        setPrintSettings(DEFAULTS);
+        setPrintSettings(EMPTY_DEFAULTS);
         toast.error(t('error_load_print_settings'));
       }
     };

@@ -39,6 +39,7 @@ import {
   Plus,
   PenLine,
   FlaskConical,
+  RotateCcw,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { IndirectCostCentersPanel } from './settings/IndirectCostCentersPanel';
@@ -115,6 +116,7 @@ import {
 } from '../lib/apiSession';
 import { ApiError } from '../lib/apiClient';
 import { SettingsFloatingDialog } from './settings/SettingsFloatingDialog';
+import { clearAllOfflineClientData } from '../lib/offline';
 
 const firebaseConfig = {
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
@@ -1262,6 +1264,172 @@ function ClearDataModal({ language, theme, selected, onClose }: ClearDataModalPr
         onVerified={async () => {
           const fn = deleteRunRef.current;
           deleteRunRef.current = null;
+          if (fn) await fn();
+        }}
+      />
+    </>
+  );
+}
+
+function FactoryResetModal({
+  language,
+  theme,
+  onClose,
+}: {
+  language: 'ar' | 'en';
+  theme: string;
+  onClose: () => void;
+}) {
+  const { t } = useLanguage();
+  const [confirmText, setConfirmText] = useState('');
+  const [running, setRunning] = useState(false);
+  const [verifyOpen, setVerifyOpen] = useState(false);
+  const runRef = useRef<(() => Promise<void>) | null>(null);
+
+  const CONFIRM_WORD = language === 'ar' ? 'ضبط المصنع' : 'FACTORY';
+  const confirmed = confirmText === CONFIRM_WORD;
+
+  const handleReset = () => {
+    if (!confirmed || running) return;
+    runRef.current = async () => {
+      setRunning(true);
+      try {
+        const result = await financialMaintenanceApi.factoryReset();
+        await clearAllOfflineClientData();
+        suppressApiUnauthorizedLogout();
+        toast.success(
+          t('settings_factory_reset_success').replace(
+            '{emails}',
+            (result.keptEmails ?? []).join(', '),
+          ),
+        );
+        onClose();
+        await performAppLogout();
+      } catch (e) {
+        const msg =
+          e instanceof ApiError ? e.message : e instanceof Error ? e.message : String(e);
+        toast.error(msg);
+        setRunning(false);
+      }
+    };
+    setVerifyOpen(true);
+  };
+
+  const panelCls = cn(
+    'w-full max-w-lg rounded-2xl border shadow-2xl p-6',
+    theme === 'dark' ? 'bg-[#1a1d23] border-gray-700 text-white' : 'bg-white border-gray-200 text-gray-900',
+  );
+  const dir = language === 'ar' ? 'rtl' : 'ltr';
+
+  return (
+    <>
+      <SettingsFloatingDialog
+        open={!verifyOpen}
+        theme={theme}
+        dir={dir}
+        layer="base"
+        closeOnBackdrop={!running}
+        onClose={onClose}
+        panelClassName="max-w-lg"
+      >
+        <div className={panelCls} dir={dir}>
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-2 text-red-500">
+              <RotateCcw size={22} />
+              <h3 className="text-lg font-bold">{t('settings_factory_reset_title')}</h3>
+            </div>
+            {!running && (
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label={language === 'ar' ? 'إغلاق' : 'Close'}
+                className="text-gray-400 hover:text-gray-200"
+              >
+                <X size={20} />
+              </button>
+            )}
+          </div>
+
+          <div
+            className={cn(
+              'rounded-xl border p-4 mb-5 space-y-2 text-sm',
+              theme === 'dark' ? 'bg-red-950/30 border-red-900/50' : 'bg-red-50 border-red-200',
+            )}
+          >
+            <p className="text-red-400">{t('settings_factory_reset_body')}</p>
+            <p className="font-bold text-red-500">{t('settings_factory_reset_keep')}</p>
+          </div>
+
+          {running && (
+            <div className="flex items-center justify-center gap-3 py-4 text-red-400">
+              <Loader2 size={20} className="animate-spin" />
+              <span className="font-bold text-sm">{t('settings_factory_reset_running')}</span>
+            </div>
+          )}
+
+          {!running && (
+            <>
+              <p className="text-sm text-gray-400 mb-2">
+                {language === 'ar' ? (
+                  <>
+                    اكتب <strong className="text-red-400">{CONFIRM_WORD}</strong> للمتابعة:
+                  </>
+                ) : (
+                  <>
+                    Type <strong className="text-red-400">{CONFIRM_WORD}</strong> to continue:
+                  </>
+                )}
+              </p>
+              <input
+                type="text"
+                value={confirmText}
+                onChange={(e) => setConfirmText(e.target.value)}
+                placeholder={CONFIRM_WORD}
+                className={cn(
+                  'w-full border rounded-xl py-2 px-3 text-sm outline-none mb-4 transition-colors',
+                  theme === 'dark' ? 'bg-gray-900 border-gray-700 text-white' : 'bg-white border-gray-300 text-gray-900',
+                  confirmed ? 'border-red-500' : '',
+                )}
+              />
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className={cn(
+                    'flex-1 py-2 rounded-xl text-sm font-bold border transition-colors',
+                    theme === 'dark'
+                      ? 'border-gray-700 text-gray-400 hover:bg-gray-800'
+                      : 'border-gray-300 text-gray-500 hover:bg-gray-100',
+                  )}
+                >
+                  {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  disabled={!confirmed}
+                  className="flex-1 py-2 rounded-xl bg-red-600 hover:bg-red-500 disabled:bg-red-900 disabled:text-red-700 text-white text-sm font-bold transition-colors flex items-center justify-center gap-2"
+                >
+                  <RotateCcw size={16} />
+                  {t('settings_factory_reset_btn')}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      </SettingsFloatingDialog>
+
+      <AdminSensitiveVerifyModal
+        open={verifyOpen}
+        onOpenChange={(v) => {
+          setVerifyOpen(v);
+          if (!v) runRef.current = null;
+        }}
+        language={language}
+        theme={theme}
+        onVerified={async () => {
+          const fn = runRef.current;
+          runRef.current = null;
           if (fn) await fn();
         }}
       />
@@ -2861,6 +3029,7 @@ export function Settings() {
   const [dangerOpen, setDangerOpen] = useState(false);
   const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
   const [showClearModal, setShowClearModal] = useState(false);
+  const [showFactoryModal, setShowFactoryModal] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [lastImportReport, setLastImportReport] = useState<BackupImportResultSummary | null>(() =>
     readLastBackupImportReport(),
@@ -3166,6 +3335,27 @@ export function Settings() {
                         </button>
                       )}
 
+                      {isLocalBackend && (
+                        <div className="space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => setShowFactoryModal(true)}
+                            className={cn(
+                              'w-full flex items-center justify-center gap-2 px-5 py-3 rounded-xl border-2 text-sm font-bold transition-colors',
+                              theme === 'dark'
+                                ? 'border-red-800 bg-red-950/40 text-red-300 hover:bg-red-950/70'
+                                : 'border-red-400 bg-red-50 text-red-800 hover:bg-red-100',
+                            )}
+                          >
+                            <RotateCcw size={16} />
+                            {t('settings_factory_reset_btn')}
+                          </button>
+                          <p className={cn('text-xs', theme === 'dark' ? 'text-gray-500' : 'text-gray-500')}>
+                            {t('settings_factory_reset_hint')}
+                          </p>
+                        </div>
+                      )}
+
                       <button
                         type="button"
                         disabled={selectedGroups.size === 0}
@@ -3230,6 +3420,14 @@ export function Settings() {
           theme={theme}
           selected={selectedGroups}
           onClose={() => { setShowClearModal(false); selectNone(); }}
+        />
+      )}
+
+      {showFactoryModal && (
+        <FactoryResetModal
+          language={language as 'ar' | 'en'}
+          theme={theme}
+          onClose={() => setShowFactoryModal(false)}
         />
       )}
 

@@ -84,6 +84,8 @@ export const env = {
   notificationReminderHours: Number(process.env.NOTIFICATION_REMINDER_HOURS || 24),
   /** IANA TZ for journal posting “today” (default Egypt). */
   businessTimezone: (process.env.BUSINESS_TIMEZONE || 'Africa/Cairo').trim() || 'Africa/Cairo',
+  /** Email kept (with ALL_PERMISSIONS) after Settings factory reset. */
+  factoryKeepAdminEmail: (process.env.FACTORY_KEEP_ADMIN_EMAIL || 'myline78@gmail.com').trim().toLowerCase(),
 };
 
 export function assertProductionEnv() {

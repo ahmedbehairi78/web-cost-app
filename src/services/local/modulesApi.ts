@@ -1098,6 +1098,14 @@ export const financialMaintenanceApi = {
       '/financial-maintenance/wipe',
       { groups },
     ),
+  factoryReset: () =>
+    apiClient.post<{
+      ok: boolean;
+      requiresReLogin: boolean;
+      keptEmails: string[];
+      tablesTruncated: number;
+      coaAdded: number;
+    }>('/financial-maintenance/factory-reset', {}),
 };
 
 export const inventoryApi = {

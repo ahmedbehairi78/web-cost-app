@@ -1234,6 +1234,7 @@ export const MANUAL_TOPICS: ManualTopic[] = [
       { titleKey: 'manual_settings_database_maintenance_step_3_title', bodyKey: 'manual_settings_database_maintenance_step_3_body' },
       { titleKey: 'manual_settings_database_maintenance_step_4_title', bodyKey: 'manual_settings_database_maintenance_step_4_body' },
       { titleKey: 'manual_settings_database_maintenance_step_5_title', bodyKey: 'manual_settings_database_maintenance_step_5_body' },
+      { titleKey: 'manual_settings_database_maintenance_step_6_title', bodyKey: 'manual_settings_database_maintenance_step_6_body' },
     ],
     tags: ['settings', 'clear', 'purge', 'delete', 'admin', 'warehouse'],
   },

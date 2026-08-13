@@ -407,7 +407,7 @@
 | 11 — التحديث | ✅ | المحتوى Railway · **electron-updater** GitHub Releases |
 | 12 — اختبار وإطلاق | ✅ | golden paths ✅ · Electron login ✅ · PTRF ✅ · ERP mode ✅ |
 
-**آخر تحديث:** 2026-08-08 — تفكيك ActualCosts/Inventory (عرضي) · تخفيف lag Electron (idle throttle · بدون MutationObserver أصوات · cache يومي) · 2026-07-29 — قائمة الدخل (هيكل إقفال + استبعاد `fiscal_pl_close` + وضع تحليلي) · 2026-07-27 — إقفال قائمة الدخل + قيد افتتاحي · 2026-07-26 — قفل الفترات المحاسبية · 2026-07-25 — Electron multi-window · 2026-06-26 Shell · Settings admin · General Settings · Release **v1.0.3**.
+**آخر تحديث:** 2026-08-13 — **الوضع الافتراضي** (شركة فارغة + COA، إبقاء `myline78@gmail.com`) · نسخة Postgres كاملة (`prod:export-backup` / `local:export-backup`) قبل رفع بيانات الشركة · إصلاح تصدير `warehouse_receipts`. 2026-08-08 — تفكيك ActualCosts/Inventory · تخفيف lag Electron.
 
 **أوامر سريعة:**
 ```powershell

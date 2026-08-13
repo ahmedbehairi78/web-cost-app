@@ -29,6 +29,7 @@ export {
   isOfflineFlushPausedForAuth,
 } from './syncController';
 export { shouldPauseIdleLogout, setOfflineDirtyFormActive } from './idleGate';
+export { clearAllOfflineClientData } from './idb';
 export { FORM_DRAFT_KEYS } from './formDraftKeys';
 export { offlineWrite, offlinePost, offlinePatch, offlinePut } from './offlineWrite';
 export type { SyncOutboxItem, SyncOpType, SyncOpClass, FormDraftRecord } from './types';

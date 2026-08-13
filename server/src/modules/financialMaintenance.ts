@@ -8,6 +8,7 @@ import {
   wipePostgresDataGroups,
   type PostgresWipeGroupId,
 } from '../lib/dataMaintenanceWipes.js';
+import { FactoryResetError, factoryResetPostgres } from '../lib/factoryReset.js';
 
 export { wipeFinancialMovementsPostgres };
 
@@ -22,6 +23,25 @@ financialMaintenanceRouter.post(
     const deleted = await wipeFinancialMovementsPostgres();
     const total = Object.values(deleted).reduce((s, n) => s + n, 0);
     res.json(serialize({ ok: true, deleted, total }));
+  }),
+);
+
+financialMaintenanceRouter.post(
+  '/factory-reset',
+  asyncHandler(async (req, res) => {
+    try {
+      const result = await factoryResetPostgres({ actorEmail: req.user?.email ?? null });
+      await new Promise<void>((resolve) => {
+        req.session.destroy(() => resolve());
+      });
+      res.json(serialize({ ok: true, requiresReLogin: true, ...result }));
+    } catch (error) {
+      if (error instanceof FactoryResetError) {
+        res.status(error.statusCode).json({ error: error.message });
+        return;
+      }
+      throw error;
+    }
   }),
 );
 
