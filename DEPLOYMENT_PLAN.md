@@ -408,7 +408,7 @@
 | 11 — التحديث | ✅ | المحتوى Railway · **electron-updater** GitHub Releases |
 | 12 — اختبار وإطلاق | ✅ | golden paths ✅ · Electron login ✅ · PTRF ✅ · ERP mode ✅ |
 
-**آخر تحديث:** 2026-08-13 — نسخة Postgres كاملة (`prod:export-backup` / `local:export-backup`) قبل رفع بيانات الشركة · إصلاح تصدير `warehouse_receipts`. 2026-08-08 — تفكيك ActualCosts/Inventory · تخفيف lag Electron.
+**آخر تحديث:** 2026-08-13 — **الوضع الافتراضي** (شركة فارغة + COA، إبقاء `myline78@gmail.com`) · نسخة Postgres كاملة (`prod:export-backup` / `local:export-backup`) قبل رفع بيانات الشركة · إصلاح تصدير `warehouse_receipts`. 2026-08-08 — تفكيك ActualCosts/Inventory · تخفيف lag Electron.
 
 **أوامر سريعة:**
 ```powershell

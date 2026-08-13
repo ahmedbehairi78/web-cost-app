@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from 'express';
 import { Prisma } from '@prisma/client';
 import { PeriodLockedError } from '../accounting/periodLock.js';
 import { IncomeCloseRequiredError } from '../accounting/fiscalPeriodClosingService.js';
+import { FactoryResetError } from '../lib/factoryReset.js';
 
 export function notFound(_req: Request, res: Response) {
   res.status(404).json({ error: 'Not found' });
@@ -64,6 +65,11 @@ export function errorHandler(error: unknown, _req: Request, res: Response, _next
       openAccountCount: error.openAccountCount,
       sampleCodes: error.sampleCodes,
     });
+    return;
+  }
+
+  if (error instanceof FactoryResetError) {
+    res.status(error.statusCode).json({ error: error.message });
     return;
   }
 

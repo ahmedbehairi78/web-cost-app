@@ -342,6 +342,16 @@ const translations: Record<Language, Record<string, string>> = {
     indirect_centers_load_failed: 'تعذر تحميل مراكز التكلفة',
     indirect_centers_save_failed: 'تعذر حفظ مركز التكلفة',
     indirect_centers_code_hint: 'يُولَّد تلقائياً بصيغة HO-001، HO-002…',
+    settings_factory_reset_btn: 'الوضع الافتراضي — شركة فارغة',
+    settings_factory_reset_hint:
+      'يمسح كل البيانات التشغيلية (مشاريع · عقود · BOQ · أصناف · بنوك · طلبات شراء · تنبيهات · إعدادات الشركة) ثم يعيد شجرة الحسابات القياسية. يُبقى حساب الأدمن الحالي فقط. لا يمكن التراجع — انسخ احتياطياً أولاً. يعمل على نفس قاعدة بيانات الـ API (محلي أو Railway/Electron).',
+    settings_factory_reset_title: 'ضبط المصنع — شركة فارغة',
+    settings_factory_reset_body:
+      'سيُفرَّغ Postgres بالكامل (بما فيه المشاريع والعقود وقوائم الكميات وشجرة الأصناف وحسابات البنوك وطلبات الشراء والتنبيهات وبيانات الشركة). ثم تُزرع شجرة الحسابات القياسية ومجموعات الأصول الافتراضية.',
+    settings_factory_reset_keep:
+      'يُبقى حساب الأدمن myline78@gmail.com (وكلمة المرور الحالية) مع صلاحيات كاملة. الحساب الحالي يُبقى أيضاً إن لم يكن هو نفس البريد حتى لا تُقفل الجلسة.',
+    settings_factory_reset_running: 'جارٍ ضبط المصنع، لا تغلق الصفحة…',
+    settings_factory_reset_success: 'تم ضبط المصنع. الحسابات المتبقية: {emails}. سجّل الدخول من جديد.',
     indirect_centers_next_code: 'الكود التالي',
     cost_center: 'مركز التكلفة',
     cost_center_optional: 'مركز التكلفة (اختياري)',
@@ -2284,11 +2294,11 @@ const translations: Record<Language, Record<string, string>> = {
       '401 = مسار موجود · 404 = أعد npm run local:api بعد EADDRINUSE على 3001.',
     manual_settings_database_maintenance_title: 'صيانة البيانات وحذف الوحدات',
     manual_settings_database_maintenance_summary:
-      'حذف وحدات Postgres (local/Railway) أو مجموعات Firestore — admin · irreversible · Google verify.',
+      'حذف وحدات Postgres أو مجموعات Firestore — أو ضبط المصنع (شركة فارغة + شجرة حسابات) مع الإبقاء على حساب الأدمن. admin · irreversible · تحقق الهوية.',
     manual_settings_database_maintenance_before:
-      'admin فقط. نسخ احتياطي أولاً. Postgres: financial يمسح GL/مخازن/OHA/عهدة؛ payroll · أصول · شجرة أصناف · MOS/VO منفصلة. المستخدمون لا يُمسحون.',
+      'admin فقط. نسخ احتياطي أولاً. المسح بالمجموعات لا يشمل المشاريع/الأصناف/البنوك/طلبات الشراء/التنبيهات. للشركة الفارغة استخدم «الوضع الافتراضي».',
     manual_settings_database_maintenance_mistakes:
-      'حذف coa دون فهم · billing/ledger منفصل يترك transactionId · projects قبل financial · كتابة DELETE بدون تأكيد.',
+      'مسح المجموعات ثم التوقع أن المشاريع اختفت · ضبط مصنع بدون نسخة احتياطية · الخلط بين قاعدة محلية وRailway/Electron.',
     manual_settings_database_maintenance_step_1_title: 'فتح صيانة البيانات',
     manual_settings_database_maintenance_step_1_body:
       'الإعدادات → قاعدة البيانات → «صيانة البيانات» (قابل للطي).',
@@ -2303,7 +2313,10 @@ const translations: Record<Language, Record<string, string>> = {
       'زر «تفريغ الحركات المالية والتشغيلية» — يختار financial_postgres ويفتح نفس النافذة.',
     manual_settings_database_maintenance_step_5_title: 'بعد الحذف',
     manual_settings_database_maintenance_step_5_body:
-      'أعد seed COA من Settings إن لزم · backfill-gl · verify-postgres.',
+      'بعد المسح الجزئي: أعد seed COA من Settings إن لزم · backfill-gl · verify-postgres.',
+    manual_settings_database_maintenance_step_6_title: 'الوضع الافتراضي (شركة فارغة)',
+    manual_settings_database_maintenance_step_6_body:
+      'زر «الوضع الافتراضي — شركة فارغة» يفرّغ كل جداول Postgres (بما فيها المشاريع والعقود وBOQ والأصناف وحسابات البنوك وطلبات الشراء والتنبيهات وبيانات الشركة) ثم يزرع شجرة الحسابات القياسية. يُبقى myline78@gmail.com. اكتب «ضبط المصنع» + تحقق الهوية. بعدها سجّل الدخول من جديد. Electron يطبّق على قاعدة Railway؛ npm run dev:local على Postgres المحلي.',
     manual_settings_users_manage_title: 'إدارة المستخدمين والصلاحيات',
     manual_settings_users_manage_summary:
       'إنشاء/تعديل users: role، permissions CRUD، assignedContractIds — Google sign-in فقط.',
@@ -2719,6 +2732,16 @@ const translations: Record<Language, Record<string, string>> = {
     indirect_centers_load_failed: 'Failed to load cost centers',
     indirect_centers_save_failed: 'Failed to save cost center',
     indirect_centers_code_hint: 'Auto-generated as HO-001, HO-002…',
+    settings_factory_reset_btn: 'Factory default — empty company',
+    settings_factory_reset_hint:
+      'Deletes all operational data (projects · contracts · BOQ · materials · bank accounts · purchase requests · notifications · company settings) then re-seeds the standard chart of accounts. Keeps the current admin account only. Irreversible — back up first. Runs against the API database (local or Railway/Electron).',
+    settings_factory_reset_title: 'Factory reset — empty company',
+    settings_factory_reset_body:
+      'Postgres will be emptied (including projects, contracts, BOQ, materials tree, bank accounts, purchase requests, notifications, and company info). The standard COA and default fixed-asset groups are then seeded.',
+    settings_factory_reset_keep:
+      'Keeps admin myline78@gmail.com (and the current password) with full permissions. The signed-in account is also kept if it is a different email so you are not locked out.',
+    settings_factory_reset_running: 'Resetting to factory default, do not close…',
+    settings_factory_reset_success: 'Factory reset complete. Remaining accounts: {emails}. Sign in again.',
     indirect_centers_next_code: 'Next code',
     cost_center: 'Cost center',
     cost_center_optional: 'Cost center (optional)',
@@ -4663,11 +4686,11 @@ const translations: Record<Language, Record<string, string>> = {
       '401 = route exists · 404 = restart npm run local:api after EADDRINUSE on 3001.',
     manual_settings_database_maintenance_title: 'Data maintenance & module wipe',
     manual_settings_database_maintenance_summary:
-      'Wipe Postgres modules (local/Railway) or Firestore collections — admin · irreversible · Google verify.',
+      'Wipe Postgres modules or Firestore collections — or factory-reset to an empty company + standard COA while keeping the admin account. admin · irreversible · identity verify.',
     manual_settings_database_maintenance_before:
-      'Admin only. Backup first. Postgres: financial wipes GL/warehouse/OHA/custody; payroll · assets · materials tree · MOS/VO are separate. Users are never wiped.',
+      'Admin only. Backup first. Per-group wipe does not remove projects/materials/bank accounts/purchase requests/notifications. Use Factory default for an empty company.',
     manual_settings_database_maintenance_mistakes:
-      'Deleting COA without understanding · separate billing/ledger leaves transactionId · projects before financial · typing DELETE without confirm.',
+      'Expecting projects to vanish after group wipe · factory reset without a backup · mixing local Postgres with Railway/Electron.',
     manual_settings_database_maintenance_step_1_title: 'Open maintenance',
     manual_settings_database_maintenance_step_1_body:
       'Settings → Database → Data Maintenance (expandable).',
@@ -4682,7 +4705,10 @@ const translations: Record<Language, Record<string, string>> = {
       'Wipe financial & operational button selects financial_postgres and opens the same modal.',
     manual_settings_database_maintenance_step_5_title: 'After wipe',
     manual_settings_database_maintenance_step_5_body:
-      'Re-seed COA from Settings if needed · backfill-gl · verify-postgres.',
+      'After a partial wipe: re-seed COA from Settings if needed · backfill-gl · verify-postgres.',
+    manual_settings_database_maintenance_step_6_title: 'Factory default (empty company)',
+    manual_settings_database_maintenance_step_6_body:
+      'Factory default — empty company truncates all Postgres tables (projects, contracts, BOQ, materials, bank accounts, purchase requests, notifications, company settings) then seeds the standard COA. Keeps myline78@gmail.com. Type FACTORY + identity verify. Then sign in again. Electron hits Railway; npm run dev:local hits local Postgres.',
     manual_settings_users_manage_title: 'User management & permissions',
     manual_settings_users_manage_summary:
       'Create/edit users: role, CRUD permissions, assignedContractIds — Google sign-in only.',

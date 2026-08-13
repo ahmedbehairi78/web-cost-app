@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-13 (نسخة Postgres كاملة · إصلاح تصدير استلام المخزن)
+**آخر تحديث:** 2026-08-13 (الوضع الافتراضي: شركة فارغة + شجرة حسابات · نسخة Postgres كاملة)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -197,6 +197,8 @@ web-cost-app/
 | `activity`, `sample_data` | **admin** | — |
 
 **لا تراجع:** استخدم `usePermissions().isAdmin` في `Settings.tsx` — لا `authApi.me()` منفصل للدور. ERP: `TopNavBar` يمرّر `{ isAdmin }` إلى `canOpenModuleView`.
+
+**الوضع الافتراضي (2026-08-13):** مسح الوحدات بالمجموعات **لا** يحذف المشاريع/العقود/BOQ/الأصناف/حسابات البنوك/طلبات الشراء/التنبيهات. زر **«الوضع الافتراضي — شركة فارغة»** (`POST /api/financial-maintenance/factory-reset`) يفرّغ Postgres ثم يزرع شجرة الحسابات ويبقي `myline78@gmail.com`. Electron = Railway؛ `dev:local` = Postgres المحلي.
 
 **حفظ إعدادات العرض (2026-06-26):**
 

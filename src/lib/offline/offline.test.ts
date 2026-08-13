@@ -13,6 +13,7 @@ import {
   createIdempotencyKey,
 } from './syncOutbox';
 import { saveFormDraft, loadFormDraft, clearFormDraft, countFormDrafts } from './formDraftStore';
+import { clearAllOfflineClientData } from './idb';
 
 describe('offline networkStatus', () => {
   it('detects NetworkError and TypeError', () => {
@@ -89,6 +90,27 @@ describe('offline syncOutbox', () => {
     expect(all[0]?.status).toBe('failed');
     expect(all[0]?.lastError).toBe('boom');
     await removeOutboxItem(item.id);
+    expect(await listOutbox('u1')).toHaveLength(0);
+  });
+});
+
+describe('offline factory-reset client clear', () => {
+  beforeEach(() => {
+    __resetOfflineMemoryForTests();
+  });
+
+  it('clears drafts and outbox', async () => {
+    await saveFormDraft('u1', 'invoice:new', { amount: 10 });
+    await enqueueOutbox({
+      userId: 'u1',
+      opType: 'purchase_request.create',
+      opClass: 'safe_save',
+      method: 'POST',
+      path: '/purchase-requests',
+      summary: 'PR',
+    });
+    await clearAllOfflineClientData();
+    expect(await countFormDrafts('u1')).toBe(0);
     expect(await listOutbox('u1')).toHaveLength(0);
   });
 });

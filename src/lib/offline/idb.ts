@@ -143,6 +143,27 @@ export async function idbGetAllByUserId<T extends { userId: string }>(
   }
 }
 
+export async function idbClearStore(storeName: StoreName): Promise<void> {
+  if (useMemory) {
+    memory[storeName].clear();
+    return;
+  }
+  try {
+    await withStore(storeName, 'readwrite', (store) => {
+      store.clear();
+    });
+  } catch {
+    useMemory = true;
+    memory[storeName].clear();
+  }
+}
+
+/** Drop drafts + outbox so a factory reset cannot be undone by offline replay. */
+export async function clearAllOfflineClientData(): Promise<void> {
+  await idbClearStore('form_drafts');
+  await idbClearStore('sync_outbox');
+}
+
 /** Test helper — clear stores and force memory backend. */
 export function __resetOfflineMemoryForTests(): void {
   memory.form_drafts.clear();
