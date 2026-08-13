@@ -1201,11 +1201,12 @@ export const accountingService = {
   },
 
   /**
-   * Updates an account in the chart of accounts
+   * Updates an account in the chart of accounts.
+   * Local/Railway: `chartOfAccountsApi.update` (CRUD PUT). Never `.put` — that method does not exist.
    */
   async updateAccount(id: string, updates: Partial<Omit<Account, 'id'>>) {
     if (isLocalBackend) {
-      await chartOfAccountsApi.put(id, updates as Record<string, unknown>);
+      await chartOfAccountsApi.update(id, updates as Record<string, unknown>);
       invalidateCoaCache();
       return;
     }
