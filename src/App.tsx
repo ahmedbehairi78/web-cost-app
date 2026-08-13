@@ -70,6 +70,8 @@ import {
   writeSessionUserLock,
   mustPasswordLogin,
   clearFreshLoginRequired,
+  broadcastSessionLock,
+  subscribeSessionLock,
 } from './lib/sessionLogout';
 import {
   API_UNAUTHORIZED_EVENT,
@@ -107,6 +109,7 @@ export default function App() {
 
   const [user, setUser] = useState<import('firebase/auth').User | null>(null);
   const [passwordSession, setPasswordSession] = useState<AppUser | null>(null);
+  const [idleLocked, setIdleLocked] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('user');
   const [userPermissions, setUserPermissions] = useState<UserPermissions>(ALL_PERMISSIONS);
   /** UI-only nav whitelist; null = show all permitted modules */
@@ -864,9 +867,16 @@ export default function App() {
   const sessionDisplayName = user?.displayName ?? passwordSession?.displayName ?? null;
   const offlineUserId = passwordSession?.id ?? user?.uid ?? (sessionEmail ? `email:${sessionEmail}` : null);
 
-  useIdleLogout(isAuthenticated, () => {
-    toast(t('session_idle_logout'), { id: 'idle-logout' });
-    void handleLogout();
+  const unlockIdleSession = useCallback(() => {
+    setIdleLocked(false);
+    broadcastSessionLock(false);
+  }, []);
+
+  useEffect(() => subscribeSessionLock(setIdleLocked), []);
+
+  useIdleLogout(isAuthenticated && !idleLocked, () => {
+    setIdleLocked(true);
+    broadcastSessionLock(true);
   }, undefined, offlineUserId);
 
   const { open: pendingSyncOpen, setOpen: setPendingSyncOpen } = usePendingSyncPanelState(offlineUserId);
@@ -945,6 +955,17 @@ export default function App() {
     return visible.reduce((top, w) => (w.zIndex > top.zIndex ? w : top)).moduleId;
   }, [windows]);
 
+  const idleLockScreen = idleLocked ? (
+    <Login
+      idleResume={{
+        email: sessionEmail,
+        displayName: sessionDisplayName,
+        onContinue: unlockIdleSession,
+      }}
+      onPasswordLogin={() => undefined}
+    />
+  ) : null;
+
   // ── Render ───────────────────────────────────────────────────────────────────
   if (!authInitDone || !authChecked || !isAuthenticated) {
     // New GUI: blank while OS window stays hidden — no Login, no logo.
@@ -967,6 +988,7 @@ export default function App() {
   if (!hasGrantedAccess) {
     const toggleLang = () => setLanguage(language === 'ar' ? 'en' : 'ar');
     return (
+      <>
       <div
         className={cn(
           'h-screen w-full flex flex-col items-center justify-center p-6 gap-6',
@@ -1019,6 +1041,8 @@ export default function App() {
           </button>
         </div>
       </div>
+      {idleLockScreen}
+    </>
     );
   }
 
@@ -1115,6 +1139,7 @@ export default function App() {
           </>
         )}
         <FactoryResetReentryGate onFreezeShell={closeAllWindows} />
+        {idleLockScreen}
       </ErpWorkspaceProvider>
     </>
   );

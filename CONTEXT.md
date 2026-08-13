@@ -23,7 +23,7 @@
 
 **Shell:** موديول واحد (`shellWindowPolicy.ts`)؛ الآلة الحاسبة استثناء. ERP = `TopNavBar` + `ErpWorkspace`.
 
-**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول → خروج بعد **3 دقائق** (`IDLE_LOGOUT_MS`) — **يُيقاف** أثناء الانقطاع أو وجود مسودة/طابور مزامنة (`idleGate` + `useIdleLogout`). مستمعات `mousemove`/`scroll`/`wheel` مُقيَّدة بـ **1 ثانية** (`IDLE_ACTIVITY_THROTTLE_MS`) لتقليل lag في Electron.
+**جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول بعد **3 دقائق** على مستوى **الجهاز** (Electron `powerMonitor`) → شاشة دخول باسم المستخدم **مع كلمة المرور** (التطبيق لا يُغلق؛ النوافذ تبقى تحت القفل). المتصفح/قشرة قديمة: نشاط النافذة فقط. يُيقاف أثناء الانقطاع أو مسودة/طابور (`idleGate`). `mousemove`/`scroll`/`wheel` في وضع النافذة مُقيَّدة بـ **1 ثانية**.
 
 **Offline sync (محلي/ريلواي):** مسودات نماذج في IndexedDB + طابور إرسال (`safe_save` تلقائي · `confirm_required` بمراجعة يدوية) — شريط حالة + `PendingSyncPanel`. يشمل المشتريات/التكاليف/البنوك/المخزون/الرواتب/الأصول/**BOQ·VO**/GL. مفاتيح: `src/lib/offline/`. دليل: موضوع `tools.offline.sync`.
 

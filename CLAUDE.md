@@ -978,6 +978,34 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — قفل خمول الجهاز دون إغلاق Electron ✅ (2026-08-13)
+
+> **جلسة 2026-08-13:** العمل على برنامج آخر كان يُخرج الجلسة بعد 3 دقائق ويُغلق Electron. المطلوب: نشاط **الجهاز كله** يُبقي التطبيق مفتوحاً، وعند المهلة شاشة دخول باسم المستخدم **مع كلمة المرور**.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **نشاط** | Electron: `powerMonitor.getSystemIdleTime()` عبر IPC `system-idle-seconds` — ماوس/لوحة في أي تطبيق |
+| **قفل** | لا `app.quit` — Overlay شاشة دخول + بريد للقراءة + **كلمة المرور** (`POST /auth/login`) ثم متابعة |
+| **جلسة** | النوافذ والمسودات تبقى تحت القفل؛ لا `resetStartupSession` عند الفتح |
+| **نوافذ متعددة** | `BroadcastChannel` يقفل/يفتح كل نوافذ Ctrl+N معاً بعد نجاح كلمة المرور |
+| **قشرة قديمة** | بدون IPC → نشاط النافذة فقط (كما قبل) لكن القفل بدون إغلاق |
+
+```powershell
+npm run test -- src/lib/systemIdle.test.ts
+npm run electron:build:shell   # لازم للقشرة حتى يعمل نشاط الجهاز
+```
+
+### لا تراجع
+
+- لا تغلق Electron عند الخمول.
+- الخروج المؤقت **يتطلب كلمة المرور** — لا زر متابعة بدونها.
+- لا تستدعِ `handlePasswordLogin` / `resetStartupSession` عند فتح القفل (يمسح النوافذ).
+- لا تعتمد على `mousemove` داخل النافذة وحدها في Electron بعد تحديث القشرة.
+
+---
+
 ## 🔴 HANDOFF — قالب شجرة الأصناف مطابق ملف المخزن v2 ✅ (2026-08-13)
 
 > **جلسة 2026-08-13:** القالب كان 5 أعمدة. الملف المرجعي «شجرة أصناف مخزن مقاولات v2» يضع **الاسم الإنجليزي للمجموعة في عمود `Code`** — وليس كود المجموعة.
@@ -1696,7 +1724,7 @@ Golden path: قفل Q2-2026 → قيد/فاتورة بتاريخ داخل الر
 | **اختصار** | **`input.code === 'KeyN'`** (+ `preventDefault`) — لوحة عربية | `electron/main.ts` `before-input-event` |
 | **جلسة** | النافذة الثانوية مخفية حتى `sessionProbe` + جاهزية الواجهة، ثم `window-reveal` — **لا** Login ولا شعار | `App.tsx` · `electronShell.ts` · `main.ts` |
 | **UI** | زر Electron-only في Sidebar + TopNav بجانب Palette (ليس داخل General Settings) | `Sidebar.tsx` · `TopNavBar.tsx` |
-| **نشاط** | لا toast موقع جغرافي عند الدخول (أي نافذة) · `IDLE_LOGOUT_MS` = **3 دقائق** (يُيقاف مع offline drafts/outbox) | `useActivitySession.ts` · `sessionLogout.ts` · `idleGate.ts` |
+| **نشاط** | لا toast موقع جغرافي عند الدخول · خمول **3 دقائق على الجهاز** → قفل شاشة دخول + كلمة المرور (لا `quit`) | `useIdleLogout.ts` · `powerMonitor` · `sessionLogout.ts` |
 
 ### لا تراجع
 

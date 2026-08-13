@@ -11,8 +11,33 @@ export const SESSION_USER_LOCK_KEY = 'web_cost_session_user_email';
 export const REQUIRE_FRESH_LOGIN_KEY = 'web_cost_require_fresh_login';
 /** Last successful password login email — kept across logout / app restart (password never stored). */
 export const LAST_LOGIN_EMAIL_KEY = 'web_cost_last_login_email';
-/** Auto logout / Electron quit after this much pointer/keyboard idle time. */
+/** Auto lock (privacy screen) after this much idle time. Electron uses OS-wide input. */
 export const IDLE_LOGOUT_MS = 3 * 60 * 1000; // 3 minutes
+
+const SESSION_LOCK_CHANNEL = 'web-cost-session-lock';
+
+export function broadcastSessionLock(locked: boolean): void {
+  try {
+    const ch = new BroadcastChannel(SESSION_LOCK_CHANNEL);
+    ch.postMessage(locked ? 'lock' : 'unlock');
+    ch.close();
+  } catch {
+    /* ignore */
+  }
+}
+
+export function subscribeSessionLock(onChange: (locked: boolean) => void): () => void {
+  try {
+    const ch = new BroadcastChannel(SESSION_LOCK_CHANNEL);
+    ch.onmessage = (event) => {
+      if (event.data === 'lock') onChange(true);
+      if (event.data === 'unlock') onChange(false);
+    };
+    return () => ch.close();
+  } catch {
+    return () => undefined;
+  }
+}
 
 /** Desktop app always uses password; browser after logout/idle too. */
 export function mustPasswordLogin(): boolean {

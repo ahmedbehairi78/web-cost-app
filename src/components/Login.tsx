@@ -52,9 +52,11 @@ interface LoginProps {
   bootstrapping?: boolean;
   /** After sign-in, keep splash until the first module window opens */
   enteringApp?: boolean;
+  /** Idle lock: keep the app mounted — email is fixed, password is required to resume. */
+  idleResume?: { email: string; displayName?: string | null; onContinue: () => void };
 }
 
-export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = false }: LoginProps) {
+export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = false, idleResume }: LoginProps) {
   const { t, language } = useLanguage();
   const showPassword = isLocalBackend;
   const passwordOnly = mustPasswordLogin();
@@ -77,9 +79,9 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
   const [password, setPassword] = useState('');
 
   useEffect(() => {
-    if (!passwordOnly) return;
+    if (!passwordOnly || idleResume) return;
     void signOut(auth).catch(() => undefined);
-  }, [passwordOnly]);
+  }, [passwordOnly, idleResume]);
 
   const handleGoogleLogin = async () => {
     if (passwordOnly) {
@@ -97,6 +99,47 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
         setError(msg);
         console.error('Login error:', err);
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleIdleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!idleResume) return;
+    playTap();
+    setError(null);
+    const cleanEmail = idleResume.email.trim().toLowerCase();
+    if (!cleanEmail || !password) {
+      setError(t('login_credentials_required'));
+      return;
+    }
+    setLoading(true);
+    try {
+      await authApi.login(cleanEmail, password);
+      writeLastLoginEmail(cleanEmail);
+      setPassword('');
+      idleResume.onContinue();
+    } catch (err: unknown) {
+      if (err instanceof ApiError) {
+        const code = (err.payload as { error?: string })?.error;
+        if (err.status === 401) {
+          if (code === 'password_not_configured') {
+            setError(t('login_password_not_configured'));
+          } else {
+            setError(t('login_invalid_credentials'));
+          }
+        } else if (err.status === 429) {
+          setError(t('login_too_many_attempts'));
+        } else if (err.status === 403 && code === 'user_inactive') {
+          setError(t('login_user_inactive'));
+        } else {
+          setError(t('login_server_error'));
+        }
+      } else {
+        setError(t('login_server_unreachable'));
+      }
+      console.error('Idle unlock error:', err);
     } finally {
       setLoading(false);
     }
@@ -180,17 +223,19 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
 
           <div>
             <h1 className="text-2xl font-bold text-[var(--erp-primary)]">{t('login_title')}</h1>
-            <p className="mt-2 text-sm text-[var(--erp-text-muted)]">{t('login_subtitle')}</p>
+            <p className="mt-2 text-sm text-[var(--erp-text-muted)]">
+              {idleResume ? t('session_idle_lock_subtitle') : t('login_subtitle')}
+            </p>
           </div>
 
-          {!splashMode && passwordOnly && showPassword && (
+          {!splashMode && passwordOnly && showPassword && !idleResume && (
             <div className="w-full flex items-center gap-2 bg-amber-50 border border-amber-200 text-amber-900 text-sm rounded-lg px-4 py-3 text-right">
               <ShieldCheck size={16} className="shrink-0 text-amber-700" />
               <span>{isElectronShell() ? t('login_desktop_password_only') : t('login_fresh_required_hint')}</span>
             </div>
           )}
 
-          {!splashMode && showPassword && !passwordOnly && (
+          {!splashMode && showPassword && !passwordOnly && !idleResume && (
             <div className="w-full flex rounded-xl p-1 border bg-[var(--erp-nav-hover)] border-[var(--erp-border)]">
               <button
                 type="button"
@@ -226,7 +271,46 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
             </div>
           )}
 
-          {!splashMode && mode === 'password' && showPassword ? (
+          {!splashMode && idleResume ? (
+            <form onSubmit={(e) => void handleIdleUnlock(e)} className="w-full space-y-3">
+              {idleResume.displayName ? (
+                <p className="text-base font-bold text-[var(--erp-text)]">{idleResume.displayName}</p>
+              ) : null}
+              <div className="relative">
+                <Mail size={16} className="absolute top-3 start-3 text-gray-500" />
+                <input
+                  type="email"
+                  readOnly
+                  autoComplete="username"
+                  value={idleResume.email}
+                  className={cn(inputCls, 'ps-10')}
+                  aria-label={t('login_email_placeholder')}
+                />
+              </div>
+              <div className="relative">
+                <KeyRound size={16} className="absolute top-3 start-3 text-gray-500" />
+                <input
+                  type="password"
+                  autoComplete="current-password"
+                  autoFocus
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={t('login_password_placeholder')}
+                  className={cn(inputCls, 'ps-10')}
+                  disabled={loading}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className={primaryBtnCls}
+                data-no-global-ui-sound
+              >
+                {loading ? <Loader2 size={20} className="animate-spin" /> : null}
+                {loading ? t('login_signing_in') : t('login_sign_in')}
+              </button>
+            </form>
+          ) : !splashMode && mode === 'password' && showPassword ? (
             <form onSubmit={(e) => void handlePasswordLogin(e)} className="w-full space-y-3">
               <div className="relative">
                 <Mail size={16} className="absolute top-3 start-3 text-gray-500" />
@@ -290,7 +374,7 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
             </p>
           )}
 
-          {!splashMode && (
+          {!splashMode && !idleResume && (
             <div className="flex items-center gap-2 text-[10px] text-gray-500 pt-2">
               <ShieldCheck size={14} />
               <span>{t('login_admin_approval_hint')}</span>

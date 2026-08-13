@@ -740,13 +740,13 @@ async function postMyJournal(amount: number, contractId: string, projectId: stri
 
 | السلوك | الملف | القيمة |
 |--------|-------|--------|
-| **تسجيل الخروج بسبب الخمول** | `src/lib/sessionLogout.ts` → `IDLE_LOGOUT_MS` | **3 دقائق** (`3 * 60 * 1000`) عبر `useIdleLogout` في `App.tsx` |
-| **رسالة الخمول** | `LanguageContext` · `session_idle_logout` | تظهر عند تسجيل الخروج التلقائي |
-| **مفاتيح i18n قديمة** | `activity_geo_notice` | متبقية في الترجمة فقط — غير مستخدمة في الواجهة |
+| **قفل الخمول (خصوصية)** | `IDLE_LOGOUT_MS` + `powerMonitor` | **3 دقائق** بدون نشاط على **الجهاز** (Electron) → شاشة دخول + اسم المستخدم + **كلمة المرور**؛ لا `quit` |
+| **رسالة الخمول** | `session_idle_lock_subtitle` | Overlay على الجلسة الحية؛ الفتح عبر `POST /auth/login` |
+| **مفاتيح i18n قديمة** | `activity_geo_notice` · `session_idle_logout` | `session_idle_logout` لم يعد يُعرض عند القفل |
 
 ```bash
-npm run dev:local
-# سجّل الدخول → لا إشعار موقع · انتظر 3 دقائق بلا حركة → خروج + toast session_idle_logout
+npm run electron:dev   # بعد electron:build:shell
+# سجّل الدخول → اعمل في إكسل/متصفح 3 دقائق → التطبيق يبقى → اترك الجهاز 3 دقائق → شاشة دخول + كلمة المرور
 ```
 
 ---
@@ -806,7 +806,7 @@ npm run dev:local
 
 إصلاح صفوف يتيمة (فاتورة): `npx tsx server/src/scripts/linkOrphanPurchaseInvoiceJournals.ts` ثم `--live`.
 
-**خمول الجلسة:** `useIdleLogout` يتوقف أثناء الانقطاع أو وجود مسودة/طابور (`idleGate.ts`). إعادة ضبط المؤقّت من `mousemove`/`scroll`/`wheel` مُقيَّدة بـ ثانية واحدة (`IDLE_ACTIVITY_THROTTLE_MS`) — بدون throttle كان يسبب lag ملحوظاً في Electron. أصوات المودال عبر `notifyUiModalOpen/Close` (لا `MutationObserver` على `document.body`). مسح HTTP cache للقشرة المعبأة **مرة/يوم** كحد أقصى.
+**خمول الجلسة:** Electron يستخدم خمول **نظام التشغيل** (`powerMonitor`) حتى يبقى التطبيق مفتوحاً أثناء العمل في برامج أخرى. بعد 3 دقائق بلا نشاط على الجهاز: شاشة دخول + البريد + **كلمة المرور** (لا `quit`). المتصفح/قشرة قديمة: نشاط النافذة + throttle ثانية لـ `mousemove`/`scroll`/`wheel`. يُوقف القفل أثناء الانقطاع أو مسودة/طابور (`idleGate.ts`).
 
 **اختبارات:** `npm run test -- src/lib/offline/offline.test.ts`
 
