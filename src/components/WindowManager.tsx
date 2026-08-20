@@ -37,6 +37,9 @@ const PayrollLazy = lazyWithRetry(() => import('./Payroll').then(m => ({ default
 const PurchaseRequestsLazy = lazyWithRetry(() =>
   import('./PurchaseRequests').then((m) => ({ default: m.PurchaseRequests })),
 );
+const CashBudgetLazy = lazyWithRetry(() =>
+  import('./CashBudget').then((m) => ({ default: m.CashBudget })),
+);
 const OperationsManualLazy = lazyWithRetry(() => import('./OperationsManual').then(m => ({ default: m.OperationsManual })));
 
 const MODULE_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType>> = {
@@ -52,6 +55,7 @@ const MODULE_COMPONENTS: Record<string, React.LazyExoticComponent<React.Componen
   settings: SettingsLazy,
   inventory: InventoryLazy,
   purchase_requests: PurchaseRequestsLazy,
+  cash_budget: CashBudgetLazy,
   assets: FixedAssetsLazy,
   payroll: PayrollLazy,
   calculator: CalculatorLazy,

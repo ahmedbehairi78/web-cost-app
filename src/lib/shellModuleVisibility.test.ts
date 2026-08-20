@@ -11,6 +11,7 @@ describe('shellModuleVisibility', () => {
   it('accepts known toggleable module ids', () => {
     expect(isVisibleShellModuleId('dashboard')).toBe(true);
     expect(isVisibleShellModuleId('purchase_requests')).toBe(true);
+    expect(isVisibleShellModuleId('cash_budget')).toBe(true);
     expect(isVisibleShellModuleId('calculator')).toBe(false);
     expect(isVisibleShellModuleId('')).toBe(false);
   });

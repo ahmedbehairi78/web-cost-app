@@ -13,6 +13,7 @@ export const VISIBLE_SHELL_MODULE_IDS = [
   'assets',
   'payroll',
   'banks',
+  'cash_budget',
   'reports',
   'settings',
   'purchase_requests',

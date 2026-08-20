@@ -15,6 +15,7 @@ export const STARTUP_MODULES: ModuleDefinition[] = [
   { id: 'assets',        ar: 'الأصول الثابتة',         en: 'Fixed Assets' },
   { id: 'payroll',       ar: 'الموارد البشرية',        en: 'HR & Payroll' },
   { id: 'banks',         ar: 'البنوك',                 en: 'Banks' },
+  { id: 'cash_budget',   ar: 'بدجيت الالتزامات',       en: 'Cash Budget' },
   { id: 'reports',       ar: 'التقارير',               en: 'Reports' },
   { id: 'settings',      ar: 'الإعدادات',              en: 'Settings' },
 ];
@@ -29,6 +30,7 @@ export const MODULE_LABELS: Record<string, { ar: string; en: string }> = {
   general: { ar: 'إعدادات عامة', en: 'General Settings' },
   display: { ar: 'إعدادات عامة', en: 'General Settings' },
   purchase_requests: { ar: 'أوامر الشراء', en: 'Purchase Requests' },
+  cash_budget: { ar: 'بدجيت الالتزامات', en: 'Cash Budget' },
   calculator: { ar: 'الآلة الحاسبة', en: 'Calculator' },
   manual: { ar: 'دليل الاستخدام', en: 'User Guide' },
 };

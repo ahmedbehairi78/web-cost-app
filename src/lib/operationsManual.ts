@@ -71,7 +71,8 @@ export type ManualTopicId =
   | 'settings.coa.tree'
   | 'settings.cost_centers.indirect'
   | 'tools.calculator.use'
-  | 'tools.offline.sync';
+  | 'tools.offline.sync'
+  | 'cash_budget.plan';
 
 export interface ManualTopicStep {
   titleKey: string;
@@ -1321,6 +1322,24 @@ export const MANUAL_TOPICS: ManualTopic[] = [
       { titleKey: 'manual_tools_offline_step_4_title', bodyKey: 'manual_tools_offline_step_4_body' },
     ],
     tags: ['offline', 'sync', 'draft', 'queue', 'network'],
+  },
+  {
+    id: 'cash_budget.plan',
+    moduleId: 'cash_budget',
+    viewId: 'main',
+    permission: 'cash_budget',
+    labelKey: 'manual_cash_budget_plan_title',
+    summaryKey: 'manual_cash_budget_plan_summary',
+    beforeYouStartKey: 'manual_cash_budget_plan_before',
+    commonMistakesKey: 'manual_cash_budget_plan_mistakes',
+    steps: [
+      { titleKey: 'manual_cash_budget_plan_step_1_title', bodyKey: 'manual_cash_budget_plan_step_1_body' },
+      { titleKey: 'manual_cash_budget_plan_step_2_title', bodyKey: 'manual_cash_budget_plan_step_2_body' },
+      { titleKey: 'manual_cash_budget_plan_step_3_title', bodyKey: 'manual_cash_budget_plan_step_3_body' },
+      { titleKey: 'manual_cash_budget_plan_step_4_title', bodyKey: 'manual_cash_budget_plan_step_4_body' },
+    ],
+    relatedModule: { moduleId: 'cash_budget' },
+    tags: ['cash', 'budget', 'liquidity', 'custody', 'payroll', 'suppliers', 'ipc'],
   },
 ];
 

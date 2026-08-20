@@ -24,7 +24,8 @@ export type CrudModuleKey =
   | 'overhead'
   | 'assets'
   | 'payroll'
-  | 'purchase_requests';
+  | 'purchase_requests'
+  | 'cash_budget';
 
 export type PermissionKey = CrudModuleKey | 'dashboard' | 'reports' | 'settings';
 
@@ -47,6 +48,7 @@ export type UserPermissions = {
   assets: ModuleCrudPermission;
   payroll: ModuleCrudPermission;
   purchase_requests: ModuleCrudPermission;
+  cash_budget: ModuleCrudPermission;
   reports: boolean;
   settings: boolean;
 };
@@ -72,6 +74,7 @@ export const ALL_PERMISSIONS: UserPermissions = {
   assets: allCrud(),
   payroll: allCrud(),
   purchase_requests: allCrud(),
+  cash_budget: allCrud(),
   reports: true,
   settings: true,
 };
@@ -96,6 +99,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   payroll: noCrud(),
   // Available to all signed-in users (create requests; status edit for managers)
   purchase_requests: { view: true, create: true, edit: false },
+  cash_budget: noCrud(),
   reports: false,
   settings: false,
 };
@@ -116,6 +120,7 @@ export const CRUD_MODULES: { id: CrudModuleKey; ar: string; en: string; group?: 
   { id: 'costs_custody', ar: 'تسوية عهدة', en: 'Custody Settlement', group: 'costs' },
   { id: 'suppliers', ar: 'الموردون', en: 'Suppliers' },
   { id: 'banks', ar: 'البنوك', en: 'Banks' },
+  { id: 'cash_budget', ar: 'بدجيت الالتزامات', en: 'Cash Budget' },
   { id: 'inventory', ar: 'إدارة المخازن', en: 'Inventory' },
   { id: 'purchase_requests', ar: 'أوامر الشراء', en: 'Purchase Requests' },
   { id: 'assets', ar: 'الأصول الثابتة', en: 'Fixed Assets' },

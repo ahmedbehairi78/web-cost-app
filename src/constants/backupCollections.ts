@@ -18,6 +18,8 @@ export const POSTGRES_BACKUP_COLLECTIONS = [
   'custody_settlements',
   'custody_settlement_items',
   'purchase_requests',
+  'cash_budget_periods',
+  'cash_budget_lines',
   'material_groups',
   'material_categories',
   'boq_item_materials',

@@ -35,6 +35,7 @@ const CRUD_KEYS = [
   'assets',
   'payroll',
   'purchase_requests',
+  'cash_budget',
 ] as const satisfies readonly PermissionKey[];
 
 /** Sub-keys that form the virtual `costs` umbrella. */
@@ -81,6 +82,16 @@ export function normalizeUserPermissions(raw: unknown): UserPermissions {
   // Default: purchase requests available to all signed-in users when key absent from stored JSON.
   if (!('purchase_requests' in o)) {
     result.purchase_requests = { view: true, create: true, edit: false };
+  }
+
+  if (!('cash_budget' in o)) {
+    if (result.settings === true) {
+      result.cash_budget = crudOn();
+    } else if (result.banks.view || result.reports) {
+      result.cash_budget = { view: true, create: true, edit: result.banks.edit };
+    } else {
+      result.cash_budget = crudOff();
+    }
   }
 
   // Migration: if sub-keys are all off but the legacy `costs` key is set, propagate it.
@@ -285,6 +296,7 @@ export function buildPermissionsForRole(role: UserRole): UserPermissions {
       assets: { view: true, create: false, edit: false },
       payroll: { view: true, create: false, edit: false },
       purchase_requests: { view: true, create: true, edit: true },
+      cash_budget: { view: true, create: true, edit: true },
       reports: true,
       settings: false,
     };
@@ -309,6 +321,7 @@ export function buildPermissionsForRole(role: UserRole): UserPermissions {
       assets: crudOn(),
       payroll: crudOff(),
       purchase_requests: { view: true, create: true, edit: true },
+      cash_budget: { view: true, create: true, edit: false },
       reports: true,
       settings: false,
     };
@@ -331,6 +344,7 @@ export function buildPermissionsForRole(role: UserRole): UserPermissions {
     assets: crudOff(),
     payroll: crudOff(),
     purchase_requests: { view: true, create: true, edit: false },
+    cash_budget: crudOff(),
     reports: false,
     settings: false,
   };

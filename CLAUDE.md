@@ -101,7 +101,8 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` (جداول أو أقسام شهادات عبر `buildCertificateDocs.ts`) وفتح حوار معاينة موحّد (تنسيق + طباعة + PDF + حفظ التصميم عبر `reportPrintProfilesPersistence.ts`) — المسار القديم `printReport.ts` حُذف |
 | `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer), `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in Reports format toolbar** (`ReportFormatToolbar`); General Settings **Print** keeps company name/address/tax/logo/footer text only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
-| `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (61 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
+| `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (62 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
+| `src/lib/cashBudget.ts` | **Cash budget math** — period end · `custodyReplenishAmount` · `computeCashBudgetSummary` (opening not double-counted) · server copy `server/src/lib/cashBudget.ts` |
 | `src/components/OperationsManual.tsx` | Full manual window (`module id: manual`) — search, module filter, topic list + `ManualTopicContent` |
 | `src/components/help/ManualHelpButton.tsx` | Contextual `?` — dropdown preview + «فتح الشرح الكامل»; hidden when topic not allowed for user |
 | `src/components/help/ManualTopicContent.tsx` | Shared topic body: summary · before · steps · common mistakes |
@@ -210,6 +211,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `Banks.tsx` | `bank_*` + GL (Firestore) | **local:** `banksApi` + `bankPersistence` — **3 tabs:** `accounts` (statement split-view) · **`transactions`** (movements+cheques split-view) · `statements`; GL via `accountingService`/`glApi`; **no top stat cards** on `accounts`/`transactions` |
 | `Inventory.tsx` | cloud: Firestore | **local:** projects/contracts/COA + مخازن/صرف/إرجاع/تحويلات عبر API — **لا Firestore** |
 | `PurchaseRequests.tsx` | — | **local:** Postgres `purchase_requests` — طلب توريد (مكود/غير مكود) · BOQ كود+وصف فقط · حالات بدون فاتورة/GL · إشعار + واتساب لمسؤولي المشتريات |
+| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — تخطيط التزامات vs بنوك 12101 + نقد 12102 + مستخلصات غير محصّلة · **بدون قيد GL** · حد أدنى عهدة `min_balance` على 12102… |
 | `OverheadAllocation.tsx` | — | **local:** Postgres — دورات OHA + **قفل فترات محاسبية** (`PeriodLockPanel`) + قائمة دخل (placeholder) |
 | ~~`SubcontractorExtracts.tsx`~~ | — | **Hidden** — functionality covered by ActualCosts IPC tab; file on disk but removed from Sidebar + `modules.ts` |
 
@@ -527,7 +529,7 @@ feature branch → PR → /review → merge to main
 
 - Always run `npm run lint` (and **`npm run test`** when touching `accountingService` or regressions).
 - Golden paths after changes: create IPC, **purchase invoice via Actual Costs** (GL + SQLite stock + **row click preview**), **subcontractor IPC draft → submit → PM approve** (GL on approve), **custody settlement draft → submit → accounting approve** (GL on approve), **consumption order** (BOQ + expense account + GL `CON-…`), **return** (same expense as `CON-…`, GL `RET-…` without double prefix; visible in **Issues & Returns** tab), GL journal, **received cheque ISS+CLR**, Dashboard + Liquidity totals, capped reports if relevant, **OHA close preview** (pool = allocated per account).
-- When touching **operations manual** topics or `manual_*` i18n keys, run **`npm run test -- src/lib/operationsManual.test.ts`** (61 topics · ar/en key coverage · permission gates).
+- When touching **operations manual** topics or `manual_*` i18n keys, run **`npm run test -- src/lib/operationsManual.test.ts`** (62 topics · ar/en key coverage · permission gates).
 - When touching **offline sync** (`src/lib/offline/*`, idle gate, Idempotency), run **`npm run test -- src/lib/offline/offline.test.ts src/lib/operationsManual.test.ts`**.
 - When touching **shell / window navigation** (`App.tsx`, `Sidebar`, `TopNavBar`, `shellWindowPolicy.ts`), run **`npm run test -- src/lib/shellWindowPolicy.test.ts`** and golden-path **general settings → main module** in dark + ERP.
 - When touching **user preferences / default module / GeneralSettings**, run **`npm run test -- src/lib/shellNavigation.test.ts`** and verify theme + `none` persist after reload.
@@ -976,6 +978,28 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+---
+
+## 🔴 HANDOFF — بدجيت الالتزامات (تخطيط فقط) ✅ (2026-08-20)
+
+> **جلسة 2026-08-20:** موديول `cash_budget` — التزامات للدفع مقابل بنوك 12101 + نقد/عهد 12102 + مستخلصات عميل غير محصّلة. **لا قيد يومية.**
+
+### المعادلة
+
+`gap = (openingBank 12101 + openingCash 12102 + uncollected client IPCs) − obligations`
+
+التزامات: موردون آجل · مستخلص باطن معتمد · تسوية عهدة submitted · تعويض حد أدنى 12102 · رواتب غير مدفوعة · بنود يدوية. حد العهدة: `max(0, min − (GL − pending settlements))`. أرصدة الافتتاح في الجدول **لا** تُضاف لمصادر الفترة.
+
+### تحقق
+
+```powershell
+npx prisma migrate deploy
+npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/lib/moduleViewPermissions.test.ts
+# أعد تشغيل API → بدجيت الالتزامات (بعد البنوك) → فترة أسبوعية → اقتراح → اعتماد (بلا GL)
+```
 
 ---
 

@@ -42,7 +42,7 @@ import { notificationsRouter } from './modules/notifications.js';
 import { fixedAssetsRouter } from './modules/fixedAssets.js';
 import { bootstrapFixedAssetGroupsIfEmpty } from './accounting/fixedAssetGlSync.js';
 import { payrollRouter } from './modules/payroll.js';
-import { purchaseRequestsRouter } from './modules/purchaseRequests.js';
+import { cashBudgetRouter } from './modules/cashBudget.js';
 import { bootstrapCoaIfEmpty } from './accounting/ensureCoaSeed.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { prisma } from './db.js';
@@ -167,6 +167,7 @@ export function createApp() {
       'reports',
       'assets',
       'payroll',
+      'cash_budget',
     ], { writePermission: ['ledger', 'costs'] }),
   );
   app.use(
@@ -198,6 +199,7 @@ export function createApp() {
   app.use('/api/fixed-assets',  fixedAssetsRouter);
   app.use('/api/payroll',       payrollRouter);
   app.use('/api/purchase-requests', purchaseRequestsRouter);
+  app.use('/api/cash-budget', cashBudgetRouter);
   app.use('/api/bank-accounts', createCrudRouter(null, 'bankAccount', 'banks'));
   // GL post/issue/clear must mount before CRUD so `/:id/post` is not treated as a CRUD id.
   app.use('/api/bank-movements', bankMovementsGlRouter);

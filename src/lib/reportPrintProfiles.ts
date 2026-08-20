@@ -23,7 +23,8 @@ export type ReportPrintId =
   | 'gl_account_statement'
   | 'gl_journal_entry'
   | 'fixed_assets'
-  | 'payroll';
+  | 'payroll'
+  | 'cash_budget';
 
 /** IPC / certificate print profiles (billing + subcontractor). */
 export type IpcPrintProfileId = 'billing_ipc' | 'subcontractor_ipc';
@@ -131,6 +132,7 @@ export const REPORT_PRINT_IDS: ReportPrintId[] = [
   'gl_journal_entry',
   'fixed_assets',
   'payroll',
+  'cash_budget',
 ];
 
 export const REPORT_PRINT_LABELS: Record<ReportPrintId, { ar: string; en: string }> = {
@@ -153,6 +155,7 @@ export const REPORT_PRINT_LABELS: Record<ReportPrintId, { ar: string; en: string
   gl_journal_entry: { ar: 'قيد يومية', en: 'Journal Entry' },
   fixed_assets: { ar: 'سجل الأصول الثابتة', en: 'Fixed Assets Register' },
   payroll: { ar: 'كشف الرواتب', en: 'Payroll Register' },
+  cash_budget: { ar: 'بدجيت الالتزامات', en: 'Cash Budget' },
 };
 
 /** CSS font-family stacks for print documents. */
@@ -228,6 +231,7 @@ export const REPORT_PRINT_DEFAULTS: Record<ReportPrintId, ReportPrintProfile> = 
   gl_journal_entry: { ...BASE_PRINT_LAYOUT, orientation: 'portrait', pageSize: 'A4', density: 'normal', accent: '#1e3a8a' },
   fixed_assets: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#7c3aed' },
   payroll: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#0ea5e9' },
+  cash_budget: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#0369a1' },
 };
 
 const ORIENTATIONS: PrintOrientation[] = ['portrait', 'landscape'];

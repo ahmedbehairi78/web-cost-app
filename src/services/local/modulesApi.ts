@@ -1660,6 +1660,93 @@ export const purchaseRequestsApi = {
     apiClient.delete<{ ok: boolean }>(`/purchase-requests/${encodeURIComponent(id)}`),
 };
 
+// ─── Cash Budget (planning only — no GL) ─────────────────────────────────────
+
+export type CashBudgetPeriodType = 'weekly' | 'biweekly' | 'monthly';
+export type CashBudgetStatus = 'draft' | 'approved';
+export type CashBudgetSide = 'obligation' | 'source';
+
+export interface CashBudgetSummaryDto {
+  openingBank: number;
+  openingCash: number;
+  availableLiquidity: number;
+  periodSources: number;
+  obligations: number;
+  gap: number;
+}
+
+export interface CashBudgetLineRow {
+  id: string;
+  periodId: string;
+  side: CashBudgetSide;
+  category: string;
+  description: string;
+  amount: number;
+  dueDate: string | null;
+  origin: 'auto' | 'manual';
+  originType?: string | null;
+  originId?: string | null;
+  projectId?: string | null;
+  contractId?: string | null;
+  excluded: boolean;
+  notes?: string | null;
+  sortOrder?: number;
+}
+
+export interface CashBudgetPeriodRow {
+  id: string;
+  periodNumber: string;
+  periodType: CashBudgetPeriodType;
+  periodStart: string;
+  periodEnd: string;
+  status: CashBudgetStatus;
+  openingBank: number;
+  openingCash: number;
+  notes?: string | null;
+  summary: CashBudgetSummaryDto;
+  lineCount?: number;
+  lines?: CashBudgetLineRow[];
+}
+
+export const cashBudgetApi = {
+  list: () => apiClient.get<CashBudgetPeriodRow[]>('/cash-budget'),
+  get: (id: string) =>
+    apiClient.get<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}`),
+  create: (body: { periodType: CashBudgetPeriodType; periodStart: string; notes?: string }) =>
+    apiClient.post<CashBudgetPeriodRow>('/cash-budget', body),
+  patch: (id: string, body: { notes?: string | null; openingBank?: number; openingCash?: number }) =>
+    apiClient.patch<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}`, body),
+  suggest: (id: string) =>
+    apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/suggest`, {}),
+  addLine: (id: string, body: {
+    side: CashBudgetSide;
+    category?: string;
+    description: string;
+    amount: number;
+    dueDate?: string | null;
+  }) => apiClient.post<CashBudgetLineRow>(`/cash-budget/${encodeURIComponent(id)}/lines`, body),
+  patchLine: (id: string, lineId: string, body: Record<string, unknown>) =>
+    apiClient.patch<CashBudgetLineRow>(
+      `/cash-budget/${encodeURIComponent(id)}/lines/${encodeURIComponent(lineId)}`,
+      body,
+    ),
+  deleteLine: (id: string, lineId: string) =>
+    apiClient.delete<{ ok: boolean }>(
+      `/cash-budget/${encodeURIComponent(id)}/lines/${encodeURIComponent(lineId)}`,
+    ),
+  approve: (id: string) =>
+    apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/approve`, {}),
+  reopen: (id: string) =>
+    apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/reopen`, {}),
+  remove: (id: string) =>
+    apiClient.delete<{ ok: boolean }>(`/cash-budget/${encodeURIComponent(id)}`),
+  setMinBalance: (accountId: string, minBalance: number) =>
+    apiClient.patch<Record<string, unknown>>(
+      `/cash-budget/coa/${encodeURIComponent(accountId)}/min-balance`,
+      { minBalance },
+    ),
+};
+
 // ─── Fixed Assets API ────────────────────────────────────────────────────────
 
 export interface FixedAssetGroup {

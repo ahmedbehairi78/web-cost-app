@@ -117,6 +117,13 @@ export const MODULE_MENUS: Record<string, ModuleMenuDef> = {
       { viewId: 'executed', labelKey: 'pr_menu_executed' },
     ],
   },
+  cash_budget: {
+    moduleId: 'cash_budget',
+    defaultViewId: 'main',
+    views: [
+      { viewId: 'main', labelKey: 'cash_budget' },
+    ],
+  },
 };
 
 export function getModuleMenu(moduleId: string): ModuleMenuDef | undefined {

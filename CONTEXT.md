@@ -182,6 +182,7 @@ web-cost-app/
 | **التكاليف الفعلية** | `purchase_transactions`, … | فاتورة → مخزن مشروع + GL `12701001` (لا مصروف 511 من الفاتورة) |
 | **المخازن** | `chart_of_accounts` (ربط 127…) | أصناف · رصيد مشروع · **تحويل مشاريع** · صرف/إرجاع · legacy عقود (معلّق فقط) |
 | **أوامر الشراء** | — | Postgres `purchase_requests` — متاح لكل المستخدمين · حالة فقط عند التنفيذ (لا فاتورة/GL) · BOQ: كود+وصف · إشعار `purchase_request_pending` + واتساب |
+| **بدجيت الالتزامات** | — | Postgres `cash_budget_periods` / `cash_budget_lines` — تخطيط أسبوعي/نصف شهري/شهري · بنوك+نقد+مستخلصات مقابل التزامات · **بدون GL** · `min_balance` على 12102… |
 | **البنوك** | `bank_*` + GL | حركات · شيكات · كشوف — **تلميح رصيد GL** تحت اختيار البنك/الطرف المقابل (2026-06-28) |
 | **إعدادات العرض** | local: `settings/user-preferences` · cloud: `users/{uid}` | `GeneralSettings.tsx` — سمة · لغة · شاشة البداية (`none` مدعوم) · **طباعة (admin)** — Palette في الشريط |
 | **نافذة Electron جديدة** | قشرة سطح المكتب فقط | زر بجانب الإعدادات العامة في Sidebar/TopNav + **Ctrl+N** (`input.code === 'KeyN'` — يعمل مع لوحة عربية) — `requestOpenNewWindow` · نفس `persist:webcost` |

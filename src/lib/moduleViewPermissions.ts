@@ -67,6 +67,9 @@ export const MODULE_VIEW_PERMISSION_MAP: Record<
     open: 'purchase_requests',
     executed: 'purchase_requests',
   },
+  cash_budget: {
+    main: 'cash_budget',
+  },
 };
 
 /** Admin UI hints — which menu labels each CRUD/boolean permission unlocks. */
@@ -129,6 +132,9 @@ export const PERMISSION_MENU_HINTS: Partial<
     { ar: 'إنشاء طلب', en: 'Create request' },
     { ar: 'الطلبات النشطة', en: 'Open requests' },
     { ar: 'الطلبات المنتهية', en: 'Executed requests' },
+  ],
+  cash_budget: [
+    { ar: 'بدجيت الالتزامات الأسبوعية/الشهرية', en: 'Weekly / monthly cash budget' },
   ],
   dashboard: [{ ar: 'لوحة التحكم الرئيسية', en: 'Main dashboard' }],
 };

@@ -31,6 +31,7 @@ import {
   Package,
   ShoppingCart,
   Landmark,
+  Wallet,
   BarChart3,
   Settings as SettingsIcon,
   TrendingUp,
@@ -1680,6 +1681,23 @@ const PERMISSION_GROUPS: PermGroupDef[] = [
     ],
   },
   {
+    moduleId: 'cash_budget',
+    ar: 'بدجيت الالتزامات',
+    en: 'Cash Budget',
+    icon: Wallet,
+    rows: [
+      {
+        permKey: 'cash_budget' as PermissionKey,
+        isBool: false,
+        labelAr: 'تخطيط التزامات مقابل مصادر تمويل — بدون قيد يومية',
+        labelEn: 'Plan obligations vs funding — no GL posting',
+        views: [
+          { ar: 'فترات بدجيت الالتزامات', en: 'Cash budget periods' },
+        ],
+      },
+    ],
+  },
+  {
     moduleId: 'overhead',
     ar: 'الفترات المحاسبية',
     en: 'Accounting Periods',
@@ -1822,6 +1840,7 @@ function PermissionsEditor({ permissions, setPermissions, language, theme }: Per
       assets: value ? crudOn() : crudOff(),
       payroll: value ? crudOn() : crudOff(),
       purchase_requests: value ? crudOn() : { view: true, create: true, edit: false },
+      cash_budget: value ? crudOn() : crudOff(),
       reports: value,
       settings: value,
     });
@@ -2069,6 +2088,7 @@ function emptyPermissions(): UserPermissions {
     assets: crudOff(),
     payroll: crudOff(),
     purchase_requests: { view: true, create: true, edit: false },
+    cash_budget: crudOff(),
     reports: false,
     settings: false,
   };

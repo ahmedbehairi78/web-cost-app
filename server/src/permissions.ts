@@ -27,7 +27,8 @@ export type CrudModuleKey =
   | 'overhead'
   | 'assets'
   | 'payroll'
-  | 'purchase_requests';
+  | 'purchase_requests'
+  | 'cash_budget';
 
 /** App module keys; `transfers` is a legacy alias for inventory (transfer routes). */
 export type PermissionKey = CrudModuleKey | 'dashboard' | 'reports' | 'settings' | 'transfers';
@@ -51,6 +52,7 @@ export type UserPermissions = {
   assets: ModuleCrudPermission;
   payroll: ModuleCrudPermission;
   purchase_requests: ModuleCrudPermission;
+  cash_budget: ModuleCrudPermission;
   reports: boolean;
   settings: boolean;
 };
@@ -71,6 +73,7 @@ const CRUD_KEYS = [
   'assets',
   'payroll',
   'purchase_requests',
+  'cash_budget',
 ] as const satisfies readonly CrudModuleKey[];
 
 const COSTS_SUB_KEYS = ['costs_invoice', 'costs_ipc', 'costs_custody'] as const satisfies readonly CrudModuleKey[];
@@ -103,6 +106,7 @@ export const ALL_PERMISSIONS: UserPermissions = {
   assets: crudOn(),
   payroll: crudOn(),
   purchase_requests: crudOn(),
+  cash_budget: crudOn(),
   reports: true,
   settings: true,
 };
@@ -125,6 +129,7 @@ export const DEFAULT_PERMISSIONS: UserPermissions = {
   assets: crudOff(),
   payroll: crudOff(),
   purchase_requests: { view: true, create: true, edit: false },
+  cash_budget: crudOff(),
   reports: false,
   settings: false,
 };
@@ -211,6 +216,16 @@ export function normalizeUserPermissions(raw: unknown): UserPermissions {
     result.purchase_requests = { view: true, create: true, edit: false };
   }
 
+  if (!('cash_budget' in o)) {
+    if (result.settings === true) {
+      result.cash_budget = crudOn();
+    } else if (result.banks.view || result.reports) {
+      result.cash_budget = { view: true, create: true, edit: result.banks.edit };
+    } else {
+      result.cash_budget = crudOff();
+    }
+  }
+
   // Migration: if sub-keys are all off but the legacy `costs` key is set, propagate it.
   const hasAnyCostsSub = COSTS_SUB_KEYS.some((k) => {
     const v = o[k];
@@ -273,6 +288,7 @@ export function buildPermissionsForRole(role: UserRole): UserPermissions {
       assets: { view: true, create: false, edit: false },
       payroll: { view: true, create: false, edit: false },
       purchase_requests: { view: true, create: true, edit: true },
+      cash_budget: { view: true, create: true, edit: true },
       reports: true,
       settings: false,
     };
@@ -297,6 +313,7 @@ export function buildPermissionsForRole(role: UserRole): UserPermissions {
       assets: crudOn(),
       payroll: crudOff(),
       purchase_requests: { view: true, create: true, edit: true },
+      cash_budget: { view: true, create: true, edit: false },
       reports: true,
       settings: false,
     };

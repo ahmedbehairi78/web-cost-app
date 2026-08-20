@@ -202,6 +202,8 @@ const PRISMA_DELEGATE: Record<string, keyof Db> = {
   custody_settlements: 'custodySettlement',
   custody_settlement_items: 'custodySettlementItem',
   purchase_requests: 'purchaseRequest',
+  cash_budget_periods: 'cashBudgetPeriod',
+  cash_budget_lines: 'cashBudgetLine',
   billing_items: 'billingItem',
   journal_entries: 'journalEntry',
   purchase_transaction_items: 'purchaseTransactionItem',

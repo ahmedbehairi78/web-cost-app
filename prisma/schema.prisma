@@ -227,6 +227,8 @@ model ChartOfAccount {
   status        String   @default("active")
   supplierId    String?  @map("supplier_id")
   projectId     String?  @map("project_id")
+  /** Minimum GL balance to replenish — used for 12102… site-custody leaves in cash budget. */
+  minBalance    Decimal  @default(0) @map("min_balance") @db.Decimal(18, 3)
   createdAt     DateTime @default(now()) @map("created_at")
   updatedAt     DateTime @updatedAt @map("updated_at")
 
@@ -1828,6 +1830,58 @@ model PurchaseRequest {
   @@index([neededByDate])
   @@index([requestedAt])
   @@map("purchase_requests")
+}
+
+// ─── Cash budget (treasury plan — no GL) ─────────────────────────────────────
+
+model CashBudgetPeriod {
+  id          String   @id @default(uuid())
+  periodNumber String  @unique @map("period_number")
+  periodType  String   @map("period_type") // weekly | biweekly | monthly
+  periodStart String   @map("period_start")
+  periodEnd   String   @map("period_end")
+  status      String   @default("draft") // draft | approved
+  openingBank Decimal  @default(0) @map("opening_bank") @db.Decimal(18, 3)
+  openingCash Decimal  @default(0) @map("opening_cash") @db.Decimal(18, 3)
+  notes       String?
+  createdBy   String?  @map("created_by")
+  approvedBy  String?  @map("approved_by")
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  lines CashBudgetLine[]
+
+  @@index([status, isDeleted])
+  @@index([periodStart])
+  @@map("cash_budget_periods")
+}
+
+model CashBudgetLine {
+  id          String   @id @default(uuid())
+  periodId    String   @map("period_id")
+  side        String // obligation | source
+  category    String
+  description String
+  amount      Decimal  @default(0) @db.Decimal(18, 3)
+  dueDate     String?  @map("due_date")
+  origin      String   @default("manual") // auto | manual
+  originType  String?  @map("origin_type")
+  originId    String?  @map("origin_id")
+  projectId   String?  @map("project_id")
+  contractId  String?  @map("contract_id")
+  excluded    Boolean  @default(false)
+  sortOrder   Int      @default(0) @map("sort_order")
+  notes       String?
+  isDeleted   Boolean  @default(false) @map("is_deleted")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  period CashBudgetPeriod @relation(fields: [periodId], references: [id], onDelete: Cascade)
+
+  @@index([periodId, isDeleted])
+  @@index([originType, originId])
+  @@map("cash_budget_lines")
 }
 
 // ─── Idempotency (offline sync / client retries) ─────────────────────────────

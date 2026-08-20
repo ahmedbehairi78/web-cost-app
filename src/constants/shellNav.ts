@@ -6,6 +6,7 @@ import {
   BarChart3,
   BookOpen,
   Landmark,
+  Wallet,
   Package,
   Building2,
   Users,
@@ -24,6 +25,7 @@ export const SHELL_NAV_ITEMS = [
   { id: 'assets', labelKey: 'assets', icon: Building2 },
   { id: 'payroll', labelKey: 'payroll', icon: Users },
   { id: 'banks', labelKey: 'banks', icon: Landmark },
+  { id: 'cash_budget', labelKey: 'cash_budget', icon: Wallet },
   { id: 'reports', labelKey: 'reports', icon: BarChart3 },
   { id: 'settings', labelKey: 'settings', icon: Settings },
 ] as const;

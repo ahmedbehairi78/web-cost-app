@@ -191,6 +191,8 @@ export interface Account {
   status?: 'active' | 'disabled';
   /** When set on a 127… 8-digit leaf, links warehouse COA to a Firestore project. */
   projectId?: string;
+  /** Floor for site custody 12102… leaves — used by cash budget replenish. */
+  minBalance?: number;
 }
 
 export interface Transaction {

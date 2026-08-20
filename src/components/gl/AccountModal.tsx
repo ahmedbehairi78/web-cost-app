@@ -8,6 +8,8 @@ import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { accountingService, Account, invalidateCoaCache } from '../../services/accountingService';
 import { SearchableSelect } from '../ui/SearchableSelect';
+import { isCustodyCashLeafCode } from '../../lib/cashBudget';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface Props {
   isOpen: boolean;
@@ -28,6 +30,7 @@ const EMPTY_FORM = {
   type: 'asset' as 'asset' | 'liability' | 'equity' | 'revenue' | 'expense',
   isGroup: false,
   status: 'active' as 'active' | 'disabled',
+  minBalance: 0,
 };
 
 function deriveStatementType(code: string) {
@@ -38,6 +41,7 @@ function deriveStatementType(code: string) {
 }
 
 export function AccountModal({ isOpen, onClose, accounts, theme, language, editingAccount, defaultParentCode, defaultType }: Props) {
+  const { t } = useLanguage();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
 
@@ -51,6 +55,7 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
         type:          editingAccount.type,
         isGroup:       editingAccount.isGroup,
         status:        editingAccount.status || 'active',
+        minBalance:    Number(editingAccount.minBalance) || 0,
       });
     } else {
       let nextCode = '';
@@ -78,24 +83,28 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
     e.preventDefault();
     setIsSubmitting(true);
     try {
+      const showMin = !form.isGroup && isCustodyCashLeafCode(form.accountCode);
+      const payload = {
+        accountCode: form.accountCode,
+        accountName: form.accountName,
+        accountNameEn: form.accountNameEn,
+        parentCode: form.parentCode,
+        type: form.type,
+        isGroup: form.isGroup,
+        status: form.status,
+        statementType: deriveStatementType(form.accountCode),
+        ...(showMin ? { minBalance: Number(form.minBalance) || 0 } : {}),
+      };
       if (isEditMode && editingAccount) {
-        await accountingService.updateAccount(editingAccount.id, {
-          ...form,
-          statementType: deriveStatementType(form.accountCode),
-        });
+        await accountingService.updateAccount(editingAccount.id, payload);
+      } else if (isLocalBackend) {
+        await chartOfAccountsApi.create(payload);
+        invalidateCoaCache();
       } else {
-        const payload = {
-          ...form,
-          statementType: deriveStatementType(form.accountCode),
-        };
-        if (isLocalBackend) {
-          await chartOfAccountsApi.create(payload);
-        } else {
-          await addDoc(collection(db, 'chart_of_accounts'), {
-            ...payload,
-            createdAt: serverTimestamp(),
-          });
-        }
+        await addDoc(collection(db, 'chart_of_accounts'), {
+          ...payload,
+          createdAt: serverTimestamp(),
+        });
         invalidateCoaCache();
       }
       setForm(EMPTY_FORM);
@@ -221,6 +230,21 @@ export function AccountModal({ isOpen, onClose, accounts, theme, language, editi
                   </label>
                 </div>
               </div>
+
+              {!form.isGroup && isCustodyCashLeafCode(form.accountCode) && (
+                <div className="space-y-1">
+                  <label className="text-xs text-gray-400 uppercase">{t('cb_min_balance')}</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    className={inputCls}
+                    value={form.minBalance}
+                    onChange={(e) => setForm({ ...form, minBalance: Number(e.target.value) || 0 })}
+                  />
+                  <p className="text-[11px] text-gray-400">{t('cb_min_balance_hint')}</p>
+                </div>
+              )}
 
               <div className="pt-4 flex gap-3">
                 <button

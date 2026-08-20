@@ -68,4 +68,10 @@ describe('moduleViewPermissions', () => {
     expect(canOpenModuleView(DEFAULT_PERMISSIONS, 'purchase_requests', 'executed')).toBe(true);
     expect(firstPermittedModuleView(DEFAULT_PERMISSIONS, 'purchase_requests')).toBe('create');
   });
+
+  it('cash_budget requires cash_budget.view (not open for DEFAULT_PERMISSIONS)', () => {
+    expect(canOpenModuleView(DEFAULT_PERMISSIONS, 'cash_budget', 'main')).toBe(false);
+    expect(canOpenModuleView({ ...DEFAULT_PERMISSIONS, cash_budget: crudOn() }, 'cash_budget', 'main')).toBe(true);
+    expect(firstPermittedModuleView({ ...DEFAULT_PERMISSIONS, cash_budget: crudOn() }, 'cash_budget')).toBe('main');
+  });
 });
