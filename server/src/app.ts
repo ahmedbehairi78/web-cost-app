@@ -42,6 +42,7 @@ import { notificationsRouter } from './modules/notifications.js';
 import { fixedAssetsRouter } from './modules/fixedAssets.js';
 import { bootstrapFixedAssetGroupsIfEmpty } from './accounting/fixedAssetGlSync.js';
 import { payrollRouter } from './modules/payroll.js';
+import { purchaseRequestsRouter } from './modules/purchaseRequests.js';
 import { cashBudgetRouter } from './modules/cashBudget.js';
 import { bootstrapCoaIfEmpty } from './accounting/ensureCoaSeed.js';
 import { errorHandler, notFound } from './middleware/errors.js';
