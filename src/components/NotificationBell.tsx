@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { cn } from '../lib/utils';
 import { shellTheme, shellFocusRing, type AppTheme } from '../lib/shellTheme';
 import { useLanguage } from '../context/LanguageContext';
+import { useConfirm } from '../context/ConfirmDialogContext';
 import { usePermissions } from '../context/PermissionsContext';
 import { playTap } from '../lib/uiSound';
 import type { AppNotificationItem } from '../types';
@@ -35,6 +36,7 @@ interface NotificationBellProps {
 
 export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: NotificationBellProps) {
   const { t, language, dir } = useLanguage();
+  const confirm = useConfirm();
   const { permissions, isAdmin } = usePermissions();
   const shell = shellTheme(theme as AppTheme);
   const isTopNav = variant === 'topnav';
@@ -106,15 +108,28 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
     return () => document.removeEventListener('mousedown', onDocPointer);
   }, [open]);
 
+  const promptSpaUpdate = useCallback(async () => {
+    if (applyingSpa) return;
+    setOpen(false);
+    const ok = await confirm({
+      title: t('notifications_spa_update_confirm_title'),
+      message: t('notifications_spa_update_confirm_message'),
+      confirmLabel: t('notifications_spa_update_now'),
+      cancelLabel: t('notifications_spa_update_later'),
+      variant: 'neutral',
+    });
+    if (!ok) return;
+    setApplyingSpa(true);
+    toast.loading(t('notifications_spa_update_applying'), { id: 'spa-update' });
+    void applyHostedSpaUpdate();
+  }, [applyingSpa, confirm, t]);
+
   const handleOpenItem = useCallback((item: AppNotificationItem) => {
     playTap();
     setOpen(false);
 
     if (isSpaUpdateNotificationType(item.type)) {
-      if (applyingSpa) return;
-      setApplyingSpa(true);
-      toast.loading(t('notifications_spa_update_applying'), { id: 'spa-update' });
-      void applyHostedSpaUpdate();
+      void promptSpaUpdate();
       return;
     }
 
@@ -135,7 +150,7 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
     applyNotificationNavigationPending(item, target);
     void notificationsApi.markRead([item.key]).then(() => void refresh());
     openWindow(target.moduleId, target.viewId);
-  }, [permissions, isAdmin, language, t, openWindow, refresh, applyingSpa]);
+  }, [permissions, isAdmin, language, t, openWindow, refresh, promptSpaUpdate]);
 
   const handleDismiss = (item: AppNotificationItem, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -189,7 +204,7 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
               onMouseDown={(e) => {
                 // Activate on mousedown so navigation wins over outside-close handlers.
                 if (e.button !== 0) return;
-                if ((e.target as HTMLElement).closest('[data-notif-dismiss]')) return;
+                if ((e.target as HTMLElement).closest('[data-notif-dismiss],[data-notif-spa-action]')) return;
                 e.preventDefault();
                 e.stopPropagation();
                 handleOpenItem(item);
@@ -216,6 +231,42 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
                 {item.dueAt && (
                   <span className="text-[10px] opacity-60 mt-0.5 block">
                     {t('notifications_due')}: {item.dueAt}
+                  </span>
+                )}
+                {isSpaUpdateNotificationType(item.type) && (
+                  <span className="flex gap-1.5 mt-2">
+                    <button
+                      type="button"
+                      data-notif-spa-action
+                      disabled={applyingSpa}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        playTap();
+                        void promptSpaUpdate();
+                      }}
+                      className="px-2 py-1 rounded text-[11px] font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-60"
+                    >
+                      {t('notifications_spa_update_now')}
+                    </button>
+                    <button
+                      type="button"
+                      data-notif-spa-action
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        playTap();
+                        setOpen(false);
+                      }}
+                      className={cn(
+                        'px-2 py-1 rounded text-[11px] font-medium',
+                        theme === 'dark'
+                          ? 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200',
+                      )}
+                    >
+                      {t('notifications_spa_update_later')}
+                    </button>
                   </span>
                 )}
               </span>

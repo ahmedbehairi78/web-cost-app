@@ -30,5 +30,8 @@ describe('spaBuild', () => {
     expect(item.priority).toBe('urgent');
     expect(item.read).toBe(false);
     expect(item.titleAr).toContain('تحديث');
+    expect(item.titleAr).toContain('لاحقاً');
+    expect(item.titleEn.toLowerCase()).toContain('later');
+    expect(item.titleAr).not.toContain('اضغط للتحديث');
   });
 });

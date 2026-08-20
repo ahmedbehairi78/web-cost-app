@@ -241,7 +241,7 @@ npm run test -- src/lib/moduleViewPermissions.test.ts
 - **Ctrl+N:** قارن **`input.code`** وليس `input.key` وحده — وإلا يفشل الاختصار مع لوحة عربية.
 - **كشف New GUI في المثبّت:** preload يستخدم sync IPC `query-reuse-session`؛ SPA تقبل أيضاً `?webCostReuseSession=1`.
 - **نشر القشرة:** بعد تعديل `electron/main.ts` / `preload.ts` شغّل `npm run electron:build:shell` ثم **`electron:publish`** للأجهزة المثبّتة (تحديث SPA عبر Railway لا يحدّث القشرة).
-- **تحديث محتوى Railway:** لا `location.reload` تلقائي. جرس التنبيهات → `applyHostedSpaUpdate()` → مسح كاش + شاشة الدخول. ملف `src/lib/spaBuild.ts`.
+- **تحديث محتوى Railway:** لا `location.reload` تلقائي ولا تطبيق عند كشف البناء. جرس التنبيهات → **تحديث الآن** (تأكيد ثم `applyHostedSpaUpdate()`) أو **لاحقاً** مع استمرار العمل. ملف `src/lib/spaBuild.ts`.
 
 ```powershell
 npm run test -- src/lib/shellNavigation.test.ts src/lib/spaBuild.test.ts

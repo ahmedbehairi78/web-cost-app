@@ -50,7 +50,7 @@ export class ErrorBoundary extends Component<Props, State> {
           </h1>
           <p className="text-gray-400 max-w-md mb-8">
             {chunkError
-              ? 'اضغط لتحديث التطبيق. بعد الانتهاء ستظهر شاشة الدخول.'
+              ? 'حدّث الآن لإعادة تحميل الواجهة ثم شاشة الدخول. لن يُغلق التطبيق من تلقاء نفسه.'
               : 'عذراً، واجه النظام مشكلة تقنية. يرجى محاولة إعادة تحميل الصفحة.'}
           </p>
           <div className="bg-gray-900 p-4 rounded-lg text-left font-mono text-xs text-red-400 max-w-2xl overflow-auto mb-8">
@@ -63,7 +63,7 @@ export class ErrorBoundary extends Component<Props, State> {
             }}
             className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-xl font-bold transition-all"
           >
-            {chunkError ? 'تحديث التطبيق' : 'إعادة تحميل الصفحة'}
+            {chunkError ? 'تحديث الآن' : 'إعادة تحميل الصفحة'}
           </button>
         </div>
       );

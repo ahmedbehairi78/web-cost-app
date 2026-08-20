@@ -87,7 +87,7 @@ export function initAutoUpdater(): void {
         message: `إصدار جديد (${info.version}) جاهز.`,
         detail: 'إعادة التشغيل الآن لتثبيت تحديث سطح المكتب؟\n\nA new desktop shell version is ready. Restart now?',
         buttons: ['إعادة التشغيل / Restart', 'لاحقاً / Later'],
-        defaultId: 0,
+        defaultId: 1,
         cancelId: 1,
         noLink: true,
       })
@@ -96,9 +96,9 @@ export function initAutoUpdater(): void {
       });
   });
 
-  // Let the hosted app load first, then check quietly (Windows toast if available).
+  // Check quietly — do not use checkForUpdatesAndNotify (Windows toast can restart on click).
   setTimeout(() => {
-    void autoUpdater.checkForUpdatesAndNotify().catch((err: unknown) => {
+    void autoUpdater.checkForUpdates().catch((err: unknown) => {
       console.error('[updater] check failed', err);
     });
   }, 8000);

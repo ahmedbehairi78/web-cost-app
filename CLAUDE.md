@@ -1003,6 +1003,27 @@ npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/
 
 ---
 
+## 🔴 HANDOFF — إشعار تحديث Railway: الآن أو لاحقاً ✅ (2026-08-20)
+
+> **جلسة 2026-08-20:** بعد نشر Railway وصل إشعار ثم أُغلق التطبيق فوراً للتحديث وإعادة الدخول. المطلوب: إشعار بوجود تحديث **واختيار** التحديث الآن (خروج ثم شاشة الدخول) **أو لاحقاً** مع استمرار العمل. **لا** تطبيق تلقائي عند الكشف أو عند مجرد فتح الجرس.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **كشف** | كما هو: `spa-build.json` كل 60ث + تركيز — `markSpaUpdateAvailable()` فقط |
+| **تنبيه** | بند عاجل في الجرس + أزرار **تحديث الآن** / **لاحقاً** · النقر يفتح حوار تأكيد ولا يطبّق مباشرة |
+| **لاحقاً** | يغلق القائمة/الحوار؛ الشارة تبقى حتى يختار المستخدم الآن |
+| **الآن** | `applyHostedSpaUpdate()` بعد التأكيد فقط — لا `app.quit` |
+| **قشرة** | `electron-updater`: `checkForUpdates()` بلا toast يعيد التشغيل عند النقر · حوار التثبيت الافتراضي **لاحقاً** |
+
+```powershell
+npm run test -- src/lib/spaBuild.test.ts
+# git push → Railway · جرس → «يتوفر تحديث جديد» → لاحقاً = العمل مستمر · الآن = شاشة الدخول
+```
+
+---
+
 ## 🔴 HANDOFF — إشعار تحديث Railway دون إغلاق Electron ✅ (2026-08-13)
 
 > **جلسة 2026-08-13:** نشر Railway كان يغلق التطبيق فجأة (إعادة تحميل تلقائية عند 404 للـ chunk + كاش HTTP). المطلوب: تنبيه في الجرس → المستخدم يبدأ التحديث → شاشة الدخول بعد الانتهاء. **لا** `app.quit`.
@@ -1012,14 +1033,14 @@ npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/
 | المجال | ملخص |
 |--------|------|
 | **كشف** | `dist/spa-build.json` (`VITE_SPA_BUILD_ID` / `RAILWAY_GIT_COMMIT_SHA`) · استطلاع كل 60ث + عند التركيز · `Cache-Control: no-store` |
-| **تنبيه** | جرس التنبيهات يدمج بنداً عاجلاً `spa_update` — النقر يستدعي `applyHostedSpaUpdate()` |
+| **تنبيه** | جرس التنبيهات يدمج بنداً عاجلاً `spa_update` — **تحديث الآن أو لاحقاً** (لا تطبيق عند النقر وحده؛ انظر handoff 2026-08-20) |
 | **تطبيق** | `performAppLogout({ quitElectron: false })` ثم IPC `apply-spa-update` (مسح كاش + `reloadIgnoringCache` لكل النوافذ) · قشرة قديمة: `/?spa=timestamp` |
-| **لا تراجع** | `lazyImport` **لا** يستدعي `window.location.reload()` عند 404 — يضع التنبيه فقط. مسار `electron-updater` / GitHub Setup.exe كما هو |
+| **لا تراجع** | `lazyImport` **لا** يستدعي `window.location.reload()` عند 404 — يضع التنبيه فقط. لا تطبّق التحديث عند كشف البناء الجديد |
 
 ```powershell
 npm run test -- src/lib/spaBuild.test.ts
 npm run electron:build:shell
-# git push → Railway · جرس → «يتوفر تحديث جديد» → تحديث → شاشة الدخول
+# git push → Railway · جرس → «يتوفر تحديث جديد» → تحديث الآن أو لاحقاً
 ```
 
 ---
@@ -2090,7 +2111,7 @@ Operational master data often lives in **Firestore** first; SQLite holds the fin
 - **Dev origin:** Use **`http://localhost:3000`** only (not `127.0.0.1`) — `devOriginGuard.ts` redirects; Vite `strictPort: true`.
 - **Stale local API (`EADDRINUSE` :3001):** see combined **:3000 + :3001** note above. Sanity: unauthenticated `GET /api/settings/push-to-production/preview` should return **401**, not **404**.
 - **Local vs Electron GL counts:** Local **`DATABASE_URL`** and Railway/Electron are **different databases** until **Push to production**. Electron count = Railway truth for production users.
-- **Electron UI after deploy:** Setup.exe loads **hosted SPA**. After Railway redeploy a **notification bell** item (`spa_update`) appears — click starts the update (clear HTTP cache + reload all windows) then **password login**. Do **not** auto-`location.reload()` on chunk 404 (`lazyImport.ts`). Packaged shell still clears HTTP cache at most once per calendar day on **launch**; user-triggered update always clears cache via IPC `apply-spa-update`. `electron:publish` still required for **shell** changes. **Data fixes** must run on **Railway Postgres**. See **`docs/RAILWAY_DEPLOY.md`**.
+- **Electron UI after deploy:** Setup.exe loads **hosted SPA**. After Railway redeploy a **notification bell** item (`spa_update`) appears — **Update now** or **Later** (confirm before logout). Do **not** auto-apply on detect or on merely opening the bell. Do **not** auto-`location.reload()` on chunk 404 (`lazyImport.ts`). Packaged shell still clears HTTP cache at most once per calendar day on **launch**; user-triggered update always clears cache via IPC `apply-spa-update`. `electron:publish` still required for **shell** changes. **Data fixes** must run on **Railway Postgres**. See **`docs/RAILWAY_DEPLOY.md`**.
 - **`useUserAccessScope` + password login:** Gating role on Firebase `onAuthStateChanged` resets admin to `user` on Electron — empty Inventory project picker / «فشل تحميل المشاريع». Fix (2026-06-26): local mode uses `PermissionsContext.role` + `/auth/me` for contracts only. **`POST /auth/login`** must call `req.session.save()` before response (same as `firebase-session`).
 - **`App.tsx` hook order (TDZ):** any `useEffect`/`useCallback` that references `userPermissions`, `userRole`, or `defaultModuleRef` must appear **after** those declarations. Violating this causes **`ReferenceError: Cannot access '…' before initialization`** at runtime (minified bundle).
 - **`boqApi.list` query string:** always pass `?contractId=` or `?projectId=` (e.g. `` boqApi.list(`?projectId=${id}`) ``). Passing a bare id (`boqApi.list(contractId)`) hits `GET /boq-items/:id` → **404** and empty quick-link BOQ lists in consumption.
