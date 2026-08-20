@@ -263,14 +263,24 @@ describe('summarizeAllocationByCostCenter', () => {
       { side: 'obligation', excluded: true, amount: 9_000, allocatedCash: 1, costCenterName: 'كونكورد فيلا', contractId: 'a' },
     ]);
     expect(rows).toHaveLength(2);
-    const concord = rows.find((r) => r.key === 'a');
-    const arkman = rows.find((r) => r.key === 'b');
+    const concord = rows.find((r) => r.name === 'كونكورد فيلا');
+    const arkman = rows.find((r) => r.name === 'أركمن فيلا');
     expect(concord?.obligation).toBe(130_000);
     expect(concord?.allocated).toBe(52_000);
     expect(arkman?.obligation).toBe(70_000);
     expect(arkman?.allocated).toBe(28_000);
     expect(concord?.pct).toBe(65);
     expect(arkman?.pct).toBe(35);
+  });
+
+  it('merges unlabeled project rows into one total', () => {
+    const rows = summarizeAllocationByCostCenter([
+      { side: 'obligation', amount: 100, allocatedCash: 10, costCenterName: '—', contractId: 'x' },
+      { side: 'obligation', amount: 50, allocatedCash: 5, costCenterName: '', contractId: 'y' },
+    ]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.obligation).toBe(150);
+    expect(rows[0]?.allocated).toBe(15);
   });
 });
 

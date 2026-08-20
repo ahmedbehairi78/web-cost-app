@@ -316,6 +316,27 @@ export function lineCostCenterId(line: {
   return tail && tail !== '_' ? tail : null;
 }
 
+export function isBlankBudgetLabel(name: string | null | undefined): boolean {
+  const s = String(name ?? '').trim();
+  return !s || s === '—' || s === '-';
+}
+
+/** Group unlabeled project rows together even when contract ids differ. */
+export function budgetProjectGroupKey(line: {
+  projectId?: string | null;
+  contractId?: string | null;
+  originId?: string | null;
+  costCenterName?: string | null;
+}): string {
+  const projectId = String(line.projectId ?? '').trim();
+  if (projectId) return `p:${projectId}`;
+  const name = String(line.costCenterName ?? '').trim();
+  if (isBlankBudgetLabel(name)) return '__none__';
+  const cc = lineCostCenterId(line);
+  if (cc) return `c:${cc}`;
+  return `__name:${name}`;
+}
+
 const ACCOUNT_PREFIX_RE =
   /^(موردون|مقاولو باطن|رواتب مستحقة|بنك|خزينة \/ عهدة|خزينة \/ عهدة|مستخلصات تحت التحصيل|Suppliers|Subcontractors|Payroll|Bank|Treasury \/ custody|Uncollected IPCs)\s*[—–-]\s*/i;
 
@@ -516,8 +537,7 @@ export function summarizeAllocationByCostCenter(
     if (line.excluded) continue;
     const name = String(line.costCenterName ?? '').trim();
     const nameEn = String(line.costCenterNameEn ?? '').trim() || name;
-    const projectId = String(line.projectId ?? '').trim();
-    const key = projectId || lineCostCenterId(line) || `__name:${name || 'none'}`;
+    const key = budgetProjectGroupKey(line);
     const cur = map.get(key) ?? {
       key,
       name: name || '—',

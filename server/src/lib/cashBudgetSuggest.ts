@@ -64,15 +64,12 @@ export type ProjectDisplay = { id: string; name: string; nameEn: string | null }
 export async function loadProjectNameMap(): Promise<Map<string, ProjectDisplay>> {
   const [projects, contracts, centers] = await Promise.all([
     prisma.project.findMany({
-      where: { isDeleted: false },
       select: { id: true, projectName: true, projectNameEn: true },
     }),
     prisma.contract.findMany({
-      where: { isDeleted: false },
       select: { id: true, projectId: true },
     }),
     prisma.costCenter.findMany({
-      where: { isDeleted: false },
       select: { id: true, code: true, contractId: true },
     }),
   ]);
@@ -144,8 +141,26 @@ export function lookupCostCenterName(
   return map.get(key) ?? null;
 }
 
-/** Net debit per 8-digit leaf, also split by resolved cost center. */
-async function glLeafBucketsThrough(asOf: string): Promise<Map<string, LeafBucket>> {
+export function resolveBudgetProjectId(
+  map: Map<string, ProjectDisplay>,
+  costCenterId: string | null | undefined,
+  transactionProjectId: string | null | undefined,
+): string | null {
+  const fromCenter = lookupProjectName(map, costCenterId);
+  if (fromCenter) return fromCenter.id;
+  const fromTx = lookupProjectName(map, transactionProjectId);
+  if (fromTx) return fromTx.id;
+  const raw = String(transactionProjectId ?? '').trim();
+  return raw || null;
+}
+
+/** Net debit per 8-digit leaf, also split by resolved project. */
+async function glLeafLinesThrough(asOf: string): Promise<Array<{
+  accountCode: string;
+  net: number;
+  costCenterId: string | null;
+  projectId: string | null;
+}>> {
   const upper = journalDateQueryUpperBound(asOf);
   const rows = await prisma.journalEntry.findMany({
     where: {
@@ -160,23 +175,33 @@ async function glLeafBucketsThrough(asOf: string): Promise<Map<string, LeafBucke
       debit: true,
       credit: true,
       costCenterId: true,
-      transaction: { select: { costCenterId: true } },
+      transaction: { select: { costCenterId: true, projectId: true } },
     },
   });
-  const byCode = new Map<string, LeafBucket>();
-  for (const row of rows) {
-    const code = String(row.accountCode ?? '').trim();
-    if (!isEightDigitLeafCode(code)) continue;
-    const net = roundMoney(num(row.debit) - num(row.credit));
-    const cc = resolveEntryCostCenterId(
+  return rows.map((row) => ({
+    accountCode: String(row.accountCode ?? '').trim(),
+    net: roundMoney(num(row.debit) - num(row.credit)),
+    costCenterId: resolveEntryCostCenterId(
       { costCenterId: row.costCenterId },
       row.transaction?.costCenterId,
-    );
-    const bucket = byCode.get(code) ?? { net: 0, byCenter: new Map<string, number>() };
-    bucket.net = roundMoney(bucket.net + net);
-    const key = centerKey(cc);
-    bucket.byCenter.set(key, roundMoney((bucket.byCenter.get(key) ?? 0) + net));
-    byCode.set(code, bucket);
+    ),
+    projectId: String(row.transaction?.projectId ?? '').trim() || null,
+  }));
+}
+
+function foldLeafBuckets(
+  lines: Array<{ accountCode: string; net: number; costCenterId: string | null; projectId: string | null }>,
+  projectMap: Map<string, ProjectDisplay>,
+): Map<string, LeafBucket> {
+  const byCode = new Map<string, LeafBucket>();
+  for (const row of lines) {
+    if (!isEightDigitLeafCode(row.accountCode)) continue;
+    const projectId = resolveBudgetProjectId(projectMap, row.costCenterId, row.projectId);
+    const bucket = byCode.get(row.accountCode) ?? { net: 0, byCenter: new Map<string, number>() };
+    bucket.net = roundMoney(bucket.net + row.net);
+    const key = centerKey(projectId);
+    bucket.byCenter.set(key, roundMoney((bucket.byCenter.get(key) ?? 0) + row.net));
+    byCode.set(row.accountCode, bucket);
   }
   return byCode;
 }
@@ -211,8 +236,8 @@ export async function buildCashBudgetSuggestion(input: {
   const asOf = input.periodEnd;
   void input.periodType;
   void input.periodStart;
-  const [buckets, settlements, accounts, projectNames] = await Promise.all([
-    glLeafBucketsThrough(asOf),
+  const [glLines, settlements, accounts, projectNames] = await Promise.all([
+    glLeafLinesThrough(asOf),
     prisma.custodySettlement.findMany({
       where: { isDeleted: false, status: 'submitted' },
       select: { custodyAccountCode: true, totalAmount: true },
@@ -230,6 +255,7 @@ export async function buildCashBudgetSuggestion(input: {
     }),
     loadProjectNameMap(),
   ]);
+  const buckets = foldLeafBuckets(glLines, projectNames);
 
   const pendingByCustody = new Map<string, number>();
   for (const row of settlements) {
@@ -308,9 +334,7 @@ export async function buildCashBudgetSuggestion(input: {
       })),
     );
     for (const part of parts) {
-      const project =
-        lookupProjectName(projectNames, part.costCenterId)
-        ?? lookupProjectName(projectNames, acc?.projectId);
+      const project = lookupProjectName(projectNames, part.costCenterId);
       push({
         side: 'obligation',
         category,
@@ -319,7 +343,7 @@ export async function buildCashBudgetSuggestion(input: {
         dueDate: asOf,
         originType: 'gl_leaf',
         originId: `${code}::${part.costCenterId || '_'}`,
-        projectId: project?.id ?? acc?.projectId ?? null,
+        projectId: project?.id ?? (part.costCenterId || null),
         contractId: part.costCenterId,
         notes: project?.name ?? null,
       });
