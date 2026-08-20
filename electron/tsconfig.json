@@ -12,5 +12,5 @@
     "rootDir": ".",
     "isolatedModules": false
   },
-  "include": ["main.ts", "updater.ts"]
+  "include": ["main.ts", "updater.ts", "hostedSpaUpdate.ts"]
 }

@@ -69,13 +69,6 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
 
   useEffect(() => subscribeSpaUpdateAvailable(() => setSpaUpdate(true)), []);
 
-  useEffect(() => {
-    if (!spaUpdate) return;
-    const item = buildSpaUpdateNotificationItem();
-    const title = language === 'ar' ? item.titleAr : item.titleEn;
-    notifyDesktopUrgent(title, t('notifications_title'), item.key);
-  }, [spaUpdate, language, t]);
-
   const displayItems = spaUpdate
     ? [buildSpaUpdateNotificationItem(), ...items.filter((i) => !isSpaUpdateNotificationType(i.type))]
     : items;

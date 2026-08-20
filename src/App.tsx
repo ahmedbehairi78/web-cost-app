@@ -301,13 +301,13 @@ export default function App() {
   }, [logClosedShellWindows]);
 
 
-  const handleLogout = useCallback(async () => {
+  const handleLogout = useCallback(async (options?: { quitElectron?: boolean }) => {
     setPasswordSession(null);
     setVisibleShellModules(null);
     resetStartupSession();
     electronMaximizedRef.current = false;
     setWindows([]);
-    await performAppLogout();
+    await performAppLogout({ quitElectron: options?.quitElectron });
   }, [resetStartupSession]);
 
   useEffect(() => {
@@ -321,7 +321,8 @@ export default function App() {
           : 'Session expired — please sign in again',
         { id: 'api-unauthorized' },
       );
-      void handleLogout().finally(() => {
+      // Never quit Electron on a 401 (Railway bounce during deploy looks like an update-then-close).
+      void handleLogout({ quitElectron: false }).finally(() => {
         clearing = false;
       });
     };

@@ -1,6 +1,5 @@
 import type { AppNotificationItem } from '../types';
-import { requestApplySpaUpdate, clearDesktopSessionStorage } from './electronShell';
-import { performAppLogout } from './sessionLogout';
+import { requestApplySpaUpdate } from './electronShell';
 
 export const SPA_UPDATE_NOTIFICATION_TYPE = 'spa_update';
 export const SPA_UPDATE_AVAILABLE_EVENT = 'web-cost:spa-update-available';
@@ -129,13 +128,11 @@ function reloadHostedSpaBypassingIndexCache(): void {
   }
 }
 
-/** Sign out, refresh hosted SPA (clear Electron HTTP cache), land on the login screen. Never quits Electron. */
+/** Reload the hosted SPA (clear Electron HTTP cache). Never quits and never signs the user out. */
 export async function applyHostedSpaUpdate(): Promise<void> {
   if (applying) return;
   applying = true;
   try {
-    await performAppLogout({ quitElectron: false });
-    await clearDesktopSessionStorage();
     if (await requestApplySpaUpdate()) return;
     reloadHostedSpaBypassingIndexCache();
   } catch {

@@ -9,6 +9,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { initAutoUpdater } from './updater.js';
+import { startHostedSpaUpdateWatcher } from './hostedSpaUpdate.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -428,9 +429,9 @@ ipcMain.handle('clear-desktop-session', async () => {
 
 /**
  * Hosted SPA update (Railway deploy): clear HTTP cache then reload every window.
- * Never quits — the SPA signs out first and lands on the password login screen.
+ * Never quits and never clears session cookies — the user stays signed in.
  */
-ipcMain.handle('apply-spa-update', async () => {
+async function reloadHostedSpaKeepingSession(): Promise<boolean> {
   try {
     const ses = session.fromPartition(DESKTOP_SESSION_PARTITION);
     await ses.clearCache();
@@ -446,7 +447,9 @@ ipcMain.handle('apply-spa-update', async () => {
     }
   }
   return true;
-});
+}
+
+ipcMain.handle('apply-spa-update', async () => reloadHostedSpaKeepingSession());
 
 ipcMain.handle('open-new-window', () => {
   createAppWindow({ reuseSession: true });
@@ -486,6 +489,12 @@ ipcMain.handle(
     const title = typeof payload?.title === 'string' ? payload.title : 'Web Cost App';
     const body = typeof payload?.body === 'string' ? payload.body : '';
     const n = new Notification({ title, body, silent: false });
+    n.on('click', () => {
+      const win = getPrimaryAppWindow();
+      if (!win || win.isDestroyed()) return;
+      if (!win.isVisible()) win.show();
+      win.focus();
+    });
     n.show();
     return true;
   },
@@ -668,6 +677,13 @@ app.whenReady().then(async () => {
   });
 
   initAutoUpdater();
+  startHostedSpaUpdateWatcher({
+    startUrl: START_URL,
+    getMainWindow: getPrimaryAppWindow,
+    applyReload: async () => {
+      await reloadHostedSpaKeepingSession();
+    },
+  });
   app.on('activate', () => {
     if (appWindows.size === 0) createAppWindow();
   });
