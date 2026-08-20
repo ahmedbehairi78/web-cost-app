@@ -59,6 +59,55 @@ function centerKey(id: string | null): string {
 }
 
 export type CostCenterDisplay = { name: string; nameEn: string | null };
+export type ProjectDisplay = { id: string; name: string; nameEn: string | null };
+
+export async function loadProjectNameMap(): Promise<Map<string, ProjectDisplay>> {
+  const [projects, contracts, centers] = await Promise.all([
+    prisma.project.findMany({
+      where: { isDeleted: false },
+      select: { id: true, projectName: true, projectNameEn: true },
+    }),
+    prisma.contract.findMany({
+      where: { isDeleted: false },
+      select: { id: true, projectId: true },
+    }),
+    prisma.costCenter.findMany({
+      where: { isDeleted: false },
+      select: { id: true, code: true, contractId: true },
+    }),
+  ]);
+  const byProjectId = new Map<string, ProjectDisplay>();
+  for (const row of projects) {
+    byProjectId.set(row.id, { id: row.id, name: row.projectName, nameEn: row.projectNameEn });
+  }
+  const map = new Map<string, ProjectDisplay>();
+  for (const row of byProjectId.values()) {
+    map.set(row.id, row);
+  }
+  for (const row of contracts) {
+    const project = byProjectId.get(row.projectId);
+    if (project) map.set(row.id, project);
+  }
+  for (const row of centers) {
+    const project =
+      (row.contractId ? map.get(row.contractId) : undefined)
+      ?? map.get(row.id);
+    if (!project) continue;
+    map.set(row.id, project);
+    const code = String(row.code ?? '').trim();
+    if (code) map.set(code, project);
+  }
+  return map;
+}
+
+export function lookupProjectName(
+  map: Map<string, ProjectDisplay>,
+  id: string | null | undefined,
+): ProjectDisplay | null {
+  const key = String(id ?? '').trim();
+  if (!key || key === '_') return null;
+  return map.get(key) ?? null;
+}
 
 export async function loadCostCenterNameMap(): Promise<Map<string, CostCenterDisplay>> {
   const [centers, contracts] = await Promise.all([
@@ -162,7 +211,7 @@ export async function buildCashBudgetSuggestion(input: {
   const asOf = input.periodEnd;
   void input.periodType;
   void input.periodStart;
-  const [buckets, settlements, accounts, ccNames] = await Promise.all([
+  const [buckets, settlements, accounts, projectNames] = await Promise.all([
     glLeafBucketsThrough(asOf),
     prisma.custodySettlement.findMany({
       where: { isDeleted: false, status: 'submitted' },
@@ -179,7 +228,7 @@ export async function buildCashBudgetSuggestion(input: {
         projectId: true,
       },
     }),
-    loadCostCenterNameMap(),
+    loadProjectNameMap(),
   ]);
 
   const pendingByCustody = new Map<string, number>();
@@ -259,7 +308,9 @@ export async function buildCashBudgetSuggestion(input: {
       })),
     );
     for (const part of parts) {
-      const cc = lookupCostCenterName(ccNames, part.costCenterId);
+      const project =
+        lookupProjectName(projectNames, part.costCenterId)
+        ?? lookupProjectName(projectNames, acc?.projectId);
       push({
         side: 'obligation',
         category,
@@ -268,9 +319,9 @@ export async function buildCashBudgetSuggestion(input: {
         dueDate: asOf,
         originType: 'gl_leaf',
         originId: `${code}::${part.costCenterId || '_'}`,
-        projectId: acc?.projectId ?? null,
+        projectId: project?.id ?? acc?.projectId ?? null,
         contractId: part.costCenterId,
-        notes: cc?.name ?? null,
+        notes: project?.name ?? null,
       });
     }
   }
@@ -282,6 +333,7 @@ export async function buildCashBudgetSuggestion(input: {
     const pending = pendingByCustody.get(code) ?? 0;
     const replenish = custodyReplenishAmount(num(acc.minBalance), gl, pending);
     if (replenish <= 0) continue;
+    const project = lookupProjectName(projectNames, acc.projectId);
     push({
       side: 'obligation',
       category: 'custody_replenish',
@@ -290,8 +342,9 @@ export async function buildCashBudgetSuggestion(input: {
       dueDate: asOf,
       originType: 'custody_min',
       originId: acc.id || code,
-      projectId: acc.projectId,
+      projectId: project?.id ?? acc.projectId,
       contractId: null,
+      notes: project?.name ?? null,
     });
   }
 

@@ -21,7 +21,7 @@ import {
   subAccountLabel,
   ymdKey,
 } from '../lib/cashBudget.js';
-import { buildCashBudgetSuggestion, loadCostCenterNameMap, lookupCostCenterName } from '../lib/cashBudgetSuggest.js';
+import { buildCashBudgetSuggestion, loadProjectNameMap, lookupProjectName } from '../lib/cashBudgetSuggest.js';
 
 const SIDES = new Set(['obligation', 'source']);
 
@@ -77,20 +77,32 @@ function toLinePayload(row: {
 async function decorateLineCostCenters<T extends {
   contractId?: string | null;
   originId?: string | null;
+  projectId?: string | null;
   notes?: string | null;
   description?: string;
 }>(
   lines: T[],
-): Promise<Array<T & { costCenterName: string | null; costCenterNameEn: string | null; description: string }>> {
-  const names = await loadCostCenterNameMap();
+): Promise<Array<T & {
+  costCenterName: string | null;
+  costCenterNameEn: string | null;
+  projectName: string | null;
+  projectNameEn: string | null;
+  description: string;
+}>> {
+  const names = await loadProjectNameMap();
   return lines.map((line) => {
-    const id = lineCostCenterId(line);
-    const found = lookupCostCenterName(names, id);
+    const found =
+      lookupProjectName(names, line.projectId)
+      ?? lookupProjectName(names, lineCostCenterId(line));
     const fallback = String(line.notes ?? '').trim();
     const code = glLeafOriginCode(line.originId);
+    const storedProjectId = String(line.projectId ?? '').trim();
     return {
       ...line,
       description: subAccountLabel(line.description, code),
+      projectId: storedProjectId || found?.id || null,
+      projectName: found?.name ?? (fallback || null),
+      projectNameEn: found?.nameEn ?? found?.name ?? (fallback || null),
       costCenterName: found?.name ?? (fallback || null),
       costCenterNameEn: found?.nameEn ?? found?.name ?? (fallback || null),
     };

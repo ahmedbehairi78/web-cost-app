@@ -17,6 +17,7 @@ import { isLocalBackend } from '../lib/dataBackend';
 import { businessTodayYmd } from '../lib/businessCalendar';
 import {
   CASH_BUDGET_PERIOD_TYPES,
+  allocationSharePct,
   computeCashBudgetSummary,
   glLeafOriginCode,
   isCustodyCashLeafCode,
@@ -59,12 +60,16 @@ function accountLabel(line: CashBudgetLineRow): string {
   return subAccountLabel(line.description, glLeafOriginCode(line.originId));
 }
 
-function costCenterLabel(line: CashBudgetLineRow, isAr: boolean, t: (key: string) => string): string {
-  const ar = String(line.costCenterName ?? '').trim();
-  const en = String(line.costCenterNameEn ?? '').trim();
+function projectLabel(line: CashBudgetLineRow, isAr: boolean, t: (key: string) => string): string {
+  const ar = String(line.projectName ?? line.costCenterName ?? '').trim();
+  const en = String(line.projectNameEn ?? line.costCenterNameEn ?? '').trim();
   const notes = String(line.notes ?? '').trim();
-  if (isAr) return ar || notes || t('cb_no_cost_center');
-  return en || ar || notes || t('cb_no_cost_center');
+  if (isAr) return ar || notes || t('cb_no_project');
+  return en || ar || notes || t('cb_no_project');
+}
+
+function formatAllocPct(pct: number): string {
+  return `${pct.toFixed(2)}%`;
 }
 
 export function CashBudget() {
@@ -184,13 +189,15 @@ export function CashBudget() {
     return [...rows].sort((a, b) => {
       const name = accountLabel(a).localeCompare(accountLabel(b), isAr ? 'ar' : 'en');
       if (name !== 0) return name;
-      const ca = costCenterLabel(a, isAr, t);
-      const cb = costCenterLabel(b, isAr, t);
+      const ca = projectLabel(a, isAr, t);
+      const cb = projectLabel(b, isAr, t);
       return ca.localeCompare(cb, isAr ? 'ar' : 'en');
     });
   }, [detail, isAr, t]);
 
-  const costCenterTotals = useMemo(
+  const allocationPool = Number(detail?.distributablePool ?? 0);
+
+  const projectTotals = useMemo(
     () =>
       summarizeAllocationByCostCenter(
         obligationLines.map((l) => ({
@@ -198,13 +205,15 @@ export function CashBudget() {
           excluded: l.excluded,
           amount: Number(l.amount),
           allocatedCash: l.allocatedCash,
-          costCenterName: costCenterLabel(l, isAr, t),
-          costCenterNameEn: costCenterLabel(l, false, t),
+          costCenterName: projectLabel(l, isAr, t),
+          costCenterNameEn: projectLabel(l, false, t),
+          projectId: l.projectId,
           contractId: l.contractId,
           originId: l.originId,
         })),
+        allocationPool,
       ),
-    [obligationLines, isAr, t],
+    [obligationLines, isAr, t, allocationPool],
   );
 
   const isDraft = detail?.status === 'draft';
@@ -354,34 +363,45 @@ export function CashBudget() {
     const showAllocated = detail.status === 'approved';
     const obligationCols = [
       { key: 'description', header: t('cb_col_account'), width: 24 },
-      { key: 'costCenter', header: t('cb_col_cost_center'), width: 18 },
+      { key: 'project', header: t('project'), width: 18 },
       { key: 'amount', header: t('cb_col_amount'), width: 14, money: true },
       ...(showAllocated
-        ? [{ key: 'allocated' as const, header: t('cb_col_allocated'), width: 16, money: true }]
+        ? [
+            { key: 'allocated' as const, header: t('cb_col_allocated'), width: 14, money: true },
+            { key: 'pct' as const, header: t('cb_col_alloc_pct'), width: 10 },
+          ]
         : []),
     ];
     const obligationRows = obligationLines
       .filter((l) => !l.excluded)
-      .map((l) => ({
-        description: accountLabel(l),
-        costCenter: costCenterLabel(l, isAr, t),
-        amount: Number(l.amount),
-        allocated: showAllocated ? Number(l.allocatedCash ?? 0) : undefined,
-      }));
+      .map((l) => {
+        const allocated = showAllocated ? Number(l.allocatedCash ?? 0) : 0;
+        return {
+          description: accountLabel(l),
+          project: projectLabel(l, isAr, t),
+          amount: Number(l.amount),
+          allocated: showAllocated ? allocated : undefined,
+          pct: showAllocated ? formatAllocPct(allocationSharePct(allocated, Number(detail.distributablePool ?? 0))) : undefined,
+        };
+      });
     const ccCols = [
-      { key: 'name', header: t('cb_col_cost_center'), width: 28 },
-      { key: 'obligation', header: t('cb_col_cc_obligation'), width: 16, money: true },
+      { key: 'name', header: t('project'), width: 28 },
+      { key: 'obligation', header: t('cb_col_cc_obligation'), width: 14, money: true },
       ...(showAllocated
-        ? [{ key: 'allocated' as const, header: t('cb_col_cc_allocated'), width: 16, money: true }]
+        ? [
+            { key: 'allocated' as const, header: t('cb_col_cc_allocated'), width: 14, money: true },
+            { key: 'pct' as const, header: t('cb_col_alloc_pct'), width: 10 },
+          ]
         : []),
     ];
-    const ccRows = costCenterTotals.map((row) => ({
+    const ccRows = projectTotals.map((row) => ({
       name: isAr ? row.name : row.nameEn,
       obligation: row.obligation,
       allocated: showAllocated ? row.allocated : undefined,
+      pct: showAllocated ? formatAllocPct(row.pct) : undefined,
     }));
-    const ccObligationTotal = costCenterTotals.reduce((s, r) => s + r.obligation, 0);
-    const ccAllocatedTotal = costCenterTotals.reduce((s, r) => s + r.allocated, 0);
+    const ccObligationTotal = projectTotals.reduce((s, r) => s + r.obligation, 0);
+    const ccAllocatedTotal = projectTotals.reduce((s, r) => s + r.allocated, 0);
     openDocPreview({
       reportId: 'cash_budget',
       title: t('cash_budget'),
@@ -391,26 +411,32 @@ export function CashBudget() {
       sections: [
         {
           kind: 'table',
-          title: t('cb_obligations'),
           columns: obligationCols,
           rows: obligationRows,
           totals: {
             amount: summary.obligations,
-            ...(showAllocated ? { allocated: Number(detail.distributablePool ?? 0) } : {}),
+            ...(showAllocated
+              ? {
+                  allocated: Number(detail.distributablePool ?? 0),
+                  pct: formatAllocPct(100),
+                }
+              : {}),
           },
           totalsLabel: t('cb_kpi_obligations'),
           flow: true,
         },
         {
           kind: 'table',
-          title: t('cb_by_cost_center'),
+          title: t('cb_by_project'),
           columns: ccCols,
           rows: ccRows,
           totals: {
             obligation: ccObligationTotal,
-            ...(showAllocated ? { allocated: ccAllocatedTotal } : {}),
+            ...(showAllocated
+              ? { allocated: ccAllocatedTotal, pct: formatAllocPct(100) }
+              : {}),
           },
-          totalsLabel: t('cb_by_cost_center'),
+          totalsLabel: t('cb_by_project'),
         },
       ],
       totals: {
@@ -579,21 +605,21 @@ export function CashBudget() {
 
               <div className="space-y-3">
                 <LineTable
-                  title={t('cb_obligations')}
                   lines={obligationLines}
                   t={t}
                   formatMoney={formatMoney}
                   isDark={isDark}
                   isAr={isAr}
                   showAllocated={!isDraft}
+                  allocationPool={allocationPool}
                   canEdit={Boolean(isDraft && canWrite)}
                   onToggleExcluded={handleToggleExcluded}
                   onDelete={handleDeleteLine}
                 />
-                {costCenterTotals.length > 0 && (
+                {projectTotals.length > 0 && (
                   <CostCenterTotalsTable
-                    title={t('cb_by_cost_center')}
-                    rows={costCenterTotals}
+                    title={t('cb_by_project')}
+                    rows={projectTotals}
                     t={t}
                     formatMoney={formatMoney}
                     isDark={isDark}
@@ -705,24 +731,24 @@ function KpiCard({
 }
 
 function LineTable({
-  title,
   lines,
   t,
   formatMoney,
   isDark,
   isAr,
   showAllocated,
+  allocationPool,
   canEdit,
   onToggleExcluded,
   onDelete,
 }: {
-  title: string;
   lines: CashBudgetLineRow[];
   t: (key: string) => string;
   formatMoney: (n: unknown) => string;
   isDark: boolean;
   isAr: boolean;
   showAllocated: boolean;
+  allocationPool: number;
   canEdit: boolean;
   onToggleExcluded: (line: CashBudgetLineRow) => void;
   onDelete: (line: CashBudgetLineRow) => void;
@@ -733,7 +759,6 @@ function LineTable({
   }, 0);
   return (
     <div className={cn('rounded-xl border overflow-hidden', isDark ? 'border-gray-700' : 'border-gray-200')}>
-      <div className={cn('px-3 py-2 text-xs font-semibold', isDark ? 'bg-gray-900' : 'bg-gray-50')}>{title}</div>
       {lines.length === 0 ? (
         <p className="px-3 py-4 text-xs text-gray-500">{t('cb_no_lines')}</p>
       ) : (
@@ -741,17 +766,20 @@ function LineTable({
           <thead>
             <tr className="text-gray-500">
               <th className="text-start font-medium px-3 py-1">{t('cb_col_account')}</th>
-              <th className="text-start font-medium px-2 py-1">{t('cb_col_cost_center')}</th>
+              <th className="text-start font-medium px-2 py-1">{t('project')}</th>
               <th className="text-end font-medium px-2 py-1">{t('cb_col_amount')}</th>
               {showAllocated && (
-                <th className="text-end font-medium px-2 py-1">{t('cb_col_allocated')}</th>
+                <>
+                  <th className="text-end font-medium px-2 py-1">{t('cb_col_allocated')}</th>
+                  <th className="text-end font-medium px-2 py-1">{t('cb_col_alloc_pct')}</th>
+                </>
               )}
               {canEdit && <th className="px-2" />}
             </tr>
           </thead>
           <tbody>
             {lines.map((line, index) => {
-              const costCenter = costCenterLabel(line, isAr, t);
+              const allocated = Number(line.allocatedCash ?? 0);
               return (
               <tr
                 key={listKey(line.id, index, 'line')}
@@ -766,10 +794,15 @@ function LineTable({
                     <div className="text-[10px] text-gray-500">{t('cb_origin_manual')}</div>
                   ) : null}
                 </td>
-                <td className="px-2 py-1.5">{costCenter}</td>
+                <td className="px-2 py-1.5">{projectLabel(line, isAr, t)}</td>
                 <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(Number(line.amount))}</td>
                 {showAllocated && (
-                  <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(Number(line.allocatedCash ?? 0))}</td>
+                  <>
+                    <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(allocated)}</td>
+                    <td className="px-2 py-1.5 text-end tabular-nums">
+                      {line.excluded ? '—' : formatAllocPct(allocationSharePct(allocated, allocationPool))}
+                    </td>
+                  </>
                 )}
                 {canEdit && (
                   <td className="px-2 py-1.5 whitespace-nowrap text-end">
@@ -793,6 +826,7 @@ function LineTable({
                 <td className="px-3 py-1.5 font-semibold" colSpan={2}>{t('cb_col_allocated')}</td>
                 <td />
                 <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatMoney(allocatedTotal)}</td>
+                <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatAllocPct(allocationPool > 0 ? 100 : 0)}</td>
               </tr>
             </tfoot>
           )}
@@ -827,10 +861,13 @@ function CostCenterTotalsTable({
       <table className="w-full text-xs">
         <thead>
           <tr className="text-gray-500">
-            <th className="text-start font-medium px-3 py-1">{t('cb_col_cost_center')}</th>
+            <th className="text-start font-medium px-3 py-1">{t('project')}</th>
             <th className="text-end font-medium px-2 py-1">{t('cb_col_cc_obligation')}</th>
             {showAllocated && (
-              <th className="text-end font-medium px-2 py-1">{t('cb_col_cc_allocated')}</th>
+              <>
+                <th className="text-end font-medium px-2 py-1">{t('cb_col_cc_allocated')}</th>
+                <th className="text-end font-medium px-2 py-1">{t('cb_col_alloc_pct')}</th>
+              </>
             )}
           </tr>
         </thead>
@@ -843,7 +880,10 @@ function CostCenterTotalsTable({
               <td className="px-3 py-1.5">{isAr ? row.name : row.nameEn}</td>
               <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(row.obligation)}</td>
               {showAllocated && (
-                <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(row.allocated)}</td>
+                <>
+                  <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(row.allocated)}</td>
+                  <td className="px-2 py-1.5 text-end tabular-nums">{formatAllocPct(row.pct)}</td>
+                </>
               )}
             </tr>
           ))}
@@ -853,7 +893,10 @@ function CostCenterTotalsTable({
             <td className="px-3 py-1.5 font-semibold">{t('cb_kpi_obligations')}</td>
             <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatMoney(obligationTotal)}</td>
             {showAllocated && (
-              <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatMoney(allocatedTotal)}</td>
+              <>
+                <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatMoney(allocatedTotal)}</td>
+                <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatAllocPct(allocatedTotal > 0 ? 100 : 0)}</td>
+              </>
             )}
           </tr>
         </tfoot>

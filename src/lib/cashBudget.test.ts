@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   allocatePayableByCostCenter,
+  allocationSharePct,
   computeCashBudgetSummary,
   custodyReplenishAmount,
   distributePoolByAccountWeight,
@@ -268,5 +269,15 @@ describe('summarizeAllocationByCostCenter', () => {
     expect(concord?.allocated).toBe(52_000);
     expect(arkman?.obligation).toBe(70_000);
     expect(arkman?.allocated).toBe(28_000);
+    expect(concord?.pct).toBe(65);
+    expect(arkman?.pct).toBe(35);
+  });
+});
+
+describe('allocationSharePct', () => {
+  it('is allocated over the pool', () => {
+    expect(allocationSharePct(20_000, 80_000)).toBe(25);
+    expect(allocationSharePct(0, 80_000)).toBe(0);
+    expect(allocationSharePct(10, 0)).toBe(0);
   });
 });

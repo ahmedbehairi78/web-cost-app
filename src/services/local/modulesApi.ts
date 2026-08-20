@@ -1690,6 +1690,8 @@ export interface CashBudgetLineRow {
   contractId?: string | null;
   costCenterName?: string | null;
   costCenterNameEn?: string | null;
+  projectName?: string | null;
+  projectNameEn?: string | null;
   allocatedCash?: number | null;
   excluded: boolean;
   notes?: string | null;

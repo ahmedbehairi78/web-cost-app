@@ -481,12 +481,19 @@ export function distributePoolByAccountWeight(
   return out;
 }
 
+export function allocationSharePct(part: number, whole: number): number {
+  const denom = roundMoney(whole);
+  if (denom <= 0) return 0;
+  return roundMoney((roundMoney(part) / denom) * 100);
+}
+
 export type CostCenterAllocationTotal = {
   key: string;
   name: string;
   nameEn: string;
   obligation: number;
   allocated: number;
+  pct: number;
 };
 
 export function summarizeAllocationByCostCenter(
@@ -497,18 +504,20 @@ export function summarizeAllocationByCostCenter(
     allocatedCash?: number | null;
     costCenterName?: string | null;
     costCenterNameEn?: string | null;
+    projectId?: string | null;
     contractId?: string | null;
     originId?: string | null;
   }>,
+  pool = 0,
 ): CostCenterAllocationTotal[] {
-  const map = new Map<string, CostCenterAllocationTotal>();
+  const map = new Map<string, Omit<CostCenterAllocationTotal, 'pct'>>();
   for (const line of lines) {
     if (line.side && line.side !== 'obligation') continue;
     if (line.excluded) continue;
-    const ccId = lineCostCenterId(line);
     const name = String(line.costCenterName ?? '').trim();
     const nameEn = String(line.costCenterNameEn ?? '').trim() || name;
-    const key = ccId || `__name:${name || 'none'}`;
+    const projectId = String(line.projectId ?? '').trim();
+    const key = projectId || lineCostCenterId(line) || `__name:${name || 'none'}`;
     const cur = map.get(key) ?? {
       key,
       name: name || '—',
@@ -522,5 +531,9 @@ export function summarizeAllocationByCostCenter(
     cur.allocated = roundMoney(cur.allocated + roundMoney(line.allocatedCash ?? 0));
     map.set(key, cur);
   }
-  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  const rows = [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+  const denom = roundMoney(pool) > 0
+    ? roundMoney(pool)
+    : rows.reduce((sum, row) => roundMoney(sum + row.allocated), 0);
+  return rows.map((row) => ({ ...row, pct: allocationSharePct(row.allocated, denom) }));
 }
