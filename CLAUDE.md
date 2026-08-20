@@ -214,7 +214,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `Banks.tsx` | `bank_*` + GL (Firestore) | **local:** `banksApi` + `bankPersistence` — **3 tabs:** `accounts` (statement split-view) · **`transactions`** (movements+cheques split-view) · `statements`; GL via `accountingService`/`glApi`; **no top stat cards** on `accounts`/`transactions` |
 | `Inventory.tsx` | cloud: Firestore | **local:** projects/contracts/COA + مخازن/صرف/إرجاع/تحويلات عبر API — **لا Firestore** |
 | `PurchaseRequests.tsx` | — | **local:** Postgres `purchase_requests` — طلب توريد (مكود/غير مكود) · BOQ كود+وصف فقط · حالات بدون فاتورة/GL · إشعار + واتساب لمسؤولي المشتريات |
-| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** (تخطيط التزامات vs بنوك 12101 + نقد 12102 + مستخلصات غير محصّلة) · **بدون قيد GL** · حد أدنى عهدة `min_balance` على 12102… |
+| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** من أرصدة اليومية حتى نهاية الفترة: التزامات (21101/21102/21501 + تعويض 12102 إن قلّ عن الحد) مقابل بنوك 12101 + خزينة 12102 + مستخلصات 12201 · **بدون قيد GL** · `min_balance` على 12102… |
 | `OverheadAllocation.tsx` | — | **local:** Postgres — دورات OHA + **قفل فترات محاسبية** (`PeriodLockPanel`) + قائمة دخل (placeholder) |
 | ~~`SubcontractorExtracts.tsx`~~ | — | **Hidden** — functionality covered by ActualCosts IPC tab; file on disk but removed from Sidebar + `modules.ts` |
 
@@ -988,13 +988,13 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ## 🔴 HANDOFF — موازنة نقدية (تخطيط فقط) ✅ (2026-08-20)
 
-> **جلسة 2026-08-20:** موديول `cash_budget` — التزامات للدفع مقابل بنوك 12101 + نقد/عهد 12102 + مستخلصات عميل غير محصّلة. **لا قيد يومية.**
+> **جلسة 2026-08-20:** موديول `cash_budget` — **موازنة نقدية من أرصدة اليومية حتى نهاية الفترة.** التزامات = دائن 21101 موردون + 21102 باطن + 21501 رواتب مستحقة + تعويض عهد 12102 إن قلّ عن الحد. المتاح = 12101 بنوك + 12102 خزينة/عهد + 12201 مستخلصات تحت التحصيل. **لا قيد يومية.**
 
 ### المعادلة
 
-`gap = (openingBank 12101 + openingCash 12102 + uncollected client IPCs) − obligations`
+`gap = (بنوك 12101 + خزينة/عهد 12102 + مستخلصات تحت التحصيل 12201) − الالتزامات`
 
-التزامات: موردون آجل · مستخلص باطن معتمد · تسوية عهدة submitted · تعويض حد أدنى 12102 · رواتب غير مدفوعة · بنود يدوية. حد العهدة: `max(0, min − (GL − pending settlements))`. أرصدة الافتتاح في الجدول **لا** تُضاف لمصادر الفترة.
+الالتزامات = أرصدة **دائنة** على أوراق الموردين `21101…` ومقاولي الباطن `21102…` + رواتب مستحقة `21501…` + تعويض عهدة `12102…` إن قلّ الرصيد عن `min_balance`. المتاح = صافي **مدين** حتى نهاية الفترة من دفتر اليومية (ليست فواتير/مستخلصات الفترة كمستندات). حد العهدة: `max(0, min − (GL − تسويات submitted معلّقة))`. بنود البنوك/الخزينة في الجدول لا تُضاف مرتين مع المستخلصات.
 
 ### تحقق
 

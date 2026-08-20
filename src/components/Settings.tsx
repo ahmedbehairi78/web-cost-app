@@ -1689,8 +1689,8 @@ const PERMISSION_GROUPS: PermGroupDef[] = [
       {
         permKey: 'cash_budget' as PermissionKey,
         isBool: false,
-        labelAr: 'تخطيط التزامات مقابل مصادر تمويل — بدون قيد يومية',
-        labelEn: 'Plan obligations vs funding — no GL posting',
+        labelAr: 'أرصدة موردين وباطن ورواتب مقابل بنوك وخزينة ومستخلصات — بدون قيد',
+        labelEn: 'Payables vs banks, treasury, and uncollected IPCs — no GL posting',
         views: [
           { ar: 'فترات الموازنة النقدية', en: 'Cash budget periods' },
         ],

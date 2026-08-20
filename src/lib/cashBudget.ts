@@ -118,27 +118,42 @@ export type CashBudgetSummary = {
   gap: number;
 };
 
-/** gap = (banks + cash + period sources) − obligations. Opening lines on the table are not double-counted. */
+/** gap = (banks + cash + uncollected IPCs) − obligations. Bank/cash table lines drive KPIs when present. */
 export function computeCashBudgetSummary(input: {
   openingBank: number;
   openingCash: number;
   lines: CashBudgetLineLike[];
 }): CashBudgetSummary {
-  const openingBank = roundMoney(input.openingBank);
-  const openingCash = roundMoney(input.openingCash);
+  let bankFromLines = 0;
+  let cashFromLines = 0;
+  let sawBankLine = false;
+  let sawCashLine = false;
   let periodSources = 0;
   let obligations = 0;
   for (const line of input.lines) {
-    if (line.excluded) continue;
     const amt = roundMoney(line.amount);
+    const cat = String(line.category ?? '');
+    if (cat === 'opening_bank') {
+      sawBankLine = true;
+      if (!line.excluded) bankFromLines = roundMoney(bankFromLines + amt);
+      continue;
+    }
+    if (cat === 'opening_cash') {
+      sawCashLine = true;
+      if (!line.excluded) cashFromLines = roundMoney(cashFromLines + amt);
+      continue;
+    }
+    if (line.excluded) continue;
     if (line.side === 'obligation') {
       obligations = roundMoney(obligations + amt);
       continue;
     }
-    if (line.side !== 'source') continue;
-    if (line.category === 'opening_bank' || line.category === 'opening_cash') continue;
-    periodSources = roundMoney(periodSources + amt);
+    if (line.side === 'source') {
+      periodSources = roundMoney(periodSources + amt);
+    }
   }
+  const openingBank = sawBankLine ? bankFromLines : roundMoney(input.openingBank);
+  const openingCash = sawCashLine ? cashFromLines : roundMoney(input.openingCash);
   const availableLiquidity = roundMoney(openingBank + openingCash);
   const gap = roundMoney(availableLiquidity + periodSources - obligations);
   return { openingBank, openingCash, availableLiquidity, periodSources, obligations, gap };
@@ -192,12 +207,41 @@ export function mergeSuggestedLines(
   return [...auto, ...manual];
 }
 
+export function isEightDigitLeafCode(code: string): boolean {
+  return /^\d{8}$/.test(String(code ?? '').trim());
+}
+
 export function isCustodyCashLeafCode(code: string): boolean {
   const c = String(code ?? '').trim();
-  return /^\d{8}$/.test(c) && c.startsWith('12102');
+  return isEightDigitLeafCode(c) && c.startsWith('12102');
 }
 
 export function isBankLeafCode(code: string): boolean {
   const c = String(code ?? '').trim();
-  return /^\d{8}$/.test(c) && c.startsWith('12101');
+  return isEightDigitLeafCode(c) && c.startsWith('12101');
+}
+
+export function isClientReceivableLeafCode(code: string): boolean {
+  const c = String(code ?? '').trim();
+  return isEightDigitLeafCode(c) && c.startsWith('12201');
+}
+
+export function isSupplierLeafCode(code: string): boolean {
+  const c = String(code ?? '').trim();
+  return isEightDigitLeafCode(c) && c.startsWith('21101');
+}
+
+export function isSubcontractorLeafCode(code: string): boolean {
+  const c = String(code ?? '').trim();
+  return isEightDigitLeafCode(c) && c.startsWith('21102');
+}
+
+export function isSalariesPayableLeafCode(code: string): boolean {
+  const c = String(code ?? '').trim();
+  return isEightDigitLeafCode(c) && c.startsWith('21501');
+}
+
+/** Liability payable = credit net (what we owe). */
+export function liabilityPayableAmount(netDebit: number): number {
+  return roundMoney(Math.max(0, -roundMoney(netDebit)));
 }

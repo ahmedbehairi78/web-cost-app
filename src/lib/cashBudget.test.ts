@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   computeCashBudgetSummary,
   custodyReplenishAmount,
+  isBankLeafCode,
+  isClientReceivableLeafCode,
+  isCustodyCashLeafCode,
   isDateInRange,
+  isSalariesPayableLeafCode,
+  isSubcontractorLeafCode,
+  isSupplierLeafCode,
+  liabilityPayableAmount,
   mergeSuggestedLines,
   payrollMonthOverlapsPeriod,
   periodEndFor,
@@ -81,6 +88,22 @@ describe('computeCashBudgetSummary', () => {
     expect(summary.obligations).toBe(0);
     expect(summary.gap).toBe(10);
   });
+
+  it('uses bank/cash table lines for KPIs so exclude reduces available cash', () => {
+    const summary = computeCashBudgetSummary({
+      openingBank: 100_000,
+      openingCash: 20_000,
+      lines: [
+        { side: 'source', category: 'opening_bank', amount: 100_000, excluded: true },
+        { side: 'source', category: 'opening_cash', amount: 20_000 },
+        { side: 'source', category: 'collection', amount: 5_000 },
+      ],
+    });
+    expect(summary.openingBank).toBe(0);
+    expect(summary.openingCash).toBe(20_000);
+    expect(summary.periodSources).toBe(5_000);
+    expect(summary.gap).toBe(25_000);
+  });
 });
 
 describe('mergeSuggestedLines', () => {
@@ -123,5 +146,23 @@ describe('mergeSuggestedLines', () => {
     expect(merged[0].excluded).toBe(true);
     expect(merged[1].origin).toBe('manual');
     expect(merged[1].amount).toBe(500);
+  });
+});
+
+describe('GL leaf classification', () => {
+  it('classifies 8-digit cash, payable, and receivable leaves', () => {
+    expect(isBankLeafCode('12101001')).toBe(true);
+    expect(isCustodyCashLeafCode('12102001')).toBe(true);
+    expect(isSupplierLeafCode('21101002')).toBe(true);
+    expect(isSubcontractorLeafCode('21102001')).toBe(true);
+    expect(isClientReceivableLeafCode('12201001')).toBe(true);
+    expect(isSalariesPayableLeafCode('21501003')).toBe(true);
+    expect(isSupplierLeafCode('21102')).toBe(false);
+  });
+
+  it('takes supplier/subcontractor/payroll payable from the credit net', () => {
+    expect(liabilityPayableAmount(-80_000)).toBe(80_000);
+    expect(liabilityPayableAmount(12_000)).toBe(0);
+    expect(liabilityPayableAmount(0)).toBe(0);
   });
 });
