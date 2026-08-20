@@ -43,6 +43,8 @@ npm run local:backfill-gl          # after migrate — GL from consumption/IPC/c
 npm run local:verify-postgres
 npm run local:promote-google-admin -- <email>   # Railway/local admin (Google sign-in)
 npm run local:set-user-role -- <email> project_accountant [--contracts id1,id2]
+npm run local:set-user-password -- <email> '<password>'   # local Postgres
+npm run prod:set-user-password -- <email> '<password>'    # Railway via PRODUCTION_DATABASE_URL (dedicated client — not env.ts override)
 npm run local:export-firestore-users   # needs FIREBASE_SERVICE_ACCOUNT_*
 
 # Local backend (web-cost-app/server/)

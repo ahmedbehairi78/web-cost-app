@@ -4,9 +4,15 @@
  *   npm run local:set-user-password -- myline78@gmail.com 'MySecurePass123'          # local DATABASE_URL
  *   npm run prod:set-user-password  -- myline78@gmail.com 'MySecurePass123'          # Railway (PRODUCTION_DATABASE_URL)
  *
- * Local run uses DATABASE_URL; --production uses PRODUCTION_DATABASE_URL / DATABASE_PUBLIC_URL from .env.
+ * Uses a dedicated Prisma client for the chosen URL. Do not import `db.ts` here:
+ * `env.ts` reloads `.env` with `override: true` in development and would point
+ * `--production` back at localhost.
  */
 import 'dotenv/config';
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { hashLoginPassword } from '../auth/passwordHelpers.js';
+import { pgConnectionOptions } from '../pgConnection.js';
 
 const args = process.argv.slice(2).filter((a) => a !== '--');
 const useProduction = args.includes('--production');
@@ -21,29 +27,37 @@ if (!email || password.length < 8) {
   process.exit(1);
 }
 
-if (useProduction) {
-  const prodUrl = (process.env.PRODUCTION_DATABASE_URL || process.env.DATABASE_PUBLIC_URL || '').trim();
-  if (!prodUrl) {
-    console.error('--production requires PRODUCTION_DATABASE_URL (or DATABASE_PUBLIC_URL) in .env.');
+function resolveTargetUrl(): string {
+  if (useProduction) {
+    const prodUrl = (process.env.PRODUCTION_DATABASE_URL || process.env.DATABASE_PUBLIC_URL || '').trim();
+    if (!prodUrl) {
+      console.error('--production requires PRODUCTION_DATABASE_URL (or DATABASE_PUBLIC_URL) in .env.');
+      process.exit(1);
+    }
+    return prodUrl;
+  }
+  const localUrl = (process.env.DATABASE_URL || '').trim();
+  if (!localUrl) {
+    console.error('DATABASE_URL is missing in .env.');
     process.exit(1);
   }
-  process.env.DATABASE_URL = prodUrl;
+  return localUrl;
 }
 
-const targetUrl = (process.env.DATABASE_URL || '').trim();
-if (targetUrl && !/^postgres(ql)?:\/\//i.test(targetUrl)) {
-  console.error('DATABASE_URL is not a valid postgres:// URL. Current value looks like a placeholder or is malformed:');
+const targetUrl = resolveTargetUrl();
+if (!/^postgres(ql)?:\/\//i.test(targetUrl)) {
+  console.error('Target URL is not a valid postgres:// URL. Current value looks like a placeholder or is malformed:');
   console.error(`  ${targetUrl.slice(0, 60)}${targetUrl.length > 60 ? '…' : ''}`);
-  console.error('Fix it in .env, or clear a stale shell override with: Remove-Item Env:\\DATABASE_URL');
   process.exit(1);
 }
 
-const targetHost = targetUrl ? new URL(targetUrl).host : 'localhost:5432 (default)';
+const targetHost = new URL(targetUrl).host;
 console.log(`Target database: ${useProduction ? 'PRODUCTION (Railway)' : 'local'} — ${targetHost}`);
 
-// Import after DATABASE_URL is finalized — db.js builds the Prisma client at import time.
-const { prisma } = await import('../db.js');
-const { hashLoginPassword } = await import('../auth/passwordHelpers.js');
+const prisma = new PrismaClient({
+  adapter: new PrismaPg(pgConnectionOptions(targetUrl)),
+  log: ['error'],
+});
 
 const existing = await prisma.user.findFirst({
   where: { email: { equals: email, mode: 'insensitive' } },
@@ -52,6 +66,7 @@ const existing = await prisma.user.findFirst({
 if (!existing) {
   console.error(`No user found for email: ${email}`);
   console.error('Create the user in Settings first, or use local:set-user-role to create a role row.');
+  await prisma.$disconnect();
   process.exit(1);
 }
 
