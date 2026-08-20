@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FileDown, Printer, Save, SlidersHorizontal, X } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -68,6 +68,17 @@ export function ReportPreviewDialog({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const previewFrameRef = useRef<HTMLIFrameElement>(null);
+  const [previewObjectUrl, setPreviewObjectUrl] = useState('');
+
+  const closePreview = useCallback(() => {
+    const frame = previewFrameRef.current;
+    if (frame) {
+      frame.removeAttribute('src');
+      frame.removeAttribute('srcdoc');
+    }
+    onClose();
+  }, [onClose]);
 
   // Re-seed the working profile each time the dialog opens (or the doc type changes).
   useEffect(() => {
@@ -83,12 +94,12 @@ export function ReportPreviewDialog({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        closePreview();
       }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, closePreview]);
 
   const docResult = useMemo(() => {
     if (!open) return null;
@@ -109,6 +120,20 @@ export function ReportPreviewDialog({
       return '';
     }
   }, [docResult, formatMoney]);
+
+  // Blob URL + sandbox: unsandboxed srcDoc can navigate the Electron main frame to
+  // about:blank on unmount, which retries loadURL as a cold start (login screen).
+  useEffect(() => {
+    if (!open || !previewHtml) {
+      setPreviewObjectUrl('');
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([previewHtml], { type: 'text/html;charset=utf-8' }));
+    setPreviewObjectUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [open, previewHtml]);
 
   const patchProfile = useCallback((patch: Partial<ReportPrintProfile>) => {
     setProfile((prev) => ({ ...prev, ...patch }));
@@ -235,7 +260,7 @@ export function ReportPreviewDialog({
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={closePreview}
             aria-label={t('cancel')}
             className="inline-flex items-center justify-center rounded-lg size-8 bg-slate-800 text-slate-300 hover:bg-slate-700"
           >
@@ -260,10 +285,13 @@ export function ReportPreviewDialog({
 
       {/* Preview viewport */}
       <div className="flex-1 min-h-0 overflow-auto p-5">
-        {previewHtml ? (
+        {previewObjectUrl ? (
           <iframe
+            ref={previewFrameRef}
             title={docResult?.title || 'preview'}
-            srcDoc={previewHtml}
+            src={previewObjectUrl}
+            sandbox="allow-same-origin"
+            referrerPolicy="no-referrer"
             className="block mx-auto bg-white border-0 shadow-2xl"
             style={{ width: `min(100%, ${frameWidth})`, minHeight: '80vh' }}
             onLoad={(e) => {

@@ -148,6 +148,12 @@ function prepareHiddenOAuthPopup(win: BrowserWindow) {
   };
 }
 
+/** Print-preview iframes (srcdoc/blob) must not drive the SPA to about:blank. */
+function isTransientAboutUrl(url: string): boolean {
+  const u = String(url || '').trim();
+  return u === '' || u === 'about:blank' || u.startsWith('about:blank') || u.startsWith('about:srcdoc');
+}
+
 function isAppOriginUrl(url: string): boolean {
   try {
     const start = new URL(START_URL);
@@ -333,12 +339,27 @@ function createAppWindow(opts?: { reuseSession?: boolean }): BrowserWindow {
     return { action: 'deny' };
   });
 
+  const blockMainFrameAboutBlank = (event: { preventDefault: () => void }, url: string, isMainFrame = true) => {
+    if (!isMainFrame) return;
+    if (!isTransientAboutUrl(url)) return;
+    event.preventDefault();
+  };
+  win.webContents.on('will-navigate', (details) => {
+    blockMainFrameAboutBlank(details, details.url, true);
+  });
+  win.webContents.on('will-frame-navigate', (details) => {
+    blockMainFrameAboutBlank(details, details.url, details.isMainFrame);
+  });
+
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     console.error('[electron] did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame });
     if (!isMainFrame) return;
     // Navigation cancelled (new load started) — do not wipe the current page.
     if (errorCode === -3) return;
     if (typeof validatedURL === 'string' && validatedURL.startsWith('data:')) return;
+    // Closing a print-preview iframe can fail about:blank on the main frame.
+    // Reloading START_URL here treated the SPA as a cold start (login screen).
+    if (typeof validatedURL === 'string' && isTransientAboutUrl(validatedURL)) return;
 
     const prev = loadFailRetries.get(win.webContents) ?? 0;
     const next = prev + 1;
@@ -348,7 +369,8 @@ function createAppWindow(opts?: { reuseSession?: boolean }): BrowserWindow {
       console.warn(`[electron] retry load ${next}/5 in ${delayMs}ms`);
       setTimeout(() => {
         if (win.isDestroyed()) return;
-        void win.loadURL(withReuseSessionQuery(START_URL, reuseSession)).catch((err: unknown) => {
+        const keep = reuseSession || webContentsReadyForSessionKeep.has(win.webContents);
+        void win.loadURL(withReuseSessionQuery(START_URL, keep)).catch((err: unknown) => {
           console.error('[electron] retry loadURL rejected', err);
         });
       }, delayMs);

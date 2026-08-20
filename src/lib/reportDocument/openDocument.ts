@@ -34,6 +34,7 @@ function printHtmlDocument(html: string, doc: ReportDocument): void {
   applyPageStyle(doc);
   const iframe = document.createElement('iframe');
   iframe.setAttribute('aria-hidden', 'true');
+  iframe.setAttribute('sandbox', 'allow-same-origin');
   iframe.style.cssText =
     'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
   document.body.appendChild(iframe);
@@ -97,7 +98,7 @@ function openPreview(
       </div>
     </div>
     <div class="rdp-viewport">
-      <iframe class="rdp-frame" title="${doc.title}"></iframe>
+      <iframe class="rdp-frame" sandbox="allow-same-origin" title="${doc.title}"></iframe>
     </div>
   `;
 
@@ -155,6 +156,8 @@ function openPreview(
   }
 
   const close = () => {
+    iframe.removeAttribute('src');
+    iframe.removeAttribute('srcdoc');
     overlay.remove();
     style.remove();
     document.body.classList.remove(PREVIEW_OPEN);

@@ -98,7 +98,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/liquidityMetrics.ts` | **Shared liquidity KPIs** — `computeLiquidityContractRow`, `computePortfolioPendingBilling`, `cashAndBankBalanceFromGlTxs`, `dashboardCollectionAmountForTx`, `dashboardIpcCollectionAmountForTx`, `receivablesBalanceFromGlTxs`, `hasCustomerReceivableGlActivity`, cheque ISS/CLR pairing; used by **`Dashboard.tsx`**, **`LiquidityReport.tsx`**, **`Projects.tsx`**. Tests: **`17`** cases in `src/lib/liquidityMetrics.test.ts`. |
 | `src/lib/dashboardMetrics.ts` | **Dashboard filters/compare/timeline** — `filterDashboardTransactions`, `computeDashboardPeriodStats`, `buildProjectCompareRows` (سيولة), `buildMonthlySeries` (أعمدة شهرية) · **`buildCashFlowSeries`** (تحليل التدفق النقدي — **شهري غير تراكمي**؛ نقطة أصل `__start__` = صفر ثم إجمالي كل شهر؛ الأشهر بلا حركة **`null`** ⇒ `connectNulls` يمدّ الخط؛ رسم Area خطي); UI: `DashboardFilterBar` · `ProjectCompareTable`. Tests: `dashboardMetrics.test.ts`. |
 | `src/lib/reportDocument/` | **منصة مستندات التقارير** — بيانات → HTML نظيف / PDF / طباعة؛ ورقة: هيدر مضغوط + جسم + **فوتر سطر واحد** (شركة عند start · نص/ملاحظة وسط · رقم صفحة عند end — يتبع `dir` اللغة) |
-| `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` (جداول أو أقسام شهادات عبر `buildCertificateDocs.ts`) وفتح حوار معاينة موحّد (تنسيق + طباعة + PDF + حفظ التصميم عبر `reportPrintProfilesPersistence.ts`) — المسار القديم `printReport.ts` حُذف |
+| `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
 | `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer), `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in Reports format toolbar** (`ReportFormatToolbar`); General Settings **Print** keeps company name/address/tax/logo/footer text only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
 | `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (62 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
@@ -188,7 +188,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `scripts/generate-vite-env.mjs` | Writes `.env.production` from `VITE_*` (Railway build vars or local `.env`) |
 | `scripts/start-api-production.mjs` | Production entrypoint: migrate deploy → `dist-server/index.js` |
 | `docs/RAILWAY_DEPLOY.md` | Step-by-step Railway deploy (Postgres + env vars + migrate + Electron URL) |
-| `electron/main.ts` | Thin Electron shell — **multi app windows** (`createAppWindow`, same `persist:webcost`); **Ctrl+N** / IPC `open-new-window` (shortcut via **`input.code === 'KeyN'`** — layout-safe for Arabic keyboard); **OAuth popup** lifecycle only for non-app windows; F12 · Ctrl+Shift+R (`KeyR`) · `WEB_COST_APP_URL` / `production-url.json` |
+| `electron/main.ts` | Thin Electron shell — **multi app windows** (`createAppWindow`, same `persist:webcost`); **Ctrl+N** / IPC `open-new-window` (shortcut via **`input.code === 'KeyN'`** — layout-safe for Arabic keyboard); **OAuth popup** lifecycle only for non-app windows; F12 · Ctrl+Shift+R (`KeyR`) · `WEB_COST_APP_URL` / `production-url.json`; block main-frame `about:blank` from print iframes |
 | `electron/updater.ts` | `electron-updater` — GitHub Releases · `createRequire` (CJS) · skip if load fails · no silent `quitAndInstall` without a window |
 | `electron/hostedSpaUpdate.ts` | Main-process poll of `spa-build.json` · native Now/Later (Later default) · reload keeps session |
 | `src/lib/electronShell.ts` | `isElectronShell` · `keepSessionOnLoad` · `requestOpenNewWindow` · `requestApplySpaUpdate` · `requestAppQuit` · desktop notifications |
@@ -1002,6 +1002,30 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 npx prisma migrate deploy
 npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/lib/moduleViewPermissions.test.ts
 # أعد تشغيل API → موازنة نقدية (بعد البنوك) → فترة أسبوعية → اقتراح → اعتماد (بلا GL)
+```
+
+---
+
+## 🔴 HANDOFF — إغلاق معاينة الطباعة لا يُخرج الجلسة ✅ (2026-08-21)
+
+> **جلسة 2026-08-21:** إغلاق معاينة طباعة الموازنة النقدية (وأي `ReportPreviewDialog`) كان يُظهر شاشة تسجيل الدخول في Electron. السبب: iframe **`srcDoc`** غير مُقيَّد عند الإزالة يُفسَّر كتنقّل للإطار الرئيسي إلى `about:blank` → `did-fail-load` يعيد `loadURL` كبداية باردة.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **SPA** | المعاينة عبر **Blob URL** + `sandbox="allow-same-origin"` (بدون `allow-top-navigation`) · إزالة `src` قبل الإغلاق — لا `about:blank` |
+| **قشرة** | منع تنقّل الإطار الرئيسي إلى `about:*` · تجاهل `did-fail-load` لـ about · إعادة المحاولة تُبقي الجلسة إن سُجّلت النافذة مسبقاً |
+| **إصدار** | `package.json` → **1.0.9** — SPA يكفي للمتصفح/Railway؛ المثبّت يحتاج **`electron:publish`** |
+
+### لا تراجع
+
+- لا `srcDoc` غير مُقيَّد لمعاينة تقرير كاملة (`<!DOCTYPE html>`).
+- لا تعِد تحميل `START_URL` عند فشل `about:blank` / `about:srcdoc`.
+
+```powershell
+npm run electron:build:shell
+# git push → Railway (إصلاح المعاينة) · ثم electron:publish لإصدار Setup 1.0.9
 ```
 
 ---

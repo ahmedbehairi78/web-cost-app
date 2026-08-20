@@ -157,7 +157,7 @@ const { t } = useLanguage();
 
 ### 3.6 الطباعة
 
-- **كل الطباعة موحّدة عبر منصة `reportDocument`** (`src/lib/reportDocument/`): يُبنى **`ReportDocument`** (جداول أو أقسام شهادات `keyValue`/`table`/`summary`/`signatures`/`note`) ثم يُعرض في **`ReportPreviewDialog`** (معاينة iframe + طباعة + PDF + حفظ التصميم) عبر hook **`useReportDocumentPreview`**.
+- **كل الطباعة موحّدة عبر منصة `reportDocument`** (`src/lib/reportDocument/`): يُبنى **`ReportDocument`** (جداول أو أقسام شهادات `keyValue`/`table`/`summary`/`signatures`/`note`) ثم يُعرض في **`ReportPreviewDialog`** (معاينة iframe عبر **Blob URL** + `sandbox="allow-same-origin"` + طباعة + PDF + حفظ التصميم) عبر hook **`useReportDocumentPreview`**. لا تستخدم `srcDoc` غير مُقيَّد لمستند HTML كامل — في Electron يُفرّغ الإطار الرئيسي إلى `about:blank` ويظهر تسجيل الدخول.
 - بناة المستندات: **`buildTableReportDocument`** للكشوف الجدولية · **`buildCertificateDocs.ts`** لشهادات IPC / MOS / أوامر التغيير / تسوية العهدة. طباعة مستخلص العميل: **صفحة كفر** (`coverPage.isolate`) بثلاثة شعارات + عنوان تحت الأوسط + الأقسام الثلاثة بدون فوتر؛ ثم قائمة الكميات في الصفحات التالية. شعارات الترويسة: افتراضي من `company_info`؛ تجاوز لكل مشروع عبر `projects.coverLogoLeft|Center|Right` (`mergeCompanyPrintInfoWithProject`).
 - تصاميم الطباعة لكل تقرير في **`src/lib/reportPrintProfiles.ts`** وتُحفَظ عبر **`reportPrintProfilesPersistence.ts`** (local backend أو Firestore) — التحرير من شريط التنسيق داخل حوار المعاينة؛ `PrintSettingsPanel` في إعدادات العرض = بيانات الشركة فقط.
 - **المسار القديم أُزيل** (2026-07-31): لا `printReport.ts` / `triggerReportPrint` / استنساخ DOM، ولا `html2pdf.js` / `jspdf`. لا تستدعِ `window.print()` مباشرة على DOM النافذة — ابنِ `ReportDocument` وافتح المعاينة.
@@ -241,12 +241,12 @@ npm run test -- src/lib/moduleViewPermissions.test.ts
 - **Ctrl+N:** قارن **`input.code`** وليس `input.key` وحده — وإلا يفشل الاختصار مع لوحة عربية.
 - **كشف New GUI في المثبّت:** preload يستخدم sync IPC `query-reuse-session`؛ SPA تقبل أيضاً `?webCostReuseSession=1`.
 - **نشر القشرة:** بعد تعديل `electron/main.ts` / `preload.ts` شغّل `npm run electron:build:shell` ثم **`electron:publish`** للأجهزة المثبّتة (تحديث SPA عبر Railway لا يحدّث القشرة).
-- **تحديث محتوى Railway:** حوار أصلي في قشرة Electron (`hostedSpaUpdate.ts`) — **لاحقاً** افتراضي. الآن = مسح كاش + إعادة تحميل مع بقاء الجلسة. **مهم:** reload داخل نفس النافذة **ليس** cold start — `keepSessionOnLoad` (preload) + `DESKTOP_WINDOW_SESSION_KEY`؛ 401 أثناء النشر يُؤكد عبر `session-probe` ثم قفل كلمة مرور في Electron. جرس الواجهة تأكيد إضافي (`spaBuild.ts`). قشرة **≥ 1.0.8**.
+- **تحديث محتوى Railway:** حوار أصلي في قشرة Electron (`hostedSpaUpdate.ts`) — **لاحقاً** افتراضي. الآن = مسح كاش + إعادة تحميل مع بقاء الجلسة. **مهم:** reload داخل نفس النافذة **ليس** cold start — `keepSessionOnLoad` (preload) + `DESKTOP_WINDOW_SESSION_KEY`؛ 401 أثناء النشر يُؤكد عبر `session-probe` ثم قفل كلمة مرور في Electron. إغلاق معاينة الطباعة لا يُعيد `loadURL` كبداية باردة. جرس الواجهة تأكيد إضافي (`spaBuild.ts`). قشرة **≥ 1.0.9**.
 
 ```powershell
 npm run test -- src/lib/sessionLogout.test.ts src/lib/apiSession.test.ts src/lib/spaBuild.test.ts
 npm run electron:build:shell
-# بعد التحقق: git push (SPA) ثم electron:publish (Setup 1.0.8)
+# بعد التحقق: git push (SPA) ثم electron:publish (Setup 1.0.9)
 ```
 
 ### 3.10 سلوك الإدخال الشبيه بإكسل
