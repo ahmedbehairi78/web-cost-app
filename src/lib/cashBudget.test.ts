@@ -16,6 +16,9 @@ import {
   mergeSuggestedLines,
   payrollMonthOverlapsPeriod,
   periodEndFor,
+  subAccountLabel,
+  summarizeAllocationByCostCenter,
+  lineCostCenterId,
 } from './cashBudget';
 
 describe('periodEndFor', () => {
@@ -231,5 +234,39 @@ describe('distributePoolByAccountWeight', () => {
     );
     expect(map.get('a')).toBe(50);
     expect(map.get('r')).toBe(0);
+  });
+});
+
+describe('subAccountLabel', () => {
+  it('keeps only the leaf name from a prefixed GL label', () => {
+    expect(subAccountLabel('مقاولو باطن — مقاولو الباطن - ماي فارم (21102002)', '21102002')).toBe('ماي فارم');
+    expect(subAccountLabel('مقاولو الباطن - ماي فارم', '21102002')).toBe('ماي فارم');
+    expect(subAccountLabel('كمبوست الزهرة', '21101002')).toBe('كمبوست الزهرة');
+  });
+});
+
+describe('lineCostCenterId', () => {
+  it('reads the id after :: when contractId is empty', () => {
+    expect(lineCostCenterId({ originId: '21102002::cc-1', contractId: null })).toBe('cc-1');
+    expect(lineCostCenterId({ originId: '21102002::_', contractId: '' })).toBe(null);
+    expect(lineCostCenterId({ originId: '21102002::cc-1', contractId: 'stored' })).toBe('stored');
+  });
+});
+
+describe('summarizeAllocationByCostCenter', () => {
+  it('totals obligation and allocated cash per cost center', () => {
+    const rows = summarizeAllocationByCostCenter([
+      { side: 'obligation', amount: 50_000, allocatedCash: 20_000, costCenterName: 'كونكورد فيلا', contractId: 'a' },
+      { side: 'obligation', amount: 70_000, allocatedCash: 28_000, costCenterName: 'أركمن فيلا', contractId: 'b' },
+      { side: 'obligation', amount: 80_000, allocatedCash: 32_000, costCenterName: 'كونكورد فيلا', contractId: 'a' },
+      { side: 'obligation', excluded: true, amount: 9_000, allocatedCash: 1, costCenterName: 'كونكورد فيلا', contractId: 'a' },
+    ]);
+    expect(rows).toHaveLength(2);
+    const concord = rows.find((r) => r.key === 'a');
+    const arkman = rows.find((r) => r.key === 'b');
+    expect(concord?.obligation).toBe(130_000);
+    expect(concord?.allocated).toBe(52_000);
+    expect(arkman?.obligation).toBe(70_000);
+    expect(arkman?.allocated).toBe(28_000);
   });
 });

@@ -12,13 +12,16 @@ import {
   computeCashBudgetSummary,
   distributableBankAndCashPool,
   distributePoolByAccountWeight,
+  glLeafOriginCode,
   isCashBudgetPeriodType,
   isCustodyCashLeafCode,
+  lineCostCenterId,
   originKey,
   periodEndFor,
+  subAccountLabel,
   ymdKey,
 } from '../lib/cashBudget.js';
-import { buildCashBudgetSuggestion } from '../lib/cashBudgetSuggest.js';
+import { buildCashBudgetSuggestion, loadCostCenterNameMap, lookupCostCenterName } from '../lib/cashBudgetSuggest.js';
 
 const SIDES = new Set(['obligation', 'source']);
 
@@ -49,6 +52,7 @@ function toLinePayload(row: {
   originId?: string | null;
   projectId?: string | null;
   contractId?: string | null;
+  notes?: string | null;
   excluded?: boolean;
   sortOrder?: number;
 }) {
@@ -64,42 +68,31 @@ function toLinePayload(row: {
     originId: row.originId ?? null,
     projectId: row.projectId ?? null,
     contractId: row.contractId ?? null,
+    notes: row.notes ?? null,
     excluded: row.excluded === true,
     sortOrder: row.sortOrder ?? 0,
   };
 }
 
-async function decorateLineCostCenters<T extends { contractId?: string | null }>(
+async function decorateLineCostCenters<T extends {
+  contractId?: string | null;
+  originId?: string | null;
+  notes?: string | null;
+  description?: string;
+}>(
   lines: T[],
-): Promise<Array<T & { costCenterName: string | null; costCenterNameEn: string | null }>> {
-  const ids = [...new Set(lines.map((line) => String(line.contractId ?? '').trim()).filter(Boolean))];
-  if (ids.length === 0) {
-    return lines.map((line) => ({ ...line, costCenterName: null, costCenterNameEn: null }));
-  }
-  const [centers, contracts] = await Promise.all([
-    prisma.costCenter.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, name: true, nameEn: true },
-    }),
-    prisma.contract.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, contractName: true, contractNameEn: true },
-    }),
-  ]);
-  const names = new Map<string, { name: string; nameEn: string | null }>();
-  for (const row of contracts) {
-    names.set(row.id, { name: row.contractName, nameEn: row.contractNameEn });
-  }
-  for (const row of centers) {
-    names.set(row.id, { name: row.name, nameEn: row.nameEn });
-  }
+): Promise<Array<T & { costCenterName: string | null; costCenterNameEn: string | null; description: string }>> {
+  const names = await loadCostCenterNameMap();
   return lines.map((line) => {
-    const id = String(line.contractId ?? '').trim();
-    const found = names.get(id);
+    const id = lineCostCenterId(line);
+    const found = lookupCostCenterName(names, id);
+    const fallback = String(line.notes ?? '').trim();
+    const code = glLeafOriginCode(line.originId);
     return {
       ...line,
-      costCenterName: found?.name ?? null,
-      costCenterNameEn: found?.nameEn ?? null,
+      description: subAccountLabel(line.description, code),
+      costCenterName: found?.name ?? (fallback || null),
+      costCenterNameEn: found?.nameEn ?? found?.name ?? (fallback || null),
     };
   });
 }
@@ -472,10 +465,16 @@ cashBudgetRouter.post(
       res.json(serialize(await presentPeriod(row)));
       return;
     }
-    const updated = await prisma.cashBudgetPeriod.update({
-      where: { id: row.id },
-      data: { status: 'approved', approvedBy: req.user?.id ?? null },
-      include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
+    const updated = await prisma.$transaction(async (tx) => {
+      await tx.cashBudgetLine.updateMany({
+        where: { periodId: row.id, excluded: true, isDeleted: false },
+        data: { isDeleted: true },
+      });
+      return tx.cashBudgetPeriod.update({
+        where: { id: row.id },
+        data: { status: 'approved', approvedBy: req.user?.id ?? null },
+        include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
+      });
     });
     res.json(serialize(await presentPeriod(updated)));
   }),

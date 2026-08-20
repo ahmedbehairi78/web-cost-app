@@ -228,6 +228,33 @@ export function glLeafOriginCode(originId: string | null | undefined): string {
   return isEightDigitLeafCode(head) ? head : '';
 }
 
+export function lineCostCenterId(line: {
+  contractId?: string | null;
+  originId?: string | null;
+}): string | null {
+  const fromField = String(line.contractId ?? '').trim();
+  if (fromField && fromField !== '_') return fromField;
+  const origin = String(line.originId ?? '');
+  const sep = origin.indexOf('::');
+  if (sep < 0) return null;
+  const tail = origin.slice(sep + 2).trim();
+  return tail && tail !== '_' ? tail : null;
+}
+
+const ACCOUNT_PREFIX_RE =
+  /^(موردون|مقاولو باطن|رواتب مستحقة|بنك|خزينة \/ عهدة|مستخلصات تحت التحصيل|Suppliers|Subcontractors|Payroll|Bank|Treasury \/ custody|Uncollected IPCs)\s*[—–-]\s*/i;
+
+/** Leaf name only: "مقاولو باطن — مقاولو الباطن - ماي فارم (21102002)" → "ماي فارم". */
+export function subAccountLabel(raw: string | null | undefined, code = ''): string {
+  let s = String(raw ?? '').trim();
+  if (code) s = s.replace(new RegExp(`\\s*\\(${code}\\)\\s*$`), '');
+  s = s.replace(/\s*\(\d{8}\)\s*$/, '');
+  s = s.replace(ACCOUNT_PREFIX_RE, '');
+  const parts = s.split(/\s+[—–-]\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) s = parts[parts.length - 1];
+  return s.trim() || code || String(raw ?? '').trim();
+}
+
 export function isNamedCustodyAccount(name: string | null | undefined, nameEn?: string | null): boolean {
   const blob = `${name ?? ''} ${nameEn ?? ''}`;
   return /عهد/.test(blob) || /custod/i.test(blob);

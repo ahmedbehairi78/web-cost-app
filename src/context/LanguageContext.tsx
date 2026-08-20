@@ -147,6 +147,9 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_allocated: 'توزيع البنوك والنقدية',
     cb_no_cost_center: '—',
     cb_allocated_hint: 'بعد الاعتماد يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) حسب وزن رصيد كل حساب.',
+    cb_by_cost_center: 'إجمالي التوزيع حسب مركز التكلفة',
+    cb_col_cc_obligation: 'إجمالي المستحق',
+    cb_col_cc_allocated: 'إجمالي التوزيع',
     cb_excluded: 'مستبعد',
     cb_exclude: 'استبعاد',
     cb_include: 'إدراج',
@@ -2525,7 +2528,7 @@ const translations: Record<Language, Record<string, string>> = {
       'الفجوة = (بنوك + خزينة + مستخلصات تحت التحصيل) − الالتزامات. بنود البنوك والخزينة في الجدول لا تُضاف مرة ثانية إلى المستخلصات.',
     manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة',
     manual_cash_budget_plan_step_4_body:
-      'الاعتماد يقفل التعديل بلا قيد محاسبي. بعدها يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) على الحسابات حسب وزن الرصيد. أعد الفتح للتعديل.',
+      'الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد محاسبي. بعدها يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) على الحسابات حسب وزن الرصيد، ويظهر إجمالي التوزيع لكل مركز تكلفة. أعد الفتح للتعديل.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -2648,6 +2651,9 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_allocated: 'Bank & cash allocation',
     cb_no_cost_center: '—',
     cb_allocated_hint: 'After approval, bank and treasury cash (excluding custody and uncollected IPCs) is allocated by each account’s balance weight.',
+    cb_by_cost_center: 'Allocation totals by cost center',
+    cb_col_cc_obligation: 'Obligations total',
+    cb_col_cc_allocated: 'Allocated total',
     cb_excluded: 'Excluded',
     cb_exclude: 'Exclude',
     cb_include: 'Include',
@@ -5028,7 +5034,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Gap = (banks + treasury + uncollected IPCs) − obligations. Bank and treasury table lines are not added again on top of IPC receivables.',
     manual_cash_budget_plan_step_4_title: 'Approve or print',
     manual_cash_budget_plan_step_4_body:
-      'Approve locks edits with no accounting journal. Bank and treasury cash (excluding custody and uncollected IPCs) is then allocated by each account’s balance weight. Reopen to edit.',
+      'Approve permanently removes excluded lines and locks edits with no accounting journal. Bank and treasury cash (excluding custody and uncollected IPCs) is then allocated by each account’s balance weight, with a totals table per cost center. Reopen to edit.',
   }
 };
 

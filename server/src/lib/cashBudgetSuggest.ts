@@ -14,6 +14,7 @@ import {
   isSalariesPayableLeafCode,
   isSubcontractorLeafCode,
   isSupplierLeafCode,
+  subAccountLabel,
   type CashBudgetPeriodType,
 } from './cashBudget.js';
 
@@ -28,6 +29,7 @@ export type SuggestedLine = {
   originId: string;
   projectId: string | null;
   contractId: string | null;
+  notes?: string | null;
   excluded: boolean;
   sortOrder: number;
 };
@@ -49,12 +51,48 @@ function num(v: unknown): number {
 }
 
 function leafName(name: string | null | undefined, code: string): string {
-  const n = String(name ?? '').trim();
-  return n || code;
+  return subAccountLabel(name, code);
 }
 
 function centerKey(id: string | null): string {
   return id ?? '';
+}
+
+export type CostCenterDisplay = { name: string; nameEn: string | null };
+
+export async function loadCostCenterNameMap(): Promise<Map<string, CostCenterDisplay>> {
+  const [centers, contracts] = await Promise.all([
+    prisma.costCenter.findMany({
+      where: { isDeleted: false },
+      select: { id: true, name: true, nameEn: true, code: true, contractId: true },
+    }),
+    prisma.contract.findMany({
+      where: { isDeleted: false },
+      select: { id: true, contractName: true, contractNameEn: true },
+    }),
+  ]);
+  const map = new Map<string, CostCenterDisplay>();
+  for (const row of contracts) {
+    map.set(row.id, { name: row.contractName, nameEn: row.contractNameEn });
+  }
+  for (const row of centers) {
+    const names: CostCenterDisplay = { name: row.name, nameEn: row.nameEn };
+    map.set(row.id, names);
+    const code = String(row.code ?? '').trim();
+    if (code) map.set(code, names);
+    const contractId = String(row.contractId ?? '').trim();
+    if (contractId && !map.has(contractId)) map.set(contractId, names);
+  }
+  return map;
+}
+
+export function lookupCostCenterName(
+  map: Map<string, CostCenterDisplay>,
+  id: string | null | undefined,
+): CostCenterDisplay | null {
+  const key = String(id ?? '').trim();
+  if (!key || key === '_') return null;
+  return map.get(key) ?? null;
 }
 
 /** Net debit per 8-digit leaf, also split by resolved cost center. */
@@ -124,7 +162,7 @@ export async function buildCashBudgetSuggestion(input: {
   const asOf = input.periodEnd;
   void input.periodType;
   void input.periodStart;
-  const [buckets, settlements, accounts] = await Promise.all([
+  const [buckets, settlements, accounts, ccNames] = await Promise.all([
     glLeafBucketsThrough(asOf),
     prisma.custodySettlement.findMany({
       where: { isDeleted: false, status: 'submitted' },
@@ -141,6 +179,7 @@ export async function buildCashBudgetSuggestion(input: {
         projectId: true,
       },
     }),
+    loadCostCenterNameMap(),
   ]);
 
   const pendingByCustody = new Map<string, number>();
@@ -220,6 +259,7 @@ export async function buildCashBudgetSuggestion(input: {
       })),
     );
     for (const part of parts) {
+      const cc = lookupCostCenterName(ccNames, part.costCenterId);
       push({
         side: 'obligation',
         category,
@@ -230,6 +270,7 @@ export async function buildCashBudgetSuggestion(input: {
         originId: `${code}::${part.costCenterId || '_'}`,
         projectId: acc?.projectId ?? null,
         contractId: part.costCenterId,
+        notes: cc?.name ?? null,
       });
     }
   }

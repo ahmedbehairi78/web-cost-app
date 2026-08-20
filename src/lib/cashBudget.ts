@@ -303,6 +303,33 @@ export function glLeafOriginCode(originId: string | null | undefined): string {
   return isEightDigitLeafCode(head) ? head : '';
 }
 
+export function lineCostCenterId(line: {
+  contractId?: string | null;
+  originId?: string | null;
+}): string | null {
+  const fromField = String(line.contractId ?? '').trim();
+  if (fromField && fromField !== '_') return fromField;
+  const origin = String(line.originId ?? '');
+  const sep = origin.indexOf('::');
+  if (sep < 0) return null;
+  const tail = origin.slice(sep + 2).trim();
+  return tail && tail !== '_' ? tail : null;
+}
+
+const ACCOUNT_PREFIX_RE =
+  /^(موردون|مقاولو باطن|رواتب مستحقة|بنك|خزينة \/ عهدة|خزينة \/ عهدة|مستخلصات تحت التحصيل|Suppliers|Subcontractors|Payroll|Bank|Treasury \/ custody|Uncollected IPCs)\s*[—–-]\s*/i;
+
+/** Leaf name only: "مقاولو باطن — مقاولو الباطن - ماي فارم (21102002)" → "ماي فارم". */
+export function subAccountLabel(raw: string | null | undefined, code = ''): string {
+  let s = String(raw ?? '').trim();
+  if (code) s = s.replace(new RegExp(`\\s*\\(${code}\\)\\s*$`), '');
+  s = s.replace(/\s*\(\d{8}\)\s*$/, '');
+  s = s.replace(ACCOUNT_PREFIX_RE, '');
+  const parts = s.split(/\s+[—–-]\s+/).map((p) => p.trim()).filter(Boolean);
+  if (parts.length >= 2) s = parts[parts.length - 1];
+  return s.trim() || code || String(raw ?? '').trim();
+}
+
 export function isNamedCustodyAccount(name: string | null | undefined, nameEn?: string | null): boolean {
   const blob = `${name ?? ''} ${nameEn ?? ''}`;
   return /عهد/.test(blob) || /custod/i.test(blob);
@@ -452,4 +479,48 @@ export function distributePoolByAccountWeight(
   });
 
   return out;
+}
+
+export type CostCenterAllocationTotal = {
+  key: string;
+  name: string;
+  nameEn: string;
+  obligation: number;
+  allocated: number;
+};
+
+export function summarizeAllocationByCostCenter(
+  lines: Array<{
+    side?: string | null;
+    excluded?: boolean | null;
+    amount: number;
+    allocatedCash?: number | null;
+    costCenterName?: string | null;
+    costCenterNameEn?: string | null;
+    contractId?: string | null;
+    originId?: string | null;
+  }>,
+): CostCenterAllocationTotal[] {
+  const map = new Map<string, CostCenterAllocationTotal>();
+  for (const line of lines) {
+    if (line.side && line.side !== 'obligation') continue;
+    if (line.excluded) continue;
+    const ccId = lineCostCenterId(line);
+    const name = String(line.costCenterName ?? '').trim();
+    const nameEn = String(line.costCenterNameEn ?? '').trim() || name;
+    const key = ccId || `__name:${name || 'none'}`;
+    const cur = map.get(key) ?? {
+      key,
+      name: name || '—',
+      nameEn: nameEn || '—',
+      obligation: 0,
+      allocated: 0,
+    };
+    if (name) cur.name = name;
+    if (nameEn) cur.nameEn = nameEn;
+    cur.obligation = roundMoney(cur.obligation + roundMoney(line.amount));
+    cur.allocated = roundMoney(cur.allocated + roundMoney(line.allocatedCash ?? 0));
+    map.set(key, cur);
+  }
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name, 'ar'));
 }
