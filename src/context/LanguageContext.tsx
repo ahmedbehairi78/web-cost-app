@@ -143,6 +143,10 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_due: 'الاستحقاق',
     cb_col_amount: 'المبلغ',
     cb_col_account: 'الحساب',
+    cb_col_cost_center: 'مركز التكلفة',
+    cb_col_allocated: 'توزيع البنوك والنقدية',
+    cb_no_cost_center: '—',
+    cb_allocated_hint: 'بعد الاعتماد يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) حسب وزن رصيد كل حساب.',
     cb_excluded: 'مستبعد',
     cb_exclude: 'استبعاد',
     cb_include: 'إدراج',
@@ -2515,13 +2519,13 @@ const translations: Record<Language, Record<string, string>> = {
       'أسبوعي (+6 أيام) أو كل أسبوعين (+13) أو شهري (آخر يوم من شهر البداية). الرقم CB-YYYYMMDD-NNNN. الاقتراح يقرأ أرصدة دفتر اليومية حتى نهاية الفترة.',
     manual_cash_budget_plan_step_2_title: 'راجع الالتزامات والمتاح',
     manual_cash_budget_plan_step_2_body:
-      'الالتزامات = أوراق 21101 و21102 ذات الرصيد الدائن + 21501 رواتب مستحقة + تعويض العهد إذا قلّ 12102 عن الحد. المتاح = 12101 بنوك + 12102 خزينة/عهد + 12201 مستخلصات تحت التحصيل.',
+      'الجدول يعرض الحساب الفرعي فقط (مثل ماي فارم) مع مركز التكلفة. إن اشترك الرصيد بين مراكز يظهر سطر لكل مركز (مثال: 50,000 كونكورد فيلا + 70,000 أركمن فيلا). الإجماليات أعلى التقرير = بنوك + خزينة + مستخلصات تحت التحصيل مقابل الالتزامات.',
     manual_cash_budget_plan_step_3_title: 'اقرأ الفجوة',
     manual_cash_budget_plan_step_3_body:
       'الفجوة = (بنوك + خزينة + مستخلصات تحت التحصيل) − الالتزامات. بنود البنوك والخزينة في الجدول لا تُضاف مرة ثانية إلى المستخلصات.',
     manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة',
     manual_cash_budget_plan_step_4_body:
-      'الاعتماد يقفل التعديل بلا قيد محاسبي. أعد الفتح للتعديل. حد العهدة يُحفظ على ورقة 12102… ويُستخدم في الاقتراح التالي.',
+      'الاعتماد يقفل التعديل بلا قيد محاسبي. بعدها يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) على الحسابات حسب وزن الرصيد. أعد الفتح للتعديل.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -2640,6 +2644,10 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_due: 'Due',
     cb_col_amount: 'Amount',
     cb_col_account: 'Account',
+    cb_col_cost_center: 'Cost center',
+    cb_col_allocated: 'Bank & cash allocation',
+    cb_no_cost_center: '—',
+    cb_allocated_hint: 'After approval, bank and treasury cash (excluding custody and uncollected IPCs) is allocated by each account’s balance weight.',
     cb_excluded: 'Excluded',
     cb_exclude: 'Exclude',
     cb_include: 'Include',
@@ -5014,13 +5022,13 @@ const translations: Record<Language, Record<string, string>> = {
       'Weekly (+6 days), bi-weekly (+13), or monthly (last day of the start month). Number CB-YYYYMMDD-NNNN. Suggestion reads GL balances through period end.',
     manual_cash_budget_plan_step_2_title: 'Review obligations and available cash',
     manual_cash_budget_plan_step_2_body:
-      'Obligations = credit nets on 21101 and 21102 + accrued salaries 21501 + custody replenish when 12102 is below minimum. Available = 12101 banks + 12102 treasury/custody + 12201 uncollected IPCs.',
+      'The table lists the leaf account name only (e.g. My Farm) with its cost center. A shared payable is split into one row per center (e.g. 50,000 Concord Villa + 70,000 Arkman Villa). Header KPIs remain banks + treasury + uncollected IPCs versus obligations.',
     manual_cash_budget_plan_step_3_title: 'Read the gap',
     manual_cash_budget_plan_step_3_body:
       'Gap = (banks + treasury + uncollected IPCs) − obligations. Bank and treasury table lines are not added again on top of IPC receivables.',
     manual_cash_budget_plan_step_4_title: 'Approve or print',
     manual_cash_budget_plan_step_4_body:
-      'Approve locks edits with no accounting journal. Reopen to edit. Custody floors are stored on 12102… leaves and used on the next suggestion.',
+      'Approve locks edits with no accounting journal. Bank and treasury cash (excluding custody and uncollected IPCs) is then allocated by each account’s balance weight. Reopen to edit.',
   }
 };
 

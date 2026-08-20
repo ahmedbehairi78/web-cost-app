@@ -1,4 +1,4 @@
-import { roundMoney } from './money';
+import { MONEY_TOLERANCE, roundMoney } from './money';
 
 export const CASH_BUDGET_PERIOD_TYPES = ['weekly', 'biweekly', 'monthly'] as const;
 export type CashBudgetPeriodType = (typeof CASH_BUDGET_PERIOD_TYPES)[number];
@@ -22,7 +22,7 @@ export const OBLIGATION_CATEGORIES = [
 ] as const;
 export type ObligationCategory = (typeof OBLIGATION_CATEGORIES)[number];
 
-export const SOURCE_CATEGORIES = ['opening_bank', 'opening_cash', 'collection', 'other'] as const;
+export const SOURCE_CATEGORIES = ['opening_bank', 'opening_cash', 'opening_custody', 'collection', 'other'] as const;
 export type SourceCategory = (typeof SOURCE_CATEGORIES)[number];
 
 export type CashBudgetCategory = ObligationCategory | SourceCategory;
@@ -138,7 +138,7 @@ export function computeCashBudgetSummary(input: {
       if (!line.excluded) bankFromLines = roundMoney(bankFromLines + amt);
       continue;
     }
-    if (cat === 'opening_cash') {
+    if (cat === 'opening_cash' || cat === 'opening_custody') {
       sawCashLine = true;
       if (!line.excluded) cashFromLines = roundMoney(cashFromLines + amt);
       continue;
@@ -244,4 +244,212 @@ export function isSalariesPayableLeafCode(code: string): boolean {
 /** Liability payable = credit net (what we owe). */
 export function liabilityPayableAmount(netDebit: number): number {
   return roundMoney(Math.max(0, -roundMoney(netDebit)));
+}
+
+export type CostCenterNet = {
+  costCenterId: string | null;
+  netDebit: number;
+};
+
+export type CostCenterPayable = {
+  costCenterId: string | null;
+  amount: number;
+};
+
+/**
+ * Split an account payable across cost centers.
+ * Example: ماي فارم 120,000 = كونكورد فيلا 50,000 + أركمن فيلا 70,000 → two rows.
+ */
+export function allocatePayableByCostCenter(rows: CostCenterNet[]): CostCenterPayable[] {
+  let totalNet = 0;
+  for (const row of rows) {
+    totalNet = roundMoney(totalNet + roundMoney(row.netDebit));
+  }
+  const payable = liabilityPayableAmount(totalNet);
+  if (payable <= 0) return [];
+
+  const credits = rows
+    .map((row) => ({
+      costCenterId: String(row.costCenterId ?? '').trim() || null,
+      amount: liabilityPayableAmount(row.netDebit),
+    }))
+    .filter((row) => row.amount > 0)
+    .sort((a, b) => String(a.costCenterId ?? '').localeCompare(String(b.costCenterId ?? '')));
+
+  if (credits.length === 0) {
+    return [{ costCenterId: null, amount: payable }];
+  }
+
+  const creditSum = credits.reduce((sum, row) => roundMoney(sum + row.amount), 0);
+  if (Math.abs(creditSum - payable) <= MONEY_TOLERANCE) {
+    return credits;
+  }
+
+  let allocated = 0;
+  return credits
+    .map((row, index) => {
+      const isLast = index === credits.length - 1;
+      const amount = isLast
+        ? roundMoney(payable - allocated)
+        : roundMoney((row.amount / creditSum) * payable);
+      allocated = roundMoney(allocated + amount);
+      return { costCenterId: row.costCenterId, amount };
+    })
+    .filter((row) => row.amount > 0);
+}
+
+export function glLeafOriginCode(originId: string | null | undefined): string {
+  const head = String(originId ?? '').split('::')[0]?.trim() ?? '';
+  return isEightDigitLeafCode(head) ? head : '';
+}
+
+export function isNamedCustodyAccount(name: string | null | undefined, nameEn?: string | null): boolean {
+  const blob = `${name ?? ''} ${nameEn ?? ''}`;
+  return /عهد/.test(blob) || /custod/i.test(blob);
+}
+
+export function isCustodyFundAccount(acc: {
+  accountCode: string;
+  minBalance?: unknown;
+  accountName?: string | null;
+  accountNameEn?: string | null;
+}): boolean {
+  if (!isCustodyCashLeafCode(acc.accountCode)) return false;
+  if (roundMoney(Number(acc.minBalance) || 0) > 0) return true;
+  return isNamedCustodyAccount(acc.accountName, acc.accountNameEn);
+}
+
+export function classifyCustodyAccountCodes(
+  accounts: Array<{
+    accountCode: string;
+    minBalance?: unknown;
+    accountName?: string | null;
+    accountNameEn?: string | null;
+  }>,
+): Set<string> {
+  const codes = new Set<string>();
+  for (const acc of accounts) {
+    const code = String(acc.accountCode ?? '').trim();
+    if (isCustodyFundAccount({ ...acc, accountCode: code })) codes.add(code);
+  }
+  return codes;
+}
+
+/** Banks 12101 + treasury cash 12102, excluding custody funds and uncollected IPCs. */
+export function distributableBankAndCashPool(
+  lines: Array<{
+    category?: string | null;
+    amount: number;
+    excluded?: boolean | null;
+    originId?: string | null;
+  }>,
+  custodyCodes: Set<string>,
+): number {
+  let pool = 0;
+  for (const line of lines) {
+    if (line.excluded) continue;
+    const cat = String(line.category ?? '');
+    const amt = roundMoney(line.amount);
+    if (cat === 'opening_bank') {
+      pool = roundMoney(pool + amt);
+      continue;
+    }
+    if (cat === 'opening_custody') continue;
+    if (cat !== 'opening_cash') continue;
+    const code = glLeafOriginCode(line.originId);
+    if (code && custodyCodes.has(code)) continue;
+    pool = roundMoney(pool + amt);
+  }
+  return pool;
+}
+
+export function accountGroupKey(line: {
+  originType?: string | null;
+  originId?: string | null;
+  description?: string | null;
+  category?: string | null;
+}): string {
+  const originType = String(line.originType ?? '');
+  if (originType === 'gl_leaf') {
+    const code = glLeafOriginCode(line.originId);
+    if (code) return `gl:${code}`;
+  }
+  if (originType === 'custody_min') {
+    return `custody:${line.originId || line.description || ''}`;
+  }
+  return `desc:${String(line.description ?? '').trim()}`;
+}
+
+export type AllocatableCashBudgetLine = {
+  id: string;
+  side?: string;
+  category?: string | null;
+  amount: number;
+  excluded?: boolean | null;
+  originType?: string | null;
+  originId?: string | null;
+  description?: string | null;
+};
+
+/**
+ * After approve: split banks + treasury cash across obligation *accounts* by balance weight,
+ * then split each account share across its cost-center rows.
+ * Skips custody replenish lines.
+ */
+export function distributePoolByAccountWeight(
+  lines: AllocatableCashBudgetLine[],
+  pool: number,
+): Map<string, number> {
+  const out = new Map<string, number>();
+  const pooled = roundMoney(Math.max(0, pool));
+  const eligible = lines.filter((line) => {
+    if (line.excluded) return false;
+    if (line.side && line.side !== 'obligation') return false;
+    if (String(line.category ?? '') === 'custody_replenish') return false;
+    return roundMoney(line.amount) > 0;
+  });
+
+  for (const line of lines) out.set(line.id, 0);
+  if (eligible.length === 0 || pooled <= 0) return out;
+
+  const groups = new Map<string, AllocatableCashBudgetLine[]>();
+  for (const line of eligible) {
+    const key = accountGroupKey(line);
+    const rows = groups.get(key) ?? [];
+    rows.push(line);
+    groups.set(key, rows);
+  }
+
+  const groupList = [...groups.entries()]
+    .map(([key, rows]) => ({
+      key,
+      rows: [...rows].sort((a, b) => a.id.localeCompare(b.id)),
+      weight: roundMoney(rows.reduce((sum, row) => roundMoney(sum + roundMoney(row.amount)), 0)),
+    }))
+    .filter((group) => group.weight > 0)
+    .sort((a, b) => a.key.localeCompare(b.key));
+
+  const totalWeight = roundMoney(groupList.reduce((sum, group) => roundMoney(sum + group.weight), 0));
+  if (totalWeight <= 0) return out;
+
+  let allocatedGroups = 0;
+  groupList.forEach((group, groupIndex) => {
+    const isLastGroup = groupIndex === groupList.length - 1;
+    const groupShare = isLastGroup
+      ? roundMoney(pooled - allocatedGroups)
+      : roundMoney((group.weight / totalWeight) * pooled);
+    allocatedGroups = roundMoney(allocatedGroups + groupShare);
+
+    let allocatedLines = 0;
+    group.rows.forEach((row, rowIndex) => {
+      const isLast = rowIndex === group.rows.length - 1;
+      const share = isLast
+        ? roundMoney(groupShare - allocatedLines)
+        : roundMoney((roundMoney(row.amount) / group.weight) * groupShare);
+      allocatedLines = roundMoney(allocatedLines + share);
+      out.set(row.id, share);
+    });
+  });
+
+  return out;
 }

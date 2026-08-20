@@ -32,7 +32,6 @@ import {
   settingsApi,
   type CashBudgetLineRow,
   type CashBudgetPeriodRow,
-  type CashBudgetSide,
 } from '../services/local/modulesApi';
 
 type CoaRow = {
@@ -43,18 +42,6 @@ type CoaRow = {
   isGroup?: boolean;
   status?: string;
   minBalance?: number;
-};
-
-const CATEGORY_KEYS: Record<string, string> = {
-  supplier: 'cb_cat_supplier',
-  subcontractor: 'cb_cat_subcontractor',
-  custody_settlement: 'cb_cat_custody_settlement',
-  custody_replenish: 'cb_cat_custody_replenish',
-  payroll: 'cb_cat_payroll',
-  other: 'cb_cat_other',
-  opening_bank: 'cb_cat_opening_bank',
-  opening_cash: 'cb_cat_opening_cash',
-  collection: 'cb_cat_collection',
 };
 
 function errMessage(e: unknown, fallback: string): string {
@@ -79,7 +66,6 @@ export function CashBudget() {
   const [busy, setBusy] = useState(false);
   const [newType, setNewType] = useState<CashBudgetPeriodType>('weekly');
   const [newStart, setNewStart] = useState(businessTodayYmd());
-  const [manualSide, setManualSide] = useState<CashBudgetSide>('obligation');
   const [manualCategory, setManualCategory] = useState('other');
   const [manualDesc, setManualDesc] = useState('');
   const [manualAmount, setManualAmount] = useState('');
@@ -177,14 +163,16 @@ export function CashBudget() {
     });
   }, [detail]);
 
-  const obligationLines = useMemo(
-    () => (detail?.lines ?? []).filter((l) => l.side === 'obligation'),
-    [detail],
-  );
-  const sourceLines = useMemo(
-    () => (detail?.lines ?? []).filter((l) => l.side === 'source' && l.category !== 'opening_bank' && l.category !== 'opening_cash'),
-    [detail],
-  );
+  const obligationLines = useMemo(() => {
+    const rows = (detail?.lines ?? []).filter((l) => l.side === 'obligation');
+    return [...rows].sort((a, b) => {
+      const name = a.description.localeCompare(b.description, isAr ? 'ar' : 'en');
+      if (name !== 0) return name;
+      const ca = a.costCenterName || a.contractId || '';
+      const cb = b.costCenterName || b.contractId || '';
+      return ca.localeCompare(cb, isAr ? 'ar' : 'en');
+    });
+  }, [detail, isAr]);
 
   const isDraft = detail?.status === 'draft';
   const newEnd = periodEndFor(newType, newStart);
@@ -280,7 +268,7 @@ export function CashBudget() {
     setBusy(true);
     try {
       await cashBudgetApi.addLine(detail.id, {
-        side: manualSide,
+        side: 'obligation',
         category: manualCategory || 'other',
         description: manualDesc.trim(),
         amount,
@@ -330,32 +318,36 @@ export function CashBudget() {
 
   const handlePrint = () => {
     if (!detail || !summary) return;
-    const rows = [...obligationLines, ...sourceLines].map((l) => ({
-      side: t(l.side === 'obligation' ? 'cb_obligations' : 'cb_sources'),
-      category: t(CATEGORY_KEYS[l.category] ?? 'cb_cat_other'),
+    const showAllocated = detail.status === 'approved';
+    const rows = obligationLines.map((l) => ({
       description: l.description,
+      costCenter: isAr
+        ? (l.costCenterName || t('cb_no_cost_center'))
+        : (l.costCenterNameEn || l.costCenterName || t('cb_no_cost_center')),
       amount: l.excluded ? 0 : Number(l.amount),
+      allocated: showAllocated ? Number(l.allocatedCash ?? 0) : undefined,
       excluded: l.excluded ? t('cb_excluded') : '',
-      dueDate: l.dueDate || '—',
     }));
     openDocPreview({
       reportId: 'cash_budget',
       title: t('cash_budget'),
       scopeLabel: `${detail.periodNumber} · ${detail.periodStart} → ${detail.periodEnd}`,
       columns: [
-        { key: 'side', header: t('cb_col_side'), width: 12 },
-        { key: 'category', header: t('cb_col_category'), width: 14 },
-        { key: 'description', header: t('cb_col_description'), width: 28 },
-        { key: 'dueDate', header: t('cb_col_due'), width: 10 },
-        { key: 'amount', header: t('cb_col_amount'), width: 12, money: true },
+        { key: 'description', header: t('cb_col_account'), width: 24 },
+        { key: 'costCenter', header: t('cb_col_cost_center'), width: 18 },
+        { key: 'amount', header: t('cb_col_amount'), width: 14, money: true },
+        ...(showAllocated
+          ? [{ key: 'allocated' as const, header: t('cb_col_allocated'), width: 16, money: true }]
+          : []),
         { key: 'excluded', header: t('cb_excluded'), width: 8 },
       ],
       rows,
       totals: {
-        amount: summary.gap,
+        amount: summary.obligations,
+        ...(showAllocated ? { allocated: Number(detail.distributablePool ?? 0) } : {}),
       },
-      totalsLabel: t('cb_gap'),
-      footerNote: `${t('cb_kpi_banks')}: ${formatMoney(summary.openingBank)} · ${t('cb_kpi_cash')}: ${formatMoney(summary.openingCash)} · ${t('cb_kpi_sources')}: ${formatMoney(summary.periodSources)} · ${t('cb_kpi_obligations')}: ${formatMoney(summary.obligations)}`,
+      totalsLabel: t('cb_kpi_obligations'),
+      footerNote: `${t('cb_kpi_banks')}: ${formatMoney(summary.openingBank)} · ${t('cb_kpi_cash')}: ${formatMoney(summary.openingCash)} · ${t('cb_kpi_sources')}: ${formatMoney(summary.periodSources)} · ${t('cb_kpi_obligations')}: ${formatMoney(summary.obligations)}${showAllocated ? ` · ${t('cb_col_allocated')}: ${formatMoney(detail.distributablePool ?? 0)}` : ''}`,
       filename: `cash-budget-${detail.periodNumber}`,
     });
   };
@@ -510,24 +502,19 @@ export function CashBudget() {
                 </div>
               )}
               <p className="text-[11px] text-gray-500">{t('cb_equation_hint')}</p>
+              {!isDraft && (
+                <p className="text-[11px] text-gray-500">{t('cb_allocated_hint')}</p>
+              )}
 
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div>
                 <LineTable
                   title={t('cb_obligations')}
                   lines={obligationLines}
                   t={t}
                   formatMoney={formatMoney}
                   isDark={isDark}
-                  canEdit={Boolean(isDraft && canWrite)}
-                  onToggleExcluded={handleToggleExcluded}
-                  onDelete={handleDeleteLine}
-                />
-                <LineTable
-                  title={t('cb_sources')}
-                  lines={sourceLines}
-                  t={t}
-                  formatMoney={formatMoney}
-                  isDark={isDark}
+                  isAr={isAr}
+                  showAllocated={!isDraft}
                   canEdit={Boolean(isDraft && canWrite)}
                   onToggleExcluded={handleToggleExcluded}
                   onDelete={handleDeleteLine}
@@ -537,18 +524,12 @@ export function CashBudget() {
               {isDraft && canWrite && (
                 <div className={cardCls}>
                   <p className="text-xs font-semibold mb-2">{t('cb_add_manual')}</p>
-                  <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
-                    <select className={inputCls} value={manualSide} onChange={(e) => setManualSide(e.target.value as CashBudgetSide)}>
-                      <option value="obligation">{t('cb_obligations')}</option>
-                      <option value="source">{t('cb_sources')}</option>
-                    </select>
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <select className={inputCls} value={manualCategory} onChange={(e) => setManualCategory(e.target.value)}>
                       <option value="other">{t('cb_cat_other')}</option>
                       <option value="supplier">{t('cb_cat_supplier')}</option>
                       <option value="subcontractor">{t('cb_cat_subcontractor')}</option>
-                      <option value="custody_settlement">{t('cb_cat_custody_settlement')}</option>
                       <option value="payroll">{t('cb_cat_payroll')}</option>
-                      <option value="collection">{t('cb_cat_collection')}</option>
                     </select>
                     <input className={inputCls} value={manualDesc} onChange={(e) => setManualDesc(e.target.value)} placeholder={t('cb_col_description')} />
                     <input className={inputCls} type="number" step="0.01" min="0" value={manualAmount} onChange={(e) => setManualAmount(e.target.value)} placeholder={t('cb_col_amount')} />
@@ -647,6 +628,8 @@ function LineTable({
   t,
   formatMoney,
   isDark,
+  isAr,
+  showAllocated,
   canEdit,
   onToggleExcluded,
   onDelete,
@@ -656,10 +639,16 @@ function LineTable({
   t: (key: string) => string;
   formatMoney: (n: unknown) => string;
   isDark: boolean;
+  isAr: boolean;
+  showAllocated: boolean;
   canEdit: boolean;
   onToggleExcluded: (line: CashBudgetLineRow) => void;
   onDelete: (line: CashBudgetLineRow) => void;
 }) {
+  const allocatedTotal = lines.reduce((sum, line) => {
+    if (line.excluded) return sum;
+    return sum + Number(line.allocatedCash ?? 0);
+  }, 0);
   return (
     <div className={cn('rounded-xl border overflow-hidden', isDark ? 'border-gray-700' : 'border-gray-200')}>
       <div className={cn('px-3 py-2 text-xs font-semibold', isDark ? 'bg-gray-900' : 'bg-gray-50')}>{title}</div>
@@ -669,13 +658,21 @@ function LineTable({
         <table className="w-full text-xs">
           <thead>
             <tr className="text-gray-500">
-              <th className="text-start font-medium px-3 py-1">{t('cb_col_description')}</th>
+              <th className="text-start font-medium px-3 py-1">{t('cb_col_account')}</th>
+              <th className="text-start font-medium px-2 py-1">{t('cb_col_cost_center')}</th>
               <th className="text-end font-medium px-2 py-1">{t('cb_col_amount')}</th>
+              {showAllocated && (
+                <th className="text-end font-medium px-2 py-1">{t('cb_col_allocated')}</th>
+              )}
               {canEdit && <th className="px-2" />}
             </tr>
           </thead>
           <tbody>
-            {lines.map((line, index) => (
+            {lines.map((line, index) => {
+              const costCenter = isAr
+                ? (line.costCenterName || t('cb_no_cost_center'))
+                : (line.costCenterNameEn || line.costCenterName || t('cb_no_cost_center'));
+              return (
               <tr
                 key={listKey(line.id, index, 'line')}
                 className={cn(
@@ -685,13 +682,15 @@ function LineTable({
               >
                 <td className="px-3 py-1.5">
                   <div>{line.description}</div>
-                  <div className="text-[10px] text-gray-500">
-                    {t(CATEGORY_KEYS[line.category] ?? 'cb_cat_other')}
-                    {line.dueDate ? ` · ${line.dueDate}` : ''}
-                    {line.origin === 'manual' ? ` · ${t('cb_origin_manual')}` : ''}
-                  </div>
+                  {line.origin === 'manual' ? (
+                    <div className="text-[10px] text-gray-500">{t('cb_origin_manual')}</div>
+                  ) : null}
                 </td>
+                <td className="px-2 py-1.5">{costCenter}</td>
                 <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(Number(line.amount))}</td>
+                {showAllocated && (
+                  <td className="px-2 py-1.5 text-end tabular-nums">{formatMoney(Number(line.allocatedCash ?? 0))}</td>
+                )}
                 {canEdit && (
                   <td className="px-2 py-1.5 whitespace-nowrap text-end">
                     <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => onToggleExcluded(line)}>
@@ -705,8 +704,18 @@ function LineTable({
                   </td>
                 )}
               </tr>
-            ))}
+              );
+            })}
           </tbody>
+          {showAllocated && (
+            <tfoot>
+              <tr className={cn(isDark ? 'border-t border-gray-700' : 'border-t border-gray-200')}>
+                <td className="px-3 py-1.5 font-semibold" colSpan={2}>{t('cb_col_allocated')}</td>
+                <td />
+                <td className="px-2 py-1.5 text-end tabular-nums font-semibold">{formatMoney(allocatedTotal)}</td>
+              </tr>
+            </tfoot>
+          )}
         </table>
       )}
     </div>

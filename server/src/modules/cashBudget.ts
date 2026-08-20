@@ -8,7 +8,10 @@ import { serialize } from '../prisma/serialize.js';
 import { roundMoney } from '../lib/money.js';
 import { businessTodayCompact } from '../lib/businessCalendar.js';
 import {
+  classifyCustodyAccountCodes,
   computeCashBudgetSummary,
+  distributableBankAndCashPool,
+  distributePoolByAccountWeight,
   isCashBudgetPeriodType,
   isCustodyCashLeafCode,
   originKey,
@@ -64,6 +67,95 @@ function toLinePayload(row: {
     excluded: row.excluded === true,
     sortOrder: row.sortOrder ?? 0,
   };
+}
+
+async function decorateLineCostCenters<T extends { contractId?: string | null }>(
+  lines: T[],
+): Promise<Array<T & { costCenterName: string | null; costCenterNameEn: string | null }>> {
+  const ids = [...new Set(lines.map((line) => String(line.contractId ?? '').trim()).filter(Boolean))];
+  if (ids.length === 0) {
+    return lines.map((line) => ({ ...line, costCenterName: null, costCenterNameEn: null }));
+  }
+  const [centers, contracts] = await Promise.all([
+    prisma.costCenter.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, name: true, nameEn: true },
+    }),
+    prisma.contract.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, contractName: true, contractNameEn: true },
+    }),
+  ]);
+  const names = new Map<string, { name: string; nameEn: string | null }>();
+  for (const row of contracts) {
+    names.set(row.id, { name: row.contractName, nameEn: row.contractNameEn });
+  }
+  for (const row of centers) {
+    names.set(row.id, { name: row.name, nameEn: row.nameEn });
+  }
+  return lines.map((line) => {
+    const id = String(line.contractId ?? '').trim();
+    const found = names.get(id);
+    return {
+      ...line,
+      costCenterName: found?.name ?? null,
+      costCenterNameEn: found?.nameEn ?? null,
+    };
+  });
+}
+
+async function presentPeriod<T extends {
+  status?: string;
+  openingBank: unknown;
+  openingCash: unknown;
+  lines: Array<{
+    id?: string;
+    side: string;
+    category: string;
+    amount: unknown;
+    excluded: boolean;
+    contractId?: string | null;
+    originType?: string | null;
+    originId?: string | null;
+    description?: string;
+  }>;
+}>(row: T) {
+  const named = await decorateLineCostCenters(row.lines);
+  if (row.status !== 'approved') {
+    return withSummary({ ...row, lines: named });
+  }
+  const accounts = await prisma.chartOfAccount.findMany({
+    where: { isGroup: false },
+    select: { accountCode: true, minBalance: true, accountName: true, accountNameEn: true },
+  });
+  const custodyCodes = classifyCustodyAccountCodes(accounts);
+  const pool = distributableBankAndCashPool(
+    named.map((line) => ({
+      category: line.category,
+      amount: Number(line.amount),
+      excluded: line.excluded,
+      originId: line.originId ?? null,
+    })),
+    custodyCodes,
+  );
+  const allocated = distributePoolByAccountWeight(
+    named.map((line) => ({
+      id: String(line.id ?? ''),
+      side: line.side,
+      category: line.category,
+      amount: Number(line.amount),
+      excluded: line.excluded,
+      originType: line.originType ?? null,
+      originId: line.originId ?? null,
+      description: line.description,
+    })),
+    pool,
+  );
+  const lines = named.map((line) => ({
+    ...line,
+    allocatedCash: line.side === 'obligation' ? (allocated.get(String(line.id ?? '')) ?? 0) : null,
+  }));
+  return { ...withSummary({ ...row, lines }), distributablePool: pool };
 }
 
 function assertDraft(status: string): string | null {
@@ -155,7 +247,7 @@ cashBudgetRouter.post(
       },
       include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
     });
-    res.status(201).json(serialize(withSummary(created)));
+    res.status(201).json(serialize(await presentPeriod(created)));
   }),
 );
 
@@ -170,7 +262,7 @@ cashBudgetRouter.get(
       res.status(404).json({ error: 'Not found' });
       return;
     }
-    res.json(serialize(withSummary(row)));
+    res.json(serialize(await presentPeriod(row)));
   }),
 );
 
@@ -199,7 +291,7 @@ cashBudgetRouter.patch(
       data,
       include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
     });
-    res.json(serialize(withSummary(updated)));
+    res.json(serialize(await presentPeriod(updated)));
   }),
 );
 
@@ -264,7 +356,7 @@ cashBudgetRouter.post(
       where: { id: row.id },
       include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
     });
-    res.json(serialize(withSummary(fresh!)));
+    res.json(serialize(await presentPeriod(fresh!)));
   }),
 );
 
@@ -309,7 +401,7 @@ cashBudgetRouter.post(
         periodId: row.id,
       },
     });
-    res.status(201).json(serialize(line));
+    res.status(201).json(serialize((await decorateLineCostCenters([line]))[0]));
   }),
 );
 
@@ -338,7 +430,7 @@ cashBudgetRouter.patch(
     if (typeof req.body?.notes === 'string' || req.body?.notes === null) data.notes = req.body.notes;
     if (typeof req.body?.category === 'string') data.category = req.body.category.trim();
     const updated = await prisma.cashBudgetLine.update({ where: { id: line.id }, data });
-    res.json(serialize(updated));
+    res.json(serialize((await decorateLineCostCenters([updated]))[0]));
   }),
 );
 
@@ -377,7 +469,7 @@ cashBudgetRouter.post(
       return;
     }
     if (row.status === 'approved') {
-      res.json(serialize(withSummary(row)));
+      res.json(serialize(await presentPeriod(row)));
       return;
     }
     const updated = await prisma.cashBudgetPeriod.update({
@@ -385,7 +477,7 @@ cashBudgetRouter.post(
       data: { status: 'approved', approvedBy: req.user?.id ?? null },
       include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
     });
-    res.json(serialize(withSummary(updated)));
+    res.json(serialize(await presentPeriod(updated)));
   }),
 );
 
@@ -406,7 +498,7 @@ cashBudgetRouter.post(
       data: { status: 'draft', approvedBy: null },
       include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
     });
-    res.json(serialize(withSummary(updated)));
+    res.json(serialize(await presentPeriod(updated)));
   }),
 );
 

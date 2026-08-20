@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  allocatePayableByCostCenter,
   computeCashBudgetSummary,
   custodyReplenishAmount,
+  distributePoolByAccountWeight,
+  distributableBankAndCashPool,
   isBankLeafCode,
   isClientReceivableLeafCode,
   isCustodyCashLeafCode,
@@ -164,5 +167,69 @@ describe('GL leaf classification', () => {
     expect(liabilityPayableAmount(-80_000)).toBe(80_000);
     expect(liabilityPayableAmount(12_000)).toBe(0);
     expect(liabilityPayableAmount(0)).toBe(0);
+  });
+});
+
+describe('allocatePayableByCostCenter', () => {
+  it('splits ماي فارم 120000 into Concord villa 50000 and Arkman villa 70000', () => {
+    const rows = allocatePayableByCostCenter([
+      { costCenterId: 'concord-villa', netDebit: -50_000 },
+      { costCenterId: 'arkman-villa', netDebit: -70_000 },
+    ]);
+    expect(rows).toHaveLength(2);
+    const byId = Object.fromEntries(rows.map((r) => [r.costCenterId, r.amount]));
+    expect(byId['concord-villa']).toBe(50_000);
+    expect(byId['arkman-villa']).toBe(70_000);
+    expect(rows.reduce((s, r) => s + r.amount, 0)).toBe(120_000);
+  });
+
+  it('keeps a single cost center as one row', () => {
+    expect(allocatePayableByCostCenter([{ costCenterId: 'cc-1', netDebit: -12_000 }])).toEqual([
+      { costCenterId: 'cc-1', amount: 12_000 },
+    ]);
+  });
+});
+
+describe('distributableBankAndCashPool', () => {
+  it('uses banks + treasury cash and skips custody and uncollected IPCs', () => {
+    const pool = distributableBankAndCashPool(
+      [
+        { category: 'opening_bank', amount: 70_000 },
+        { category: 'opening_cash', originId: '12102001::_', amount: 10_000 },
+        { category: 'opening_cash', originId: '12102002::_', amount: 8_000 },
+        { category: 'opening_custody', originId: '12102003::_', amount: 4_000 },
+        { category: 'collection', originId: '12201001::_', amount: 40_000 },
+      ],
+      new Set(['12102002']),
+    );
+    expect(pool).toBe(80_000);
+  });
+});
+
+describe('distributePoolByAccountWeight', () => {
+  it('allocates by account weight then splits cost-center rows', () => {
+    const map = distributePoolByAccountWeight(
+      [
+        { id: 'a', originType: 'gl_leaf', originId: '21101010::c1', description: 'ماي فارم', amount: 50_000, side: 'obligation', category: 'supplier' },
+        { id: 'b', originType: 'gl_leaf', originId: '21101010::c2', description: 'ماي فارم', amount: 70_000, side: 'obligation', category: 'supplier' },
+        { id: 'c', originType: 'gl_leaf', originId: '21101011::_', description: 'مورد آخر', amount: 80_000, side: 'obligation', category: 'supplier' },
+      ],
+      80_000,
+    );
+    expect(map.get('a')).toBe(20_000);
+    expect(map.get('b')).toBe(28_000);
+    expect(map.get('c')).toBe(32_000);
+  });
+
+  it('skips custody replenish lines', () => {
+    const map = distributePoolByAccountWeight(
+      [
+        { id: 'a', originType: 'gl_leaf', originId: '21101010::_', description: 'ماي فارم', amount: 100, side: 'obligation', category: 'supplier' },
+        { id: 'r', originType: 'custody_min', originId: 'x', description: 'عهدة', amount: 100, side: 'obligation', category: 'custody_replenish' },
+      ],
+      50,
+    );
+    expect(map.get('a')).toBe(50);
+    expect(map.get('r')).toBe(0);
   });
 });

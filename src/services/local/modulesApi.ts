@@ -1688,6 +1688,9 @@ export interface CashBudgetLineRow {
   originId?: string | null;
   projectId?: string | null;
   contractId?: string | null;
+  costCenterName?: string | null;
+  costCenterNameEn?: string | null;
+  allocatedCash?: number | null;
   excluded: boolean;
   notes?: string | null;
   sortOrder?: number;
@@ -1704,6 +1707,7 @@ export interface CashBudgetPeriodRow {
   openingCash: number;
   notes?: string | null;
   summary: CashBudgetSummaryDto;
+  distributablePool?: number;
   lineCount?: number;
   lines?: CashBudgetLineRow[];
 }

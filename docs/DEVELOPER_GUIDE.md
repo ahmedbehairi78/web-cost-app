@@ -298,7 +298,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 >
 > **أوامر الشراء (`purchase_requests`, 2026-08-02):** نافذة مستقلة في الشريط لكل المستخدمين المسجّلين (`canOpenShellModule` / `canOpenModuleView` دائماً true). التنفيذ = تغيير حالة فقط (لا فاتورة / لا GL). BOQ picker عبر `GET /api/purchase-requests/boq-picker` يعيد **كود + وصف** فقط. إشعارات `purchase_request_pending` + واتساب لمستخدمي `purchase_requests.edit`. ملفات: `PurchaseRequests.tsx` · `server/src/modules/purchaseRequests.ts` · migration `20260802120000_purchase_requests`.
 >
-> **موازنة نقدية (`cash_budget`, 2026-08-20):** بعد البنوك في الشريط. لقطة أرصدة حتى نهاية الفترة — التزامات = دائن موردين `21101` / باطن `21102` / رواتب `21501` + تعويض عهد `12102` إن قلّ عن الحد. المتاح = بنوك `12101` + خزينة `12102` + مستخلصات تحت التحصيل `12201`. **لا قيد GL.** صلاحية CRUD `cash_budget`. ملفات: `CashBudget.tsx` · `src/lib/cashBudget.ts` · `server/src/lib/cashBudgetSuggest.ts` · `server/src/modules/cashBudget.ts` · migration `20260820120000_cash_budget`. سجل أيضاً في `ErpWorkspace` + `shellNav` + `VISIBLE_SHELL_MODULE_IDS`.
+> **موازنة نقدية (`cash_budget`, 2026-08-20):** بعد البنوك في الشريط. لقطة أرصدة حتى نهاية الفترة — الالتزامات في جدول واحد (اسم الحساب الفرعي + مركز التكلفة؛ الرصيد المشترك = سطر لكل مركز). الإجماليات أعلى التقرير = بنوك `12101` + خزينة `12102` + مستخلصات `12201`. **بعد الاعتماد:** توزيع البنوك + الصناديق (بدون العهد وبدون المستخلصات) حسب وزن رصيد كل حساب. **لا قيد GL.**
 
 ---
 
