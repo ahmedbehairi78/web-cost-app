@@ -58,3 +58,37 @@ export function notifyApiUnauthorized(): void {
   if (isApiUnauthorizedLogoutSuppressed()) return;
   window.dispatchEvent(new CustomEvent(API_UNAUTHORIZED_EVENT));
 }
+
+export type SessionProbeResult = { authenticated: boolean };
+
+/**
+ * A 401 during a Railway bounce is often a dead proxy, not a dead login.
+ * Only treat the session as lost after probes that explicitly say unauthenticated.
+ * Network/5xx on every attempt → keep the current UI (do not log the user out).
+ */
+export async function confirmSessionLostAfterUnauthorized(
+  probe: () => Promise<SessionProbeResult>,
+  options?: {
+    attempts?: number;
+    delayMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  },
+): Promise<boolean> {
+  const attempts = Math.max(1, options?.attempts ?? 4);
+  const delayMs = Math.max(0, options?.delayMs ?? 2500);
+  const sleep =
+    options?.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+
+  let sawUnauthenticated = false;
+  for (let i = 0; i < attempts; i++) {
+    if (i > 0) await sleep(delayMs);
+    try {
+      const result = await probe();
+      if (result.authenticated) return false;
+      sawUnauthenticated = true;
+    } catch {
+      /* deploy / network — retry */
+    }
+  }
+  return sawUnauthenticated;
+}

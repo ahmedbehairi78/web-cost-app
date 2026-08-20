@@ -241,11 +241,12 @@ npm run test -- src/lib/moduleViewPermissions.test.ts
 - **Ctrl+N:** قارن **`input.code`** وليس `input.key` وحده — وإلا يفشل الاختصار مع لوحة عربية.
 - **كشف New GUI في المثبّت:** preload يستخدم sync IPC `query-reuse-session`؛ SPA تقبل أيضاً `?webCostReuseSession=1`.
 - **نشر القشرة:** بعد تعديل `electron/main.ts` / `preload.ts` شغّل `npm run electron:build:shell` ثم **`electron:publish`** للأجهزة المثبّتة (تحديث SPA عبر Railway لا يحدّث القشرة).
-- **تحديث محتوى Railway:** حوار أصلي في قشرة Electron (`hostedSpaUpdate.ts`) — **لاحقاً** افتراضي. الآن = مسح كاش + إعادة تحميل مع بقاء الجلسة. لا `app.quit` عند 401. جرس الواجهة يبقى تأكيداً إضافياً (`src/lib/spaBuild.ts`). يلزم `electron:build:shell` / `electron:publish` حتى يعمل الحوار على المثبّت.
+- **تحديث محتوى Railway:** حوار أصلي في قشرة Electron (`hostedSpaUpdate.ts`) — **لاحقاً** افتراضي. الآن = مسح كاش + إعادة تحميل مع بقاء الجلسة. **مهم:** reload داخل نفس النافذة **ليس** cold start — `keepSessionOnLoad` (preload) + `DESKTOP_WINDOW_SESSION_KEY`؛ 401 أثناء النشر يُؤكد عبر `session-probe` ثم قفل كلمة مرور في Electron. جرس الواجهة تأكيد إضافي (`spaBuild.ts`). قشرة **≥ 1.0.8**.
 
 ```powershell
-npm run test -- src/lib/shellNavigation.test.ts src/lib/spaBuild.test.ts
+npm run test -- src/lib/sessionLogout.test.ts src/lib/apiSession.test.ts src/lib/spaBuild.test.ts
 npm run electron:build:shell
+# بعد التحقق: git push (SPA) ثم electron:publish (Setup 1.0.8)
 ```
 
 ### 3.10 سلوك الإدخال الشبيه بإكسل

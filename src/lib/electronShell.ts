@@ -6,6 +6,8 @@ type WebCostDesktopBridge = {
   platform?: string;
   /** Secondary Electron window opened via Ctrl+N / New GUI — reuse session cookies. */
   reuseSession?: boolean;
+  /** Same BrowserWindow after reload (SPA update / Ctrl+Shift+R) — keep Express cookies. */
+  keepSessionOnLoad?: boolean;
   quitApp?: () => Promise<void>;
   /** Seconds since last OS-wide input. Packaged shells before this IPC return undefined. */
   getSystemIdleSeconds?: () => Promise<number | null>;
@@ -63,6 +65,11 @@ export function isDesktopSessionReuseWindow(): boolean {
   const fromUrl = consumeReuseSessionUrlFlag();
   reuseSessionCached = fromBridge || fromUrl;
   return reuseSessionCached;
+}
+
+/** True when this document load is a reload of an existing Electron window (not OS launch). */
+export function isDesktopReloadKeepingSession(): boolean {
+  return desktopBridge()?.keepSessionOnLoad === true;
 }
 
 /** Maximize the desktop shell window after login (no-op in browser). */

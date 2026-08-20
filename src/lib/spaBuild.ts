@@ -1,5 +1,6 @@
 import type { AppNotificationItem } from '../types';
 import { requestApplySpaUpdate } from './electronShell';
+import { markDesktopWindowSessionAlive } from './sessionLogout';
 
 export const SPA_UPDATE_NOTIFICATION_TYPE = 'spa_update';
 export const SPA_UPDATE_AVAILABLE_EVENT = 'web-cost:spa-update-available';
@@ -132,6 +133,7 @@ function reloadHostedSpaBypassingIndexCache(): void {
 export async function applyHostedSpaUpdate(): Promise<void> {
   if (applying) return;
   applying = true;
+  markDesktopWindowSessionAlive();
   try {
     if (await requestApplySpaUpdate()) return;
     reloadHostedSpaBypassingIndexCache();

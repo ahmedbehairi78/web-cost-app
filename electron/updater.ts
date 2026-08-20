@@ -77,7 +77,7 @@ export function initAutoUpdater(): void {
     console.log('[updater] downloaded', info.version);
     const win = getMainWindow();
     if (!win || win.isDestroyed()) {
-      void autoUpdater.quitAndInstall(false, true);
+      console.log('[updater] downloaded — waiting for a window; will not quitAndInstall');
       return;
     }
     void dialog

@@ -189,9 +189,12 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `scripts/start-api-production.mjs` | Production entrypoint: migrate deploy → `dist-server/index.js` |
 | `docs/RAILWAY_DEPLOY.md` | Step-by-step Railway deploy (Postgres + env vars + migrate + Electron URL) |
 | `electron/main.ts` | Thin Electron shell — **multi app windows** (`createAppWindow`, same `persist:webcost`); **Ctrl+N** / IPC `open-new-window` (shortcut via **`input.code === 'KeyN'`** — layout-safe for Arabic keyboard); **OAuth popup** lifecycle only for non-app windows; F12 · Ctrl+Shift+R (`KeyR`) · `WEB_COST_APP_URL` / `production-url.json` |
-| `electron/updater.ts` | `electron-updater` — GitHub Releases · `createRequire` (CJS) · skip if load fails |
-| `src/lib/electronShell.ts` | `isElectronShell` · `requestOpenNewWindow` · `requestApplySpaUpdate` · `requestAppQuit` · desktop notifications · `Login.tsx` uses `signInWithPopup` in Electron |
-| `src/lib/spaBuild.ts` | Hosted SPA build id + Railway update bell (`spa-build.json`) — click → cache clear + login; **no auto-reload / quit** |
+| `electron/updater.ts` | `electron-updater` — GitHub Releases · `createRequire` (CJS) · skip if load fails · no silent `quitAndInstall` without a window |
+| `electron/hostedSpaUpdate.ts` | Main-process poll of `spa-build.json` · native Now/Later (Later default) · reload keeps session |
+| `src/lib/electronShell.ts` | `isElectronShell` · `keepSessionOnLoad` · `requestOpenNewWindow` · `requestApplySpaUpdate` · `requestAppQuit` · desktop notifications |
+| `src/lib/sessionLogout.ts` | Cold start vs SPA reload · `DESKTOP_WINDOW_SESSION_KEY` · `shouldReuseDesktopPasswordSession` |
+| `src/lib/apiSession.ts` | 401 → `confirmSessionLostAfterUnauthorized` (retry probe; no instant logout on deploy bounce) |
+| `src/lib/spaBuild.ts` | Hosted SPA build id + Railway update bell — apply = cache clear + reload **without** logout |
 | `server/src/migration/verifyMigrationCounts.ts` | Post-migrate verification; **PASS with warnings** when Postgres has extra GL rows after `backfill-gl` |
 
 ### Components
@@ -1003,9 +1006,36 @@ npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/
 
 ---
 
+## 🔴 HANDOFF — جلسة Electron تبقى بعد نشر Railway ✅ (2026-08-20 مساءً)
+
+> **جلسة 2026-08-20 مساءً:** بعد كل نشر كان التطبيق «يغلق» ويظهر تسجيل الدخول — وأحياناً **بدون إشعار**. السبب الحقيقي: إعادة تحميل SPA كانت تُعامل كـ **cold start** (`performColdStartAuthReset` يمسح الكوكيز + يفرض كلمة مرور)، و401 أثناء نشر Railway كان يستدعي `handleLogout` فوراً.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **SPA reload ≠ cold start** | `DESKTOP_WINDOW_SESSION_KEY` + قشرة `keepSessionOnLoad` (`query-keep-session`) — إعادة التحميل في نفس النافذة تعيد `sessionProbe` **بدون** مسح الجلسة |
+| **401 أثناء النشر** | `confirmSessionLostAfterUnauthorized` يعيد المحاولة؛ إن فُقدت الجلسة في Electron → **قفل كلمة مرور** (النوافذ تبقى) لا `handleLogout` كامل |
+| **قشرة** | لا مسح كوكيز على `before-quit` · إعادة محاولة `did-fail-load` أثناء bounce · updater لا `quitAndInstall` بلا نافذة |
+| **إصدار** | `package.json` → **1.0.8** — يلزم **`electron:publish`** حتى ترى الأجهزة المثبّتة إصلاح القشرة |
+
+### لا تراجع
+
+- لا تستدعِ `performColdStartAuthReset` بعد `reloadIgnoringCache` / تطبيق تحديث SPA.
+- لا تُفرغ الجلسة على أول 401 أثناء النشر — تحقق بـ `session-probe` أولاً.
+- لا تمسح كوكيز `persist:webcost` في `before-quit`.
+
+```powershell
+npm run test -- src/lib/sessionLogout.test.ts src/lib/apiSession.test.ts src/lib/spaBuild.test.ts
+npm run electron:build:shell
+# git push → Railway (SPA) · ثم electron:publish لإصدار Setup 1.0.8
+```
+
+---
+
 ## 🔴 HANDOFF — إشعار تحديث Railway: الآن أو لاحقاً ✅ (2026-08-20)
 
-> **جلسة 2026-08-20:** بعد نشر Railway وصل إشعار ثم أُغلق التطبيق فوراً. السبب: الواجهة القديمة تبقى في كاش Electron، والنقر على توست ويندوز أو 401 أثناء النشر كان يُخرج الجلسة/`app.quit`. المطلوب: حوار **الآن أو لاحقاً** لا يعتمد على الـ SPA المخزّنة · لا إغلاق تلقائي.
+> **جلسة 2026-08-20:** بعد نشر Railway وصل إشعار ثم أُغلق التطبيق فوراً. السبب: الواجهة القديمة تبقى في كاش Electron، والنقر على توست ويندوز أو 401 أثناء النشر كان يُخرج الجلسة/`app.quit`. المطلوب: حوار **الآن أو لاحقاً** لا يعتمد على الـ SPA المخزّنة · لا إغلاق تلقائي. **متابعة مساءً:** انظر handoff «جلسة Electron تبقى» أعلاه — الإصلاح الجذري لبقاء الجلسة بعد reload.
 
 ### ما تم
 

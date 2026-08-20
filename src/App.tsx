@@ -52,7 +52,7 @@ import {
 } from './lib/userPreferences';
 import { normalizeVisibleShellModules } from './lib/shellModuleVisibility';
 import { bootstrapLocalCoaFromFirestore, resetLocalCoaBootstrap } from './lib/localCoaSync';
-import { isElectronShell, isDesktopSessionReuseWindow, requestWindowMaximize, requestRevealDesktopWindow } from './lib/electronShell';
+import { isElectronShell, isDesktopSessionReuseWindow, requestWindowMaximize, requestRevealDesktopWindow, isDesktopReloadKeepingSession } from './lib/electronShell';
 import { resolveShellNavigation, resolveStartupModule, resolveSavedDefaultModulePreference, setPendingShellView, setPendingBoqFocus } from './lib/shellNavigation';
 import {
   normalizeShellModuleId,
@@ -72,12 +72,19 @@ import {
   clearFreshLoginRequired,
   broadcastSessionLock,
   subscribeSessionLock,
+  markDesktopWindowSessionAlive,
+  isDesktopWindowSessionAlive,
+  shouldReuseDesktopPasswordSession,
+  shouldRunElectronColdStartReset,
+  currentShouldReuseDesktopPasswordSession,
 } from './lib/sessionLogout';
 import {
   API_UNAUTHORIZED_EVENT,
   FACTORY_RESET_DONE_EVENT,
   clearApiUnauthorizedLogoutSuppress,
+  confirmSessionLostAfterUnauthorized,
   isApiUnauthorizedLogoutSuppressed,
+  suppressApiUnauthorizedLogout,
 } from './lib/apiSession';
 import { useIdleLogout } from './hooks/useIdleLogout';
 import { OfflineStatusBar } from './components/offline/OfflineStatusBar';
@@ -109,6 +116,10 @@ export default function App() {
 
   const [user, setUser] = useState<import('firebase/auth').User | null>(null);
   const [passwordSession, setPasswordSession] = useState<AppUser | null>(null);
+  const userRef = useRef(user);
+  const passwordSessionRef = useRef(passwordSession);
+  userRef.current = user;
+  passwordSessionRef.current = passwordSession;
   const [idleLocked, setIdleLocked] = useState(false);
   const [userRole, setUserRole] = useState<UserRole>('user');
   const [userPermissions, setUserPermissions] = useState<UserPermissions>(ALL_PERMISSIONS);
@@ -315,16 +326,34 @@ export default function App() {
     const onUnauthorized = () => {
       if (clearing || isApiUnauthorizedLogoutSuppressed()) return;
       clearing = true;
-      toast.error(
-        languageRef.current === 'ar'
-          ? 'انتهت الجلسة — سجّل الدخول مرة أخرى'
-          : 'Session expired — please sign in again',
-        { id: 'api-unauthorized' },
-      );
-      // Never quit Electron on a 401 (Railway bounce during deploy looks like an update-then-close).
-      void handleLogout({ quitElectron: false }).finally(() => {
-        clearing = false;
-      });
+      suppressApiUnauthorizedLogout(30_000);
+      void (async () => {
+        try {
+          const lost = await confirmSessionLostAfterUnauthorized(() => authApi.sessionProbe());
+          if (!lost) return;
+          const stillSignedIn = Boolean(userRef.current || passwordSessionRef.current);
+          if (isElectronShell() && stillSignedIn) {
+            setIdleLocked(true);
+            broadcastSessionLock(true);
+            toast.error(
+              languageRef.current === 'ar'
+                ? 'انقطع الاتصال بالخادم — أدخل كلمة المرور للمتابعة. التطبيق لم يُغلق.'
+                : 'Server session interrupted — enter your password to continue. The app is still open.',
+              { id: 'api-unauthorized' },
+            );
+            return;
+          }
+          toast.error(
+            languageRef.current === 'ar'
+              ? 'انتهت الجلسة — سجّل الدخول مرة أخرى'
+              : 'Session expired — please sign in again',
+            { id: 'api-unauthorized' },
+          );
+          await handleLogout({ quitElectron: false });
+        } finally {
+          clearing = false;
+        }
+      })();
     };
     window.addEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized);
     return () => window.removeEventListener(API_UNAUTHORIZED_EVENT, onUnauthorized);
@@ -392,6 +421,8 @@ export default function App() {
 
   const handlePasswordLogin = useCallback(async (localUser: AppUser) => {
     resetStartupSession();
+    markDesktopWindowSessionAlive();
+    clearFreshLoginRequired();
     setPasswordSession(localUser);
     await applyLocalAppUser(localUser);
     setLoading(false);
@@ -494,9 +525,16 @@ export default function App() {
     if (!isElectronShell()) return;
     let cancelled = false;
     void (async () => {
-      // Secondary "New GUI" window (SAP-style): keep persist:webcost cookies —
-      // do NOT clear session or force password screen again.
-      if (isDesktopSessionReuseWindow()) {
+      // Secondary "New GUI" window (SAP-style) AND SPA reload in the same OS window
+      // keep persist:webcost cookies — do NOT clear session or force password again.
+      if (
+        !shouldRunElectronColdStartReset({
+          isElectron: true,
+          isReuseWindow: isDesktopSessionReuseWindow(),
+          windowSessionAlive: isDesktopWindowSessionAlive(),
+          keepSessionOnLoad: isDesktopReloadKeepingSession(),
+        })
+      ) {
         if (cancelled) return;
         setBootAuthResetDone(true);
         setAuthInitDone(true);
@@ -816,27 +854,45 @@ export default function App() {
         } else if (isLocalBackend) {
           resetLocalCoaBootstrap();
           setApiAuthIdToken(null);
-          try {
-            const probe = await authApi.sessionProbe();
-            if (probe.authenticated && probe.user) {
-              // Electron primary cold start still requires a fresh password login.
-              // Secondary New GUI windows reuse the Express cookie session instead.
-              const allowReuseSession =
-                isDesktopSessionReuseWindow() || !mustPasswordLogin();
-              if (!allowReuseSession) {
-                void authApi.logout().catch(() => undefined);
-              } else {
-                if (isDesktopSessionReuseWindow()) {
-                  clearFreshLoginRequired();
-                }
-                setPasswordSession(probe.user);
-                await applyLocalAppUser(probe.user);
-                authenticatedUser = null;
-                return;
+          let probe: { authenticated: boolean; user?: AppUser } | null = null;
+          for (let attempt = 0; attempt < 4; attempt++) {
+            try {
+              probe = await authApi.sessionProbe();
+              break;
+            } catch {
+              if (attempt < 3) {
+                await new Promise((resolve) => setTimeout(resolve, 2000));
               }
             }
-          } catch {
-            /* no password session */
+          }
+          if (probe?.authenticated && probe.user) {
+            // Electron primary cold start still requires a fresh password login.
+            // SPA reload in this window and Ctrl+N reuse the Express cookie instead.
+            const allowReuseSession = shouldReuseDesktopPasswordSession({
+              isReuseWindow: isDesktopSessionReuseWindow(),
+              windowSessionAlive: isDesktopWindowSessionAlive(),
+              keepSessionOnLoad: isDesktopReloadKeepingSession(),
+              mustPasswordLogin: mustPasswordLogin(),
+            });
+            if (!allowReuseSession) {
+              void authApi.logout().catch(() => undefined);
+            } else {
+              markDesktopWindowSessionAlive();
+              clearFreshLoginRequired();
+              setPasswordSession(probe.user);
+              await applyLocalAppUser(probe.user);
+              authenticatedUser = null;
+              return;
+            }
+          } else if (currentShouldReuseDesktopPasswordSession()) {
+            // Railway was unreachable — keep the cookie; user can retry from Login.
+            setPasswordSession(null);
+            setUserRole('user');
+            setUserPermissions(DEFAULT_PERMISSIONS);
+            defaultModuleRef.current = DEFAULT_MODULE;
+            resetStartupSession();
+            authenticatedUser = null;
+            return;
           }
           setPasswordSession(null);
           void authApi.logout().catch(() => undefined);
@@ -871,6 +927,7 @@ export default function App() {
   const unlockIdleSession = useCallback(() => {
     setIdleLocked(false);
     broadcastSessionLock(false);
+    clearApiUnauthorizedLogoutSuppress();
   }, []);
 
   useEffect(() => subscribeSessionLock(setIdleLocked), []);

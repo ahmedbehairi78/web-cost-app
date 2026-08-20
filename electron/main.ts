@@ -70,6 +70,9 @@ function isGoogleAccountsUrl(url: string): boolean {
 
 /** Application windows (not OAuth popups). Share DESKTOP_SESSION_PARTITION. */
 const appWindows = new Set<BrowserWindow>();
+const loadFailRetries = new WeakMap<WebContents, number>();
+/** After the first successful load, later reloads of this WebContents keep the session. */
+const webContentsReadyForSessionKeep = new WeakSet<WebContents>();
 
 /**
  * WebContents opened as SAP-style New GUI (`reuseSession: true`).
@@ -332,9 +335,31 @@ function createAppWindow(opts?: { reuseSession?: boolean }): BrowserWindow {
 
   win.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL, isMainFrame) => {
     console.error('[electron] did-fail-load', { errorCode, errorDescription, validatedURL, isMainFrame });
-    if (isMainFrame) {
-      showLoadError(win, `${errorDescription} (${errorCode})`);
+    if (!isMainFrame) return;
+    // Navigation cancelled (new load started) — do not wipe the current page.
+    if (errorCode === -3) return;
+    if (typeof validatedURL === 'string' && validatedURL.startsWith('data:')) return;
+
+    const prev = loadFailRetries.get(win.webContents) ?? 0;
+    const next = prev + 1;
+    loadFailRetries.set(win.webContents, next);
+    if (next <= 5) {
+      const delayMs = Math.min(2000 * next, 10_000);
+      console.warn(`[electron] retry load ${next}/5 in ${delayMs}ms`);
+      setTimeout(() => {
+        if (win.isDestroyed()) return;
+        void win.loadURL(withReuseSessionQuery(START_URL, reuseSession)).catch((err: unknown) => {
+          console.error('[electron] retry loadURL rejected', err);
+        });
+      }, delayMs);
+      return;
     }
+    showLoadError(win, `${errorDescription} (${errorCode})`);
+  });
+
+  win.webContents.on('did-finish-load', () => {
+    loadFailRetries.set(win.webContents, 0);
+    webContentsReadyForSessionKeep.add(win.webContents);
   });
 
   win.webContents.on('render-process-gone', (_event, details) => {
@@ -459,6 +484,10 @@ ipcMain.handle('open-new-window', () => {
 /** Sync — preload reads this before exposing `webCostDesktop.reuseSession`. */
 ipcMain.on('query-reuse-session', (event) => {
   event.returnValue = reuseSessionWebContents.has(event.sender);
+});
+
+ipcMain.on('query-keep-session', (event) => {
+  event.returnValue = webContentsReadyForSessionKeep.has(event.sender);
 });
 
 /** Reveal a New GUI window after the SPA has restored the session (or failed). */
@@ -693,6 +722,5 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
 
-app.on('before-quit', () => {
-  void clearDesktopAuthCookies();
-});
+// Do not clear session cookies here. SPA reload / updater restart would look like
+// a forced logout. Cold-start in the SPA still wipes cookies on a real OS launch.
