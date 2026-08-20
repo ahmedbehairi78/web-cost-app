@@ -211,7 +211,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `Banks.tsx` | `bank_*` + GL (Firestore) | **local:** `banksApi` + `bankPersistence` — **3 tabs:** `accounts` (statement split-view) · **`transactions`** (movements+cheques split-view) · `statements`; GL via `accountingService`/`glApi`; **no top stat cards** on `accounts`/`transactions` |
 | `Inventory.tsx` | cloud: Firestore | **local:** projects/contracts/COA + مخازن/صرف/إرجاع/تحويلات عبر API — **لا Firestore** |
 | `PurchaseRequests.tsx` | — | **local:** Postgres `purchase_requests` — طلب توريد (مكود/غير مكود) · BOQ كود+وصف فقط · حالات بدون فاتورة/GL · إشعار + واتساب لمسؤولي المشتريات |
-| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — تخطيط التزامات vs بنوك 12101 + نقد 12102 + مستخلصات غير محصّلة · **بدون قيد GL** · حد أدنى عهدة `min_balance` على 12102… |
+| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** (تخطيط التزامات vs بنوك 12101 + نقد 12102 + مستخلصات غير محصّلة) · **بدون قيد GL** · حد أدنى عهدة `min_balance` على 12102… |
 | `OverheadAllocation.tsx` | — | **local:** Postgres — دورات OHA + **قفل فترات محاسبية** (`PeriodLockPanel`) + قائمة دخل (placeholder) |
 | ~~`SubcontractorExtracts.tsx`~~ | — | **Hidden** — functionality covered by ActualCosts IPC tab; file on disk but removed from Sidebar + `modules.ts` |
 
@@ -983,7 +983,7 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
-## 🔴 HANDOFF — بدجيت الالتزامات (تخطيط فقط) ✅ (2026-08-20)
+## 🔴 HANDOFF — موازنة نقدية (تخطيط فقط) ✅ (2026-08-20)
 
 > **جلسة 2026-08-20:** موديول `cash_budget` — التزامات للدفع مقابل بنوك 12101 + نقد/عهد 12102 + مستخلصات عميل غير محصّلة. **لا قيد يومية.**
 
@@ -998,7 +998,7 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 ```powershell
 npx prisma migrate deploy
 npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/lib/moduleViewPermissions.test.ts
-# أعد تشغيل API → بدجيت الالتزامات (بعد البنوك) → فترة أسبوعية → اقتراح → اعتماد (بلا GL)
+# أعد تشغيل API → موازنة نقدية (بعد البنوك) → فترة أسبوعية → اقتراح → اعتماد (بلا GL)
 ```
 
 ---

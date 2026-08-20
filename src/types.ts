@@ -120,7 +120,7 @@ export const CRUD_MODULES: { id: CrudModuleKey; ar: string; en: string; group?: 
   { id: 'costs_custody', ar: 'تسوية عهدة', en: 'Custody Settlement', group: 'costs' },
   { id: 'suppliers', ar: 'الموردون', en: 'Suppliers' },
   { id: 'banks', ar: 'البنوك', en: 'Banks' },
-  { id: 'cash_budget', ar: 'بدجيت الالتزامات', en: 'Cash Budget' },
+  { id: 'cash_budget', ar: 'موازنة نقدية', en: 'Cash budget' },
   { id: 'inventory', ar: 'إدارة المخازن', en: 'Inventory' },
   { id: 'purchase_requests', ar: 'أوامر الشراء', en: 'Purchase Requests' },
   { id: 'assets', ar: 'الأصول الثابتة', en: 'Fixed Assets' },

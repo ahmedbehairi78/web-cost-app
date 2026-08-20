@@ -1682,8 +1682,8 @@ const PERMISSION_GROUPS: PermGroupDef[] = [
   },
   {
     moduleId: 'cash_budget',
-    ar: 'بدجيت الالتزامات',
-    en: 'Cash Budget',
+    ar: 'موازنة نقدية',
+    en: 'Cash budget',
     icon: Wallet,
     rows: [
       {
@@ -1692,7 +1692,7 @@ const PERMISSION_GROUPS: PermGroupDef[] = [
         labelAr: 'تخطيط التزامات مقابل مصادر تمويل — بدون قيد يومية',
         labelEn: 'Plan obligations vs funding — no GL posting',
         views: [
-          { ar: 'فترات بدجيت الالتزامات', en: 'Cash budget periods' },
+          { ar: 'فترات الموازنة النقدية', en: 'Cash budget periods' },
         ],
       },
     ],

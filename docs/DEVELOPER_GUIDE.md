@@ -297,7 +297,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 >
 > **أوامر الشراء (`purchase_requests`, 2026-08-02):** نافذة مستقلة في الشريط لكل المستخدمين المسجّلين (`canOpenShellModule` / `canOpenModuleView` دائماً true). التنفيذ = تغيير حالة فقط (لا فاتورة / لا GL). BOQ picker عبر `GET /api/purchase-requests/boq-picker` يعيد **كود + وصف** فقط. إشعارات `purchase_request_pending` + واتساب لمستخدمي `purchase_requests.edit`. ملفات: `PurchaseRequests.tsx` · `server/src/modules/purchaseRequests.ts` · migration `20260802120000_purchase_requests`.
 >
-> **بدجيت الالتزامات (`cash_budget`, 2026-08-20):** بعد البنوك في الشريط. تخطيط أسبوعي/نصف شهري/شهري — التزامات مقابل بنوك `12101` + نقد `12102` + مستخلصات غير محصّلة. **لا قيد GL.** حد أدنى عهدة `min_balance` على أوراق `12102…`. صلاحية CRUD `cash_budget` (ليست مفتوحة للجميع). ملفات: `CashBudget.tsx` · `src/lib/cashBudget.ts` · `server/src/modules/cashBudget.ts` · migration `20260820120000_cash_budget`. سجل أيضاً في `ErpWorkspace` + `shellNav` + `VISIBLE_SHELL_MODULE_IDS`.
+> **موازنة نقدية (`cash_budget`, 2026-08-20):** بعد البنوك في الشريط. تخطيط أسبوعي/نصف شهري/شهري — التزامات مقابل بنوك `12101` + نقد `12102` + مستخلصات غير محصّلة. **لا قيد GL.** حد أدنى عهدة `min_balance` على أوراق `12102…`. صلاحية CRUD `cash_budget` (ليست مفتوحة للجميع). ملفات: `CashBudget.tsx` · `src/lib/cashBudget.ts` · `server/src/modules/cashBudget.ts` · migration `20260820120000_cash_budget`. سجل أيضاً في `ErpWorkspace` + `shellNav` + `VISIBLE_SHELL_MODULE_IDS`.
 
 ---
 

@@ -256,7 +256,7 @@
 
 ## 9) حالة التقدّم (يُحدّث كل جلسة)
 
-- **2026-08-20:** تحديث Railway: حوار قشرة **الآن/لاحقاً** (لاحقاً افتراضي · الجلسة تبقى) · لا `app.quit` عند 401. موديول **بدجيت الالتزامات** (`cash_budget`) — تخطيط فقط (لا GL) · migration `20260820120000_cash_budget` + `chart_of_accounts.min_balance`. يلزم `migrate deploy` على Railway.
+- **2026-08-20:** تحديث Railway: حوار قشرة **الآن/لاحقاً** (لاحقاً افتراضي · الجلسة تبقى) · لا `app.quit` عند 401. موديول **موازنة نقدية** (`cash_budget`) — تخطيط فقط (لا GL) · migration `20260820120000_cash_budget` + `chart_of_accounts.min_balance`. يلزم `migrate deploy` على Railway.
 - **2026-08-09:** اعتماد الاستلام المخزني عبر **فاتورة مشتريات** (VAT/WHT + `priceUnpriced`)؛ `/warehouse-receipts/:id/approve` → 410؛ إشعار يفتح تبويب الفاتورة.
 - **2026-08-02:** موديول **أوامر الشراء** (`purchase_requests`) — Postgres + API + UI + إشعارات/واتساب؛ تنفيذ = حالة فقط (لا GL). Migration `20260802120000_purchase_requests` مطبّقة محلياً — يلزم `migrate deploy` على Railway عند النشر.
 

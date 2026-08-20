@@ -134,7 +134,7 @@ export const PERMISSION_MENU_HINTS: Partial<
     { ar: 'الطلبات المنتهية', en: 'Executed requests' },
   ],
   cash_budget: [
-    { ar: 'بدجيت الالتزامات الأسبوعية/الشهرية', en: 'Weekly / monthly cash budget' },
+    { ar: 'الموازنة النقدية الأسبوعية/الشهرية', en: 'Weekly / monthly cash budget' },
   ],
   dashboard: [{ ar: 'لوحة التحكم الرئيسية', en: 'Main dashboard' }],
 };

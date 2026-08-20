@@ -155,7 +155,7 @@ export const REPORT_PRINT_LABELS: Record<ReportPrintId, { ar: string; en: string
   gl_journal_entry: { ar: 'قيد يومية', en: 'Journal Entry' },
   fixed_assets: { ar: 'سجل الأصول الثابتة', en: 'Fixed Assets Register' },
   payroll: { ar: 'كشف الرواتب', en: 'Payroll Register' },
-  cash_budget: { ar: 'بدجيت الالتزامات', en: 'Cash Budget' },
+  cash_budget: { ar: 'موازنة نقدية', en: 'Cash budget' },
 };
 
 /** CSS font-family stacks for print documents. */
