@@ -395,6 +395,21 @@ export function sanitizeProfile(
 
 export type StoredReportPrintProfiles = Partial<Record<ReportPrintId, Partial<ReportPrintProfile>>>;
 
+/** Overlay wins per report id — never drop other reports when saving one design. */
+export function mergeStoredReportPrintProfiles(
+  base: StoredReportPrintProfiles | undefined,
+  overlay: StoredReportPrintProfiles | undefined,
+): StoredReportPrintProfiles {
+  return { ...(base || {}), ...(overlay || {}) };
+}
+
+export function printProfileEquals(
+  a: ReportPrintProfile,
+  b: ReportPrintProfile,
+): boolean {
+  return JSON.stringify(sanitizeProfile(a, a)) === JSON.stringify(sanitizeProfile(b, b));
+}
+
 /** Merge company-stored overrides with built-in defaults for one report. */
 export function resolveReportPrintProfile(
   stored: StoredReportPrintProfiles | undefined,

@@ -121,6 +121,14 @@ const translations: Record<Language, Record<string, string>> = {
     cb_manual_invalid: 'أدخل وصفاً ومبلغاً أكبر من صفر',
     cb_suggest: 'تحديث الاقتراح',
     cb_print: 'طباعة',
+    cb_export_excel: 'تصدير Excel',
+    cb_export_failed: 'فشل تصدير الموازنة النقدية',
+    cb_sheet_summary: 'ملخص',
+    cb_period_number: 'رقم الفترة',
+    cb_col_status: 'الحالة',
+    cb_col_origin: 'المصدر',
+    cb_yes: 'نعم',
+    cb_no: 'لا',
     cb_approve: 'اعتماد الخطة',
     cb_reopen: 'إعادة الفتح',
     cb_delete: 'حذف',
@@ -688,6 +696,7 @@ const translations: Record<Language, Record<string, string>> = {
     report_fmt_footer: 'التذييل',
     report_fmt_reset: 'إعادة للافتراضي',
     report_fmt_save: 'حفظ التصميم',
+    report_fmt_save_unchanged: 'لا تغييرات لحفظها في تصميم هذا التقرير',
     report_fmt_saved: 'تم حفظ تصميم الطباعة',
     report_fmt_save_failed: 'تعذر حفظ تنسيق التقرير',
     report_fmt_hf_panel: 'رأس وتذييل',
@@ -2557,9 +2566,9 @@ const translations: Record<Language, Record<string, string>> = {
     manual_cash_budget_plan_step_3_title: 'اقرأ الفجوة',
     manual_cash_budget_plan_step_3_body:
       'الفجوة = (بنوك + خزينة + مستخلصات تحت التحصيل) − الالتزامات. بنود البنوك والخزينة في الجدول لا تُضاف مرة ثانية إلى المستخلصات.',
-    manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة',
+    manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة أو Excel',
     manual_cash_budget_plan_step_4_body:
-      'اختر نسبة سداد من إجمالي المديونية (25/50/75/100 أو نسبة حرّة). الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد. السداد المقترح = الأقل بين بنوك 12101 والالتزامات × النسبة، موزَّعاً حسب وزن الحساب. صناديق/عهد 12102 لا تُوزَّع. أعد الفتح لتعديل البنود؛ يمكن تغيير النسبة بعد الاعتماد.',
+      'اختر نسبة سداد من إجمالي المديونية (25/50/75/100 أو نسبة حرّة). الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد. السداد المقترح = الأقل بين بنوك 12101 والالتزامات × النسبة، موزَّعاً حسب وزن الحساب. صناديق/عهد 12102 لا تُوزَّع. أعد الفتح لتعديل البنود؛ يمكن تغيير النسبة بعد الاعتماد. زر Excel يصدّر الملخص والالتزامات وإجمالي المشروع وحدود العهد.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -2656,6 +2665,14 @@ const translations: Record<Language, Record<string, string>> = {
     cb_manual_invalid: 'Enter a description and an amount greater than zero',
     cb_suggest: 'Refresh suggestion',
     cb_print: 'Print',
+    cb_export_excel: 'Export Excel',
+    cb_export_failed: 'Could not export the cash budget',
+    cb_sheet_summary: 'Summary',
+    cb_period_number: 'Period no.',
+    cb_col_status: 'Status',
+    cb_col_origin: 'Source',
+    cb_yes: 'Yes',
+    cb_no: 'No',
     cb_approve: 'Approve plan',
     cb_reopen: 'Reopen',
     cb_delete: 'Delete',
@@ -3223,6 +3240,7 @@ const translations: Record<Language, Record<string, string>> = {
     report_fmt_footer: 'Footer',
     report_fmt_reset: 'Reset default',
     report_fmt_save: 'Save design',
+    report_fmt_save_unchanged: 'No design changes to save for this report',
     report_fmt_saved: 'Print design saved',
     report_fmt_save_failed: 'Could not save report format',
     report_fmt_hf_panel: 'Header & Footer',
@@ -5094,9 +5112,9 @@ const translations: Record<Language, Record<string, string>> = {
     manual_cash_budget_plan_step_3_title: 'Read the gap',
     manual_cash_budget_plan_step_3_body:
       'Gap = (banks + treasury + uncollected IPCs) − obligations. Bank and treasury table lines are not added again on top of IPC receivables.',
-    manual_cash_budget_plan_step_4_title: 'Approve or print',
+    manual_cash_budget_plan_step_4_title: 'Approve, print, or Excel',
     manual_cash_budget_plan_step_4_body:
-      'Choose a settlement percent of total payables (25/50/75/100 or a custom rate). Approve removes excluded lines and locks edits with no journal. Proposed payment = the lower of banks 12101 and obligations × percent, split by account weight. Cash/custody 12102 is not allocated. Reopen to edit lines; the percent can still be changed after approve.',
+      'Choose a settlement percent of total payables (25/50/75/100 or a custom rate). Approve removes excluded lines and locks edits with no journal. Proposed payment = the lower of banks 12101 and obligations × percent, split by account weight. Cash/custody 12102 is not allocated. Reopen to edit lines; the percent can still be changed after approve. Excel exports the summary, obligation lines, project totals, and custody floors.',
   }
 };
 

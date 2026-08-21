@@ -634,7 +634,7 @@ Shared helpers at top of file: `INVENTORY127_AGG_CODE` (= `PROJECT_WAREHOUSE_PAR
 - **PDF (Electron):** `print-report-pdf` IPC → Chromium `printToPDF` + خط محلي من الجهاز (أولوية: **Calibri** ثم Segoe UI / Tahoma / Arial تحت Windows Fonts). المتصفح: حوار طباعة ثانوي فقط.
 - **طباعة/PDF:** مستند `reportDocument` يقسّم الصفحات (`pageChunks` للميزانية بنفس عدد صفوف الشاشة؛ باقي التقارير حسب الكثافة) مع ترويسة/تذييل لكل ورقة · الكثافة تتحكم بحجم الخط · محاذاة الأرقام على الفاصلة العشرية (LTR + tabular) حسب لغة الواجهة · هوامش Electron `marginType: 'none'` ليتوافق مع `@page`.
 - **إعدادات عامة → طباعة:** بيانات الشركة + رابط الشعار + نص التذييل فقط ([`PrintSettingsPanel`](src/components/settings/PrintSettingsPanel.tsx)) — **تصميم الطباعة بالكامل من شريط التنسيق**.
-- **بقية الموديولات:** hook **`useReportDocumentPreview`** (`src/hooks/useReportDocumentPreview.tsx`) يفتح **`ReportPreviewDialog`** (`src/components/print/ReportPreviewDialog.tsx`) — معاينة + شريط تنسيق (`ReportFormatToolbar`) + طباعة + PDF + **حفظ التصميم** لكل تقرير عبر **`reportPrintProfilesPersistence.ts`** (local `settingsApi` أو Firestore `company_info.reportPrintProfiles`).
+- **Cash budget Excel:** [`cashBudgetExcel.ts`](src/lib/cashBudgetExcel.ts) — ملخص + التزامات + إجمالي مشروع + حدود عهد من شاشة الموازنة (`تصدير Excel` بجانب الطباعة).
 - **شهادات/مستندات:** **`buildCertificateDocs.ts`** — `buildIpcCertificateDocument` · `buildMosCertificateDocument` · `buildVoCertificateDocument` · `buildCustodySettlementSections` تبني مستندات **أقسام** (`sections`: `keyValue` · `table` · `summary` · `signatures` · `note` في `types.ts`؛ ترسمها `renderHtml.ts` مع تقسيم صفحات للجداول المتدفقة).
 - **hooks الطباعة القائمة** (`useIpcPrintPreview` · `useMosPrintPreview` · `useVoPrintPreview`) تحتفظ بتوقيع `requestPrint` نفسه لكنها تبني مستند شهادة وتفتحه في `ReportPreviewDialog` داخلياً.
 - **المسار القديم حُذف نهائياً (2026-07-31):** لا `printReport.ts` / `triggerReportPrint` / `useReportPrintPreview` / استنساخ DOM، ولا CSS `.report-print-clone` / `body.report-print-mode` / `.report-print-preview-*`، ولا مكتبات **`html2pdf.js` / `jspdf` / `jspdf-autotable`**. لا تستدعِ `window.print()` مباشرة على DOM النافذة — ابنِ `ReportDocument` وافتح المعاينة.
@@ -1707,7 +1707,7 @@ npm run test -- src/lib/moduleViewPermissions.test.ts
 |--------|------|--------|
 | **محرك الأقسام** | `ReportDocSection` (`keyValue` · `table` · `summary` · `signatures` · `note`) + رسمها مع تقسيم صفحات | `reportDocument/types.ts` · `renderHtml.ts` · `buildTableDoc.ts` |
 | **حوار معاينة موحّد** | `ReportPreviewDialog` (iframe + `ReportFormatToolbar` + طباعة + PDF + حفظ التصميم) عبر hook `useReportDocumentPreview` | `ReportPreviewDialog.tsx` · `useReportDocumentPreview.tsx` |
-| **حفظ التصاميم** | `saveReportPrintProfile` — local `settingsApi` أو Firestore `company_info.reportPrintProfiles` | `reportPrintProfilesPersistence.ts` |
+| **حفظ التصاميم** | `persistReportPrintProfiles` — دمج ثم PATCH (reports **أو** settings) | `reportPrintProfilesPersistence.ts` |
 | **شهادات** | IPC عميل/باطن · MOS · أوامر تغيير · تسوية عهدة كمستندات أقسام | `buildCertificateDocs.ts` · `useIpcPrintPreview` · `useMosPrintPreview` · `useVoPrintPreview` · `GLCustodySettlement.tsx` |
 | **كشوف** | بنكي · GL · مخزن · أصول ثابتة · رواتب عبر `buildTableReportDocument` | `BankAccountStatementPanel` · `GLAccountStatement` · `Inventory` · `FixedAssets` · `Payroll` |
 | **PDF قيد اليومية** | استبدال `html2pdf.js` بمستند منصة | `GLJournalEntries.tsx` |

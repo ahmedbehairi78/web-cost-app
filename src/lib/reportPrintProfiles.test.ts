@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
+  mergeStoredReportPrintProfiles,
+  printProfileEquals,
   REPORT_PRINT_DEFAULTS,
   physicalTableCellTextAlign,
   resolvePrintTextDir,
@@ -100,6 +102,22 @@ describe('reportPrintProfiles format fields', () => {
     expect(resolved.showHeader).toBe(false);
     expect(resolved.marginPreset).toBe('wide');
     expect(resolved.orientation).toBe('portrait');
+  });
+
+  it('mergeStoredReportPrintProfiles keeps other reports when overlaying one', () => {
+    const merged = mergeStoredReportPrintProfiles(
+      { income: { fontFamily: 'arial' }, cash_budget: { orientation: 'portrait' } },
+      { cash_budget: { orientation: 'landscape' } },
+    );
+    expect(merged.income?.fontFamily).toBe('arial');
+    expect(merged.cash_budget?.orientation).toBe('landscape');
+  });
+
+  it('printProfileEquals is true for equivalent sanitized profiles', () => {
+    const a = resolveReportPrintProfile({ cash_budget: { fontFamily: 'tahoma' } }, 'cash_budget');
+    const b = resolveReportPrintProfile({ cash_budget: { fontFamily: 'tahoma' } }, 'cash_budget');
+    expect(printProfileEquals(a, b)).toBe(true);
+    expect(printProfileEquals(a, REPORT_PRINT_DEFAULTS.cash_budget)).toBe(false);
   });
 
   it('resolvePrintTextDir respects auto and overrides', () => {

@@ -5,12 +5,15 @@ import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import { SHELL_REPORT_PREVIEW_Z } from '../../lib/shellTheme';
 import {
+  printProfileEquals,
   resolvePrintTextDir,
   resolveReportPrintProfile,
   type ReportPrintId,
   type ReportPrintProfile,
   type StoredReportPrintProfiles,
 } from '../../lib/reportPrintProfiles';
+import { canSaveCompanyPrintDesign } from '../../lib/userPreferences';
+import { useOptionalPermissions } from '../../context/PermissionsContext';
 import { persistReportPrintProfiles } from '../../lib/reportPrintProfilesPersistence';
 import {
   clearSelectionUndo,
@@ -86,15 +89,20 @@ export function ReportPreviewDialog({
   t,
   formatMoney,
   storedProfiles,
-  canSaveDesign = false,
+  canSaveDesign,
   onProfilesSaved,
 }: ReportPreviewDialogProps) {
   const isAr = language === 'ar';
+  const perms = useOptionalPermissions();
+  const allowSave =
+    canSaveDesign ??
+    canSaveCompanyPrintDesign(perms?.permissions);
   const [profile, setProfile] = useState<ReportPrintProfile>(() =>
     resolveReportPrintProfile(storedProfiles, reportId),
   );
   const [showFormat, setShowFormat] = useState(true);
   const [dirty, setDirty] = useState(false);
+  const dirtyRef = useRef(false);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
@@ -137,6 +145,7 @@ export function ReportPreviewDialog({
 
   useEffect(() => {
     if (!open) return;
+    dirtyRef.current = false;
     setProfile(resolveReportPrintProfile(storedProfiles, reportId));
     setDirty(false);
     setSelectionHtmlDirty(false);
@@ -146,6 +155,12 @@ export function ReportPreviewDialog({
     hideMiniBar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, reportId]);
+
+  // Apply company-stored design when it arrives after the dialog opened (async GET).
+  useEffect(() => {
+    if (!open || dirtyRef.current) return;
+    setProfile(resolveReportPrintProfile(storedProfiles, reportId));
+  }, [open, reportId, storedProfiles]);
 
   useEffect(() => {
     if (!open) return;
@@ -296,11 +311,13 @@ export function ReportPreviewDialog({
   }, [open, previewHtml]);
 
   const patchProfile = useCallback((patch: Partial<ReportPrintProfile>) => {
+    dirtyRef.current = true;
     setProfile((prev) => ({ ...prev, ...patch }));
     setDirty(true);
   }, []);
 
   const resetProfile = useCallback(() => {
+    dirtyRef.current = true;
     setProfile(resolveReportPrintProfile(undefined, reportId));
     setDirty(true);
   }, [reportId]);
@@ -336,16 +353,16 @@ export function ReportPreviewDialog({
     }
   }, [docResult, exporting, formatMoney, isAr, liveHtmlOverride]);
 
+  const storedResolved = resolveReportPrintProfile(storedProfiles, reportId);
+  const profileDirty = dirty || !printProfileEquals(profile, storedResolved);
+
   const handleSaveDesign = useCallback(async () => {
     if (saving) return;
     setSaving(true);
     try {
-      const next: StoredReportPrintProfiles = {
-        ...(storedProfiles || {}),
-        [reportId]: { ...profile },
-      };
-      await persistReportPrintProfiles(next);
-      onProfilesSaved?.(next);
+      const merged = await persistReportPrintProfiles({ [reportId]: { ...profile } });
+      dirtyRef.current = false;
+      onProfilesSaved?.(merged);
       setDirty(false);
       toast.success(t('report_fmt_saved'));
     } catch (err) {
@@ -354,7 +371,7 @@ export function ReportPreviewDialog({
     } finally {
       setSaving(false);
     }
-  }, [saving, storedProfiles, reportId, profile, onProfilesSaved, t]);
+  }, [saving, reportId, profile, onProfilesSaved, t]);
 
   if (!open) return null;
 
@@ -392,14 +409,15 @@ export function ReportPreviewDialog({
             <SlidersHorizontal size={14} />
             {t('report_fmt_toolbar')}
           </button>
-          {canSaveDesign ? (
+          {allowSave ? (
             <button
               type="button"
-              onClick={handleSaveDesign}
-              disabled={!dirty || saving}
+              onClick={() => void handleSaveDesign()}
+              disabled={!profileDirty || saving}
+              title={profileDirty ? t('report_fmt_save') : t('report_fmt_save_unchanged')}
               className={cn(
                 'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold',
-                dirty && !saving
+                profileDirty && !saving
                   ? 'bg-emerald-600 text-white hover:bg-emerald-500'
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed',
               )}

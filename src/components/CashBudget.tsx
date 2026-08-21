@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
+  FileSpreadsheet,
   Loader2,
   Plus,
   Printer,
@@ -30,6 +31,7 @@ import {
   type CostCenterAllocationTotal,
 } from '../lib/cashBudget';
 import { moduleAccess } from '../lib/permissions';
+import { exportCashBudgetExcel } from '../lib/cashBudgetExcel';
 import { useReportDocumentPreview } from '../hooks/useReportDocumentPreview';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import { ManualHelpButton } from './help/ManualHelpButton';
@@ -62,6 +64,24 @@ function projectLabel(line: CashBudgetLineRow, isAr: boolean, t: (key: string) =
 
 function formatAllocPct(pct: number): string {
   return `${pct.toFixed(2)}%`;
+}
+
+function periodTypeLabel(type: string, t: (key: string) => string): string {
+  if (type === 'weekly') return t('cb_weekly');
+  if (type === 'biweekly') return t('cb_biweekly');
+  return t('cb_monthly');
+}
+
+function categoryLabel(category: string, t: (key: string) => string): string {
+  if (category === 'supplier') return t('cb_cat_supplier');
+  if (category === 'subcontractor') return t('cb_cat_subcontractor');
+  if (category === 'custody_settlement') return t('cb_cat_custody_settlement');
+  if (category === 'custody_replenish') return t('cb_cat_custody_replenish');
+  if (category === 'payroll') return t('cb_cat_payroll');
+  if (category === 'opening_bank') return t('cb_cat_opening_bank');
+  if (category === 'opening_cash') return t('cb_cat_opening_cash');
+  if (category === 'collection') return t('cb_cat_collection');
+  return t('cb_cat_other');
 }
 
 export function CashBudget() {
@@ -479,10 +499,91 @@ export function CashBudget() {
     });
   };
 
-  const periodTypeLabel = (type: string) => {
-    if (type === 'weekly') return t('cb_weekly');
-    if (type === 'biweekly') return t('cb_biweekly');
-    return t('cb_monthly');
+  const handleExportExcel = () => {
+    if (!detail || !summary) {
+      toast.error(t('cb_select_period'));
+      return;
+    }
+    try {
+      exportCashBudgetExcel({
+        filename: isAr ? `موازنة_نقدية_${detail.periodNumber}` : `cash-budget-${detail.periodNumber}`,
+        labels: {
+          sheetSummary: t('cb_sheet_summary'),
+          sheetObligations: t('cb_obligations'),
+          sheetProjects: t('cb_by_project'),
+          sheetCustody: t('cb_custody_floors'),
+          periodNumber: t('cb_period_number'),
+          periodType: t('cb_period_type'),
+          periodStart: t('cb_period_start'),
+          periodEnd: t('cb_period_end'),
+          status: t('cb_col_status'),
+          settlementPct: t('cb_settlement_pct'),
+          kpiBanks: t('cb_kpi_banks'),
+          kpiCash: t('cb_kpi_cash'),
+          kpiSources: t('cb_kpi_sources'),
+          kpiObligations: t('cb_kpi_obligations'),
+          kpiGap: t('cb_gap'),
+          kpiPayPlan: t('cb_kpi_pay_plan'),
+          colAccount: t('cb_col_account'),
+          colProject: t('project'),
+          colCategory: t('cb_col_category'),
+          colAmount: t('cb_col_amount'),
+          colAllocated: t('cb_col_allocated'),
+          colAllocPct: t('cb_col_alloc_pct'),
+          colExcluded: t('cb_excluded'),
+          colOrigin: t('cb_col_origin'),
+          colObligationTotal: t('cb_col_cc_obligation'),
+          colAllocatedTotal: t('cb_col_cc_allocated'),
+          colGlBalance: t('cb_floor_gl'),
+          colMinBalance: t('cb_min_balance'),
+          colReplenish: t('cb_floor_shortfall'),
+          yes: t('cb_yes'),
+          no: t('cb_no'),
+        },
+        summary: {
+          periodNumber: detail.periodNumber,
+          periodType: periodTypeLabel(detail.periodType, t),
+          periodStart: detail.periodStart,
+          periodEnd: detail.periodEnd,
+          status: detail.status === 'approved' ? t('cb_status_approved') : t('cb_status_draft'),
+          settlementPct,
+          banks: summary.openingBank,
+          cash: summary.openingCash,
+          collections: summary.periodSources,
+          obligations: summary.obligations,
+          gap: summary.gap,
+          payPlan: payFromBanks,
+        },
+        lines: obligationLines.map((l) => {
+          const allocated = Number(l.allocatedCash ?? 0);
+          return {
+            account: accountLabel(l),
+            project: projectLabel(l, isAr, t),
+            category: categoryLabel(l.category, t),
+            amount: Number(l.amount),
+            allocated,
+            allocPct: l.excluded ? 0 : allocationSharePct(allocated, allocationPool),
+            excluded: Boolean(l.excluded),
+            origin: l.origin === 'manual' ? t('cb_origin_manual') : (l.origin ?? ''),
+          };
+        }),
+        projects: projectTotals.map((row) => ({
+          name: isAr ? row.name : row.nameEn,
+          obligation: row.obligation,
+          allocated: row.allocated,
+          pct: row.pct,
+        })),
+        custody: custodyLeaves.map((acc) => ({
+          account: `${acc.accountCode} — ${isAr ? acc.accountName : (acc.accountNameEn || acc.accountName)}`,
+          glBalance: Number(acc.glBalance) || 0,
+          minBalance: Number(floorDrafts[acc.accountId] ?? acc.minBalance) || 0,
+          replenish: Number(acc.replenish) || 0,
+        })),
+      });
+    } catch (e) {
+      console.error(e);
+      toast.error(t('cb_export_failed'));
+    }
   };
 
   const cardCls = cn(
@@ -520,7 +621,7 @@ export function CashBudget() {
               <label className="text-[11px] text-gray-500">{t('cb_period_type')}</label>
               <select className={cn(inputCls, 'mb-2')} value={newType} onChange={(e) => setNewType(e.target.value as CashBudgetPeriodType)}>
                 {CASH_BUDGET_PERIOD_TYPES.map((type) => (
-                  <option key={type} value={type}>{periodTypeLabel(type)}</option>
+                  <option key={type} value={type}>{periodTypeLabel(type, t)}</option>
                 ))}
               </select>
               <label className="text-[11px] text-gray-500">{t('cb_period_start')}</label>
@@ -554,7 +655,7 @@ export function CashBudget() {
                     >
                       <div className="font-semibold">{row.periodNumber}</div>
                       <div className={active ? 'opacity-90' : 'text-gray-500'}>
-                        {periodTypeLabel(row.periodType)} · {row.periodStart} → {row.periodEnd}
+                        {periodTypeLabel(row.periodType, t)} · {row.periodStart} → {row.periodEnd}
                       </div>
                       <div className="flex justify-between mt-0.5">
                         <span>{row.status === 'approved' ? t('cb_status_approved') : t('cb_status_draft')}</span>
@@ -596,6 +697,9 @@ export function CashBudget() {
                 )}
                 <button type="button" className={btnCls} onClick={handlePrint}>
                   <Printer size={14} /> {t('cb_print')}
+                </button>
+                <button type="button" className={btnCls} onClick={handleExportExcel}>
+                  <FileSpreadsheet size={14} /> {t('cb_export_excel')}
                 </button>
                 {isDraft && canWrite && (
                   <button type="button" className={primaryBtn} disabled={busy} onClick={() => void handleApprove()}>

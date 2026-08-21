@@ -50,6 +50,15 @@ export function canPersistUserPreferences(): boolean {
   return isLocalBackend || !!auth.currentUser;
 }
 
+/** Company-wide print design (`reportPrintProfiles`) — settings admin or Reports module. */
+export function canSaveCompanyPrintDesign(permissions?: {
+  settings?: boolean;
+  reports?: boolean;
+} | null): boolean {
+  if (!canPersistUserPreferences() || !permissions) return false;
+  return permissions.settings === true || permissions.reports === true;
+}
+
 async function mirrorFirestoreUserPrefs(patch: Partial<UserPreferences>): Promise<void> {
   const user = auth.currentUser;
   if (!user) return;

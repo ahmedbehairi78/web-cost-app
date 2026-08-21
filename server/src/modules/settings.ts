@@ -16,7 +16,7 @@ import {
   runBoqRateBackfill,
   isFirestoreServiceAccountConfigured,
 } from '../migration/backfillBoqRates.js';
-import { requireAuth, requirePermission, requireRole } from '../middleware/auth.js';
+import { requireAuth, requirePermission, requireReferenceRead, requireRole } from '../middleware/auth.js';
 import { asyncHandler } from '../middleware/asyncHandler.js';
 import { serialize } from '../prisma/serialize.js';
 import { findUserById, updateUserContact } from '../auth/users.js';
@@ -134,25 +134,40 @@ settingsRouter.put(
   }),
 );
 
-/** Non-admin reports users may patch print format profiles only (toolbar). */
+/**
+ * Per-report print designs (format toolbar).
+ * Merge into existing map so saving one report cannot wipe the others.
+ * Admin (`settings`) or Reports users may persist — GET company_info is any auth.
+ */
 settingsRouter.patch(
   '/company_info/report-print-profiles',
   requireAuth,
-  requirePermission('reports'),
+  requireReferenceRead('reports', 'settings'),
   asyncHandler(async (req, res) => {
     const body = req.body as { reportPrintProfiles?: unknown };
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
       res.status(400).json({ error: 'Invalid payload' });
       return;
     }
-    if (body.reportPrintProfiles == null || typeof body.reportPrintProfiles !== 'object') {
+    if (body.reportPrintProfiles == null || typeof body.reportPrintProfiles !== 'object' || Array.isArray(body.reportPrintProfiles)) {
       res.status(400).json({ error: 'reportPrintProfiles required' });
       return;
     }
     const existing = (await readSetting(COMPANY_INFO_KEY)) as Record<string, unknown> | null;
+    const existingObj =
+      existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
+    const prevProfiles =
+      existingObj.reportPrintProfiles &&
+      typeof existingObj.reportPrintProfiles === 'object' &&
+      !Array.isArray(existingObj.reportPrintProfiles)
+        ? (existingObj.reportPrintProfiles as Record<string, unknown>)
+        : {};
     const next = {
-      ...(existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {}),
-      reportPrintProfiles: body.reportPrintProfiles,
+      ...existingObj,
+      reportPrintProfiles: {
+        ...prevProfiles,
+        ...(body.reportPrintProfiles as Record<string, unknown>),
+      },
     };
     await writeSetting(COMPANY_INFO_KEY, next);
     res.json(serialize({ ok: true }));

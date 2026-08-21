@@ -1,8 +1,12 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import type { ReportPrintProfile, StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
+import { mergeStoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 import { buildTableReportDocument, type BuildTableDocInput } from '../lib/reportDocument';
-import { canPersistUserPreferences } from '../lib/userPreferences';
+import { canSaveCompanyPrintDesign } from '../lib/userPreferences';
+import { isLocalBackend } from '../lib/dataBackend';
+import { settingsApi } from '../services/local/modulesApi';
+import { useOptionalPermissions } from '../context/PermissionsContext';
 import { ReportPreviewDialog } from '../components/print/ReportPreviewDialog';
 
 /** Everything the consumer provides — layout comes from the live profile in the dialog. */
@@ -13,7 +17,7 @@ type UseReportDocumentPreviewOptions = {
   t: (key: string) => string;
   formatMoney: (n: number) => string;
   companyInfo: CompanyPrintInfo;
-  /** Override design-save gate (defaults to session persist capability). */
+  /** Override design-save gate (defaults to settings/reports + session). */
   canSaveDesign?: boolean;
 };
 
@@ -32,6 +36,7 @@ export function useReportDocumentPreview({
 }: UseReportDocumentPreviewOptions) {
   const [request, setRequest] = useState<ReportDocPreviewRequest | null>(null);
   const [savedProfiles, setSavedProfiles] = useState<StoredReportPrintProfiles | null>(null);
+  const perms = useOptionalPermissions();
 
   const openDocPreview = useCallback((req: ReportDocPreviewRequest) => {
     setRequest(req);
@@ -39,7 +44,29 @@ export function useReportDocumentPreview({
 
   const closeDocPreview = useCallback(() => setRequest(null), []);
 
-  const storedProfiles = savedProfiles ?? companyInfo.reportPrintProfiles;
+  useEffect(() => {
+    if (!request) return;
+    if (!isLocalBackend) return;
+    let cancelled = false;
+    void settingsApi
+      .getCompanyInfo()
+      .then((res) => {
+        const fromServer = res.value?.reportPrintProfiles;
+        if (cancelled || !fromServer) return;
+        setSavedProfiles((prev) => mergeStoredReportPrintProfiles(fromServer, prev ?? undefined));
+      })
+      .catch(() => {
+        /* keep in-memory / companyInfo */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [request]);
+
+  const storedProfiles = useMemo(
+    () => mergeStoredReportPrintProfiles(companyInfo.reportPrintProfiles, savedProfiles ?? undefined),
+    [companyInfo.reportPrintProfiles, savedProfiles],
+  );
 
   const buildDocument = useCallback(
     (profile: ReportPrintProfile) => {
@@ -48,14 +75,13 @@ export function useReportDocumentPreview({
         ...request,
         language,
         company: companyInfo,
-        // The edited profile always wins while the dialog is open.
         storedProfiles: { [request.reportId]: profile },
       });
     },
     [request, language, companyInfo],
   );
 
-  const allowSave = canSaveDesign ?? canPersistUserPreferences();
+  const allowSave = canSaveDesign ?? canSaveCompanyPrintDesign(perms?.permissions);
 
   const ReportPreviewHost = useMemo(() => {
     if (!request) return null;

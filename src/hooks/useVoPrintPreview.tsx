@@ -5,7 +5,7 @@ import { buildVoCertificateDocument } from '../lib/reportDocument';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import type { VoPrintData } from '../lib/voPrintData';
 import type { ReportPrintProfile, StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
-import { canPersistUserPreferences } from '../lib/userPreferences';
+import { mergeStoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 
 type PendingPrint = {
   data: VoPrintData;
@@ -68,8 +68,7 @@ export function useVoPrintPreview(
       language={language}
       t={t}
       formatMoney={formatMoney}
-      storedProfiles={savedProfiles ?? pending.companyInfo.reportPrintProfiles}
-      canSaveDesign={canPersistUserPreferences()}
+      storedProfiles={mergeStoredReportPrintProfiles(pending.companyInfo.reportPrintProfiles, savedProfiles ?? undefined)}
       onProfilesSaved={setSavedProfiles}
     />
   ) : null;
