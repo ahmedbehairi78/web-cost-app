@@ -34,3 +34,17 @@ export {
 export { renderReportDocumentHtml } from './renderHtml';
 export { exportReportDocumentPdf } from './exportPdf';
 export { openReportDocument } from './openDocument';
+export {
+  serializePreviewDocument,
+  applySelectionFontFamily,
+  applySelectionFontSize,
+  applySelectionColor,
+  toggleSelectionBold,
+  toggleSelectionItalic,
+  applySelectionUnderline,
+  applySelectionAlign,
+  applySelectionShade,
+  applySelectionBorder,
+  undoSelectionFormat,
+  canSelectionUndo,
+} from './selectionFormat';

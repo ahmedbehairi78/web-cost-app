@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlignCenter,
   AlignLeft,
@@ -9,6 +9,7 @@ import {
   PaintBucket,
   Square,
   Type,
+  Undo2,
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import {
@@ -19,18 +20,35 @@ import {
   type PrintBodyFontSize,
   type PrintFontFamily,
   type PrintTableBorder,
-  type PrintTableCellAlign,
-  type ReportPrintProfile,
 } from '../../lib/reportPrintProfiles';
+import {
+  applySelectionAlign,
+  applySelectionBorder,
+  applySelectionColor,
+  applySelectionFontFamily,
+  applySelectionFontSize,
+  applySelectionShade,
+  applySelectionUnderline,
+  canSelectionUndo,
+  readSelectionFormatState,
+  toggleSelectionBold,
+  toggleSelectionItalic,
+  undoSelectionFormat,
+  type SelectionAlign,
+  type SelectionUnderline,
+} from '../../lib/reportDocument/selectionFormat';
 
 export type MiniToolbarPosition = { top: number; left: number };
 
 type ReportSelectionMiniToolbarProps = {
-  profile: ReportPrintProfile;
-  onChange: (patch: Partial<ReportPrintProfile>) => void;
+  /** Live preview iframe document (designMode). */
+  previewDoc: Document;
+  textDir: 'rtl' | 'ltr';
   language: 'ar' | 'en';
   t: (key: string) => string;
   position: MiniToolbarPosition;
+  /** Called after a successful format / undo so parent can mark HTML dirty. */
+  onFormatted: () => void;
 };
 
 const btnBase =
@@ -43,11 +61,13 @@ function ToggleBtn({
   active,
   title,
   onClick,
+  disabled,
   children,
 }: {
   active?: boolean;
   title: string;
   onClick: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -55,6 +75,7 @@ function ToggleBtn({
       type="button"
       title={title}
       aria-pressed={active === true}
+      disabled={disabled}
       onClick={onClick}
       className={cn(btnBase, active && btnActive)}
     >
@@ -65,18 +86,39 @@ function ToggleBtn({
 
 /**
  * Word-like floating strip for print preview selection.
- * Patches the whole report print profile (not selection-local edits).
+ * Formats only the selected text / nearest cell — not the whole report profile.
  */
 export function ReportSelectionMiniToolbar({
-  profile,
-  onChange,
+  previewDoc,
+  textDir,
   language,
   t,
   position,
+  onFormatted,
 }: ReportSelectionMiniToolbarProps) {
   const isAr = language === 'ar';
   const AlignStartIcon = isAr ? AlignRight : AlignLeft;
   const AlignEndIcon = isAr ? AlignLeft : AlignRight;
+  const [tick, setTick] = useState(0);
+
+  const state = useMemo(() => readSelectionFormatState(previewDoc), [previewDoc, tick]);
+  const undoReady = useMemo(() => canSelectionUndo(previewDoc), [previewDoc, tick]);
+
+  const refresh = () => {
+    setTick((n) => n + 1);
+    onFormatted();
+  };
+
+  const run = (fn: () => boolean) => {
+    if (fn()) refresh();
+  };
+
+  const fontValue = state.fontFamily ?? 'calibri';
+  const sizeValue = (state.fontSizePt && PRINT_BODY_FONT_SIZES.includes(state.fontSizePt as PrintBodyFontSize)
+    ? state.fontSizePt
+    : 0) as PrintBodyFontSize;
+  const colorValue = state.color && /^#[0-9a-fA-F]{6}$/.test(state.color) ? state.color : '#0f172a';
+  const shadeValue = state.shade && /^#[0-9a-fA-F]{6}$/.test(state.shade) ? state.shade : '';
 
   return (
     <div
@@ -91,17 +133,28 @@ export function ReportSelectionMiniToolbar({
       onMouseDown={(e) => {
         const el = e.target as HTMLElement | null;
         if (el?.closest('select, input, textarea, option')) return;
-        // Keep iframe selection while clicking icon buttons.
         e.preventDefault();
       }}
     >
       <div className="flex flex-wrap items-center gap-1">
+        <ToggleBtn
+          title={t('report_fmt_mini_undo')}
+          disabled={!undoReady}
+          onClick={() => {
+            if (undoSelectionFormat(previewDoc)) refresh();
+          }}
+        >
+          <Undo2 size={14} />
+        </ToggleBtn>
+        <span className="w-px h-5 bg-slate-200 mx-0.5" aria-hidden />
         <label className="inline-flex items-center gap-1" title={t('report_fmt_font')}>
           <Type size={12} className="text-slate-500 shrink-0" />
           <select
             className={selectCls}
-            value={profile.fontFamily}
-            onChange={(e) => onChange({ fontFamily: e.target.value as PrintFontFamily })}
+            value={fontValue}
+            onChange={(e) =>
+              run(() => applySelectionFontFamily(previewDoc, e.target.value as PrintFontFamily))
+            }
           >
             {PRINT_FONT_FAMILIES.map((f) => (
               <option key={f} value={f}>
@@ -118,13 +171,17 @@ export function ReportSelectionMiniToolbar({
         </label>
         <select
           className={cn(selectCls, 'max-w-[4.5rem]')}
-          value={profile.bodyFontSize}
+          value={sizeValue}
           title={t('report_fmt_mini_font_size')}
-          onChange={(e) => onChange({ bodyFontSize: Number(e.target.value) as PrintBodyFontSize })}
+          onChange={(e) => {
+            const n = Number(e.target.value) as PrintBodyFontSize;
+            if (n === 0) return;
+            run(() => applySelectionFontSize(previewDoc, n));
+          }}
         >
-          {PRINT_BODY_FONT_SIZES.map((n) => (
+          {PRINT_BODY_FONT_SIZES.filter((n) => n > 0).map((n) => (
             <option key={n} value={n}>
-              {n === 0 ? t('report_fmt_mini_font_size_auto') : String(n)}
+              {String(n)}
             </option>
           ))}
         </select>
@@ -133,43 +190,49 @@ export function ReportSelectionMiniToolbar({
           <input
             type="color"
             className="size-7 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
-            value={profile.bodyTextColor}
-            onChange={(e) => onChange({ bodyTextColor: e.target.value })}
+            value={colorValue}
+            onChange={(e) => run(() => applySelectionColor(previewDoc, e.target.value))}
           />
         </label>
         <span className="w-px h-5 bg-slate-200 mx-0.5" aria-hidden />
         <ToggleBtn
           title={t('report_fmt_mini_bold')}
-          active={profile.bodyBold}
-          onClick={() => onChange({ bodyBold: !profile.bodyBold })}
+          active={state.bold}
+          onClick={() => run(() => toggleSelectionBold(previewDoc))}
         >
           <Bold size={14} />
         </ToggleBtn>
         <ToggleBtn
           title={t('report_fmt_mini_italic')}
-          active={profile.bodyItalic}
-          onClick={() => onChange({ bodyItalic: !profile.bodyItalic })}
+          active={state.italic}
+          onClick={() => run(() => toggleSelectionItalic(previewDoc))}
         >
           <Italic size={14} />
         </ToggleBtn>
         <ToggleBtn
           title={t('report_fmt_mini_underline')}
-          active={profile.bodyUnderline === 'single'}
+          active={state.underline === 'single'}
           onClick={() =>
-            onChange({
-              bodyUnderline: profile.bodyUnderline === 'single' ? 'none' : 'single',
-            })
+            run(() =>
+              applySelectionUnderline(
+                previewDoc,
+                state.underline === 'single' ? 'none' : 'single',
+              ),
+            )
           }
         >
           <Underline size={14} />
         </ToggleBtn>
         <ToggleBtn
           title={t('report_fmt_mini_double_underline')}
-          active={profile.bodyUnderline === 'double'}
+          active={state.underline === 'double'}
           onClick={() =>
-            onChange({
-              bodyUnderline: profile.bodyUnderline === 'double' ? 'none' : 'double',
-            })
+            run(() =>
+              applySelectionUnderline(
+                previewDoc,
+                (state.underline === 'double' ? 'none' : 'double') as SelectionUnderline,
+              ),
+            )
           }
         >
           <span className="relative inline-flex flex-col items-center leading-none">
@@ -182,39 +245,32 @@ export function ReportSelectionMiniToolbar({
       <div className="flex flex-wrap items-center gap-1">
         <ToggleBtn
           title={t('print_align_start')}
-          active={profile.tableCellAlign === 'start'}
-          onClick={() => onChange({ tableCellAlign: 'start' })}
+          active={state.align === 'start'}
+          onClick={() => run(() => applySelectionAlign(previewDoc, 'start' as SelectionAlign, textDir))}
         >
           <AlignStartIcon size={14} />
         </ToggleBtn>
         <ToggleBtn
           title={t('print_align_center')}
-          active={profile.tableCellAlign === 'center'}
-          onClick={() => onChange({ tableCellAlign: 'center' })}
+          active={state.align === 'center'}
+          onClick={() => run(() => applySelectionAlign(previewDoc, 'center', textDir))}
         >
           <AlignCenter size={14} />
         </ToggleBtn>
         <ToggleBtn
           title={t('print_align_end')}
-          active={profile.tableCellAlign === 'end'}
-          onClick={() => onChange({ tableCellAlign: 'end' })}
+          active={state.align === 'end'}
+          onClick={() => run(() => applySelectionAlign(previewDoc, 'end', textDir))}
         >
           <AlignEndIcon size={14} />
-        </ToggleBtn>
-        <ToggleBtn
-          title={t('report_fmt_table_align_auto')}
-          active={profile.tableCellAlign === 'auto'}
-          onClick={() => onChange({ tableCellAlign: 'auto' as PrintTableCellAlign })}
-        >
-          <span className="text-[10px] font-black">A</span>
         </ToggleBtn>
         <span className="w-px h-5 bg-slate-200 mx-0.5" aria-hidden />
         <label className="inline-flex items-center gap-0.5" title={t('report_fmt_mini_shade')}>
           <PaintBucket size={14} className="text-slate-600" />
           <select
             className={cn(selectCls, 'max-w-[5.5rem]')}
-            value={profile.tableShade}
-            onChange={(e) => onChange({ tableShade: e.target.value })}
+            value={shadeValue}
+            onChange={(e) => run(() => applySelectionShade(previewDoc, e.target.value))}
           >
             {PRINT_TABLE_SHADE_PRESETS.map((c) => (
               <option key={c || 'none'} value={c}>
@@ -225,17 +281,19 @@ export function ReportSelectionMiniToolbar({
           <input
             type="color"
             className="size-7 cursor-pointer rounded border border-slate-300 bg-white p-0.5"
-            value={profile.tableShade && /^#[0-9a-fA-F]{6}$/.test(profile.tableShade) ? profile.tableShade : '#f8fafc'}
+            value={shadeValue || '#fef9c3'}
             title={t('report_fmt_mini_shade')}
-            onChange={(e) => onChange({ tableShade: e.target.value })}
+            onChange={(e) => run(() => applySelectionShade(previewDoc, e.target.value))}
           />
         </label>
         <label className="inline-flex items-center gap-0.5" title={t('report_fmt_mini_border')}>
           <Square size={14} className="text-slate-600" />
           <select
             className={cn(selectCls, 'max-w-[5.5rem]')}
-            value={profile.tableBorder}
-            onChange={(e) => onChange({ tableBorder: e.target.value as PrintTableBorder })}
+            defaultValue="light"
+            onChange={(e) =>
+              run(() => applySelectionBorder(previewDoc, e.target.value as PrintTableBorder))
+            }
           >
             {PRINT_TABLE_BORDERS.map((b) => (
               <option key={b} value={b}>

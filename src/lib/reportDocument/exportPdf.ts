@@ -10,8 +10,9 @@ import type { ReportDocument } from './types';
 export async function exportReportDocumentPdf(
   doc: ReportDocument,
   formatMoney: (n: number) => string,
+  htmlOverride?: string,
 ): Promise<void> {
-  const html = renderReportDocumentHtml(doc, formatMoney);
+  const html = htmlOverride ?? renderReportDocumentHtml(doc, formatMoney);
   const filename = doc.filename.endsWith('.pdf') ? doc.filename : `${doc.filename}.pdf`;
 
   if (isElectronShell()) {
