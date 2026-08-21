@@ -15,6 +15,13 @@ describe('reportPrintProfiles format fields', () => {
     expect(income.marginPreset).toBe('normal');
     expect(income.fitPageCount).toBe(0);
     expect(income.tableCellAlign).toBe('auto');
+    expect(income.bodyFontSize).toBe(0);
+    expect(income.bodyTextColor).toBe('#0f172a');
+    expect(income.tableShade).toBe('');
+    expect(income.tableBorder).toBe('light');
+    expect(income.bodyBold).toBe(false);
+    expect(income.bodyItalic).toBe(false);
+    expect(income.bodyUnderline).toBe('none');
   });
 
   it('sanitizeProfile accepts new fields and ignores invalid', () => {
@@ -28,6 +35,13 @@ describe('reportPrintProfiles format fields', () => {
       footerShowPageNum: false,
       headerExtraText: '  hello  world  ',
       tableCellAlign: 'center',
+      bodyFontSize: 11,
+      bodyTextColor: '#112233',
+      tableShade: '#fef9c3',
+      tableBorder: 'strong',
+      bodyBold: true,
+      bodyItalic: true,
+      bodyUnderline: 'double',
     });
     expect(good.fontFamily).toBe('segoe');
     expect(good.textDirection).toBe('rtl');
@@ -37,6 +51,13 @@ describe('reportPrintProfiles format fields', () => {
     expect(good.footerShowPageNum).toBe(false);
     expect(good.headerExtraText).toBe('hello world');
     expect(good.tableCellAlign).toBe('center');
+    expect(good.bodyFontSize).toBe(11);
+    expect(good.bodyTextColor).toBe('#112233');
+    expect(good.tableShade).toBe('#fef9c3');
+    expect(good.tableBorder).toBe('strong');
+    expect(good.bodyBold).toBe(true);
+    expect(good.bodyItalic).toBe(true);
+    expect(good.bodyUnderline).toBe('double');
 
     const bad = sanitizeProfile(fallback, {
       fontFamily: 'nope' as 'calibri',
@@ -44,12 +65,22 @@ describe('reportPrintProfiles format fields', () => {
       marginPreset: 'huge' as 'normal',
       fitPageCount: 99 as 0,
       tableCellAlign: 'justify' as 'auto',
+      bodyFontSize: 99 as 0,
+      bodyTextColor: 'red',
+      tableShade: 'yellow',
+      tableBorder: 'thick' as 'light',
+      bodyUnderline: 'triple' as 'none',
     });
     expect(bad.fontFamily).toBe(fallback.fontFamily);
     expect(bad.textDirection).toBe(fallback.textDirection);
     expect(bad.marginPreset).toBe(fallback.marginPreset);
     expect(bad.fitPageCount).toBe(fallback.fitPageCount);
     expect(bad.tableCellAlign).toBe(fallback.tableCellAlign);
+    expect(bad.bodyFontSize).toBe(fallback.bodyFontSize);
+    expect(bad.bodyTextColor).toBe(fallback.bodyTextColor);
+    expect(bad.tableShade).toBe(fallback.tableShade);
+    expect(bad.tableBorder).toBe(fallback.tableBorder);
+    expect(bad.bodyUnderline).toBe(fallback.bodyUnderline);
   });
 
   it('defaults include header/footer content toggles', () => {

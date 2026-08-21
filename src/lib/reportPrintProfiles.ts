@@ -51,6 +51,13 @@ export type PrintMarginPreset = 'narrow' | 'normal' | 'wide';
  */
 export type PrintFitPageCount = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 15 | 20;
 
+/** Explicit body/table font size in points (`0` = follow density). */
+export type PrintBodyFontSize = 0 | 8 | 9 | 10 | 11 | 12 | 14;
+/** Empty string = transparent (no cell fill override). */
+export type PrintTableShade = '' | string;
+export type PrintTableBorder = 'none' | 'light' | 'solid' | 'strong';
+export type PrintBodyUnderline = 'none' | 'single' | 'double';
+
 export const PRINT_ALIGNS: PrintAlign[] = ['start', 'center', 'end'];
 export const PRINT_TABLE_CELL_ALIGNS: PrintTableCellAlign[] = ['auto', 'start', 'center', 'end'];
 export const PRINT_TITLE_SIZES: PrintTitleSize[] = ['sm', 'md', 'lg', 'xl'];
@@ -60,6 +67,19 @@ export const PRINT_FONT_FAMILIES: PrintFontFamily[] = ['calibri', 'segoe', 'taho
 export const PRINT_TEXT_DIRECTIONS: PrintTextDirection[] = ['auto', 'rtl', 'ltr'];
 export const PRINT_MARGIN_PRESETS: PrintMarginPreset[] = ['narrow', 'normal', 'wide'];
 export const PRINT_FIT_PAGE_COUNTS: PrintFitPageCount[] = [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15, 20];
+export const PRINT_BODY_FONT_SIZES: PrintBodyFontSize[] = [0, 8, 9, 10, 11, 12, 14];
+export const PRINT_TABLE_BORDERS: PrintTableBorder[] = ['none', 'light', 'solid', 'strong'];
+export const PRINT_BODY_UNDERLINES: PrintBodyUnderline[] = ['none', 'single', 'double'];
+/** Preset fills for the selection mini-toolbar shading picker. */
+export const PRINT_TABLE_SHADE_PRESETS: string[] = [
+  '',
+  '#f8fafc',
+  '#fef9c3',
+  '#dbeafe',
+  '#dcfce7',
+  '#fce7f3',
+  '#e2e8f0',
+];
 
 /** Max length for optional custom header/footer lines (Word-like free text). */
 export const PRINT_EXTRA_TEXT_MAX = 200;
@@ -91,6 +111,19 @@ export interface ReportPrintProfile {
   footerSize: PrintBandSize;
   /** Body / print font (machine-local families preferred in Electron). */
   fontFamily: PrintFontFamily;
+  /**
+   * Body/table font size in pt. `0` = derive from density (legacy behaviour).
+   */
+  bodyFontSize: PrintBodyFontSize;
+  /** Body / table text color (hex). */
+  bodyTextColor: string;
+  /** Table cell background fill; empty = no override. */
+  tableShade: PrintTableShade;
+  /** Table cell border weight. */
+  tableBorder: PrintTableBorder;
+  bodyBold: boolean;
+  bodyItalic: boolean;
+  bodyUnderline: PrintBodyUnderline;
   /** Document text direction; `auto` follows UI language. */
   textDirection: PrintTextDirection;
   /** Page margin preset for print / PDF. */
@@ -190,6 +223,15 @@ function sanitizeExtraText(raw: unknown, fallback: string): string {
   return raw.replace(/\s+/g, ' ').trim().slice(0, PRINT_EXTRA_TEXT_MAX);
 }
 
+function sanitizeTableShade(raw: unknown, fallback: PrintTableShade): PrintTableShade {
+  if (raw === '') return '';
+  if (typeof raw !== 'string') return fallback;
+  const v = raw.trim();
+  if (v === '') return '';
+  if (/^#[0-9a-fA-F]{6}$/.test(v)) return v;
+  return fallback;
+}
+
 const BASE_PRINT_LAYOUT: Omit<ReportPrintProfile, 'orientation' | 'pageSize' | 'density' | 'accent'> = {
   showHeader: true,
   showFooter: true,
@@ -204,6 +246,13 @@ const BASE_PRINT_LAYOUT: Omit<ReportPrintProfile, 'orientation' | 'pageSize' | '
   headerSize: 'md',
   footerSize: 'md',
   fontFamily: 'calibri',
+  bodyFontSize: 0,
+  bodyTextColor: '#0f172a',
+  tableShade: '',
+  tableBorder: 'light',
+  bodyBold: false,
+  bodyItalic: false,
+  bodyUnderline: 'none',
   textDirection: 'auto',
   marginPreset: 'normal',
   fitPageCount: 0,
@@ -296,6 +345,22 @@ export function sanitizeProfile(
     fontFamily: PRINT_FONT_FAMILIES.includes(raw.fontFamily as PrintFontFamily)
       ? (raw.fontFamily as PrintFontFamily)
       : fallback.fontFamily,
+    bodyFontSize: PRINT_BODY_FONT_SIZES.includes(raw.bodyFontSize as PrintBodyFontSize)
+      ? (raw.bodyFontSize as PrintBodyFontSize)
+      : fallback.bodyFontSize,
+    bodyTextColor:
+      typeof raw.bodyTextColor === 'string' && HEX_RE.test(raw.bodyTextColor)
+        ? raw.bodyTextColor
+        : fallback.bodyTextColor,
+    tableShade: sanitizeTableShade(raw.tableShade, fallback.tableShade),
+    tableBorder: PRINT_TABLE_BORDERS.includes(raw.tableBorder as PrintTableBorder)
+      ? (raw.tableBorder as PrintTableBorder)
+      : fallback.tableBorder,
+    bodyBold: typeof raw.bodyBold === 'boolean' ? raw.bodyBold : fallback.bodyBold,
+    bodyItalic: typeof raw.bodyItalic === 'boolean' ? raw.bodyItalic : fallback.bodyItalic,
+    bodyUnderline: PRINT_BODY_UNDERLINES.includes(raw.bodyUnderline as PrintBodyUnderline)
+      ? (raw.bodyUnderline as PrintBodyUnderline)
+      : fallback.bodyUnderline,
     textDirection: PRINT_TEXT_DIRECTIONS.includes(raw.textDirection as PrintTextDirection)
       ? (raw.textDirection as PrintTextDirection)
       : fallback.textDirection,

@@ -13,6 +13,10 @@ import {
 import { persistReportPrintProfiles } from '../../lib/reportPrintProfilesPersistence';
 import { openReportDocument, renderReportDocumentHtml, type ReportDocument } from '../../lib/reportDocument';
 import { ReportFormatToolbar } from '../reports/ReportFormatToolbar';
+import {
+  ReportSelectionMiniToolbar,
+  type MiniToolbarPosition,
+} from './ReportSelectionMiniToolbar';
 
 export type ReportPreviewDialogProps = {
   open: boolean;
@@ -44,6 +48,18 @@ const TOOLBAR_UI = {
   btnGhost: 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200',
 };
 
+const MINI_BAR_W = 420;
+const MINI_BAR_H = 78;
+
+function clampMiniBarPosition(top: number, left: number): MiniToolbarPosition {
+  const maxLeft = Math.max(8, window.innerWidth - MINI_BAR_W - 8);
+  const maxTop = Math.max(8, window.innerHeight - MINI_BAR_H - 8);
+  return {
+    top: Math.min(Math.max(8, top), maxTop),
+    left: Math.min(Math.max(8, left), maxLeft),
+  };
+}
+
 /**
  * Unified print preview for every module: live iframe preview of the exact
  * print HTML + embedded format toolbar + print / PDF actions.
@@ -70,21 +86,29 @@ export function ReportPreviewDialog({
   const [exporting, setExporting] = useState(false);
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState('');
+  const [miniBar, setMiniBar] = useState<MiniToolbarPosition | null>(null);
+  const selectionCleanupRef = useRef<(() => void) | null>(null);
+
+  const hideMiniBar = useCallback(() => setMiniBar(null), []);
 
   const closePreview = useCallback(() => {
+    hideMiniBar();
+    selectionCleanupRef.current?.();
+    selectionCleanupRef.current = null;
     const frame = previewFrameRef.current;
     if (frame) {
       frame.removeAttribute('src');
       frame.removeAttribute('srcdoc');
     }
     onClose();
-  }, [onClose]);
+  }, [onClose, hideMiniBar]);
 
   // Re-seed the working profile each time the dialog opens (or the doc type changes).
   useEffect(() => {
     if (!open) return;
     setProfile(resolveReportPrintProfile(storedProfiles, reportId));
     setDirty(false);
+    hideMiniBar();
     // storedProfiles intentionally read only at open time — edits live in local state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, reportId]);
@@ -92,14 +116,78 @@ export function ReportPreviewDialog({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        closePreview();
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      if (miniBar) {
+        hideMiniBar();
+        return;
       }
+      closePreview();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, closePreview]);
+  }, [open, closePreview, miniBar, hideMiniBar]);
+
+  // Rebuild clears iframe selection — hide the floating strip.
+  useEffect(() => {
+    hideMiniBar();
+  }, [previewObjectUrl, hideMiniBar]);
+
+  const attachSelectionListeners = useCallback(
+    (frame: HTMLIFrameElement) => {
+      selectionCleanupRef.current?.();
+      selectionCleanupRef.current = null;
+      let doc: Document | null = null;
+      try {
+        doc = frame.contentDocument;
+      } catch {
+        return;
+      }
+      if (!doc) return;
+
+      const syncFromSelection = () => {
+        try {
+          const sel = doc!.getSelection?.() || frame.contentWindow?.getSelection();
+          if (!sel || sel.isCollapsed || !sel.rangeCount) {
+            hideMiniBar();
+            return;
+          }
+          const text = sel.toString().replace(/\s+/g, ' ').trim();
+          if (!text) {
+            hideMiniBar();
+            return;
+          }
+          const range = sel.getRangeAt(0);
+          const rect = range.getBoundingClientRect();
+          if (!rect || (rect.width === 0 && rect.height === 0)) {
+            hideMiniBar();
+            return;
+          }
+          const frameRect = frame.getBoundingClientRect();
+          const top = frameRect.top + rect.top - MINI_BAR_H - 10;
+          const left = frameRect.left + rect.left + rect.width / 2 - MINI_BAR_W / 2;
+          setMiniBar(clampMiniBarPosition(top, left));
+        } catch {
+          hideMiniBar();
+        }
+      };
+
+      const onSel = () => {
+        window.requestAnimationFrame(syncFromSelection);
+      };
+
+      doc.addEventListener('selectionchange', onSel);
+      doc.addEventListener('mouseup', onSel);
+      doc.addEventListener('keyup', onSel);
+
+      selectionCleanupRef.current = () => {
+        doc!.removeEventListener('selectionchange', onSel);
+        doc!.removeEventListener('mouseup', onSel);
+        doc!.removeEventListener('keyup', onSel);
+      };
+    },
+    [hideMiniBar],
+  );
 
   const docResult = useMemo(() => {
     if (!open) return null;
@@ -295,7 +383,6 @@ export function ReportPreviewDialog({
             className="block mx-auto bg-white border-0 shadow-2xl"
             style={{ width: `min(100%, ${frameWidth})`, minHeight: '80vh' }}
             onLoad={(e) => {
-              // Grow to full document height so all sheets are visible in the scroll area.
               const frame = e.currentTarget;
               try {
                 const d = frame.contentDocument;
@@ -304,6 +391,7 @@ export function ReportPreviewDialog({
               } catch {
                 /* ignore */
               }
+              attachSelectionListeners(frame);
             }}
           />
         ) : (
@@ -312,6 +400,16 @@ export function ReportPreviewDialog({
           </div>
         )}
       </div>
+
+      {miniBar ? (
+        <ReportSelectionMiniToolbar
+          profile={profile}
+          onChange={patchProfile}
+          language={language}
+          t={t}
+          position={miniBar}
+        />
+      ) : null}
     </div>,
     document.body,
   );

@@ -237,6 +237,62 @@ describe('reportDocument', () => {
     expect(endHtml).toMatch(/html\.tbl-align-end[\s\S]*text-align:\s*left\s*!important/);
   });
 
+  it('applies body typography, shade and border overrides from print profile', () => {
+    const html = renderReportDocumentHtml(
+      {
+        id: 't',
+        title: 'T',
+        language: 'ar',
+        orientation: 'portrait',
+        pageSize: 'A4',
+        accent: '#003B71',
+        showHeader: false,
+        showFooter: false,
+        showLogo: false,
+        fontFamily: 'arial',
+        textDirection: 'auto',
+        titleAlign: 'center',
+        footerAlign: 'center',
+        logoAlign: 'start',
+        tableCellAlign: 'auto',
+        bodyFontSize: 12,
+        bodyTextColor: '#112233',
+        tableShade: '#fef9c3',
+        tableBorder: 'strong',
+        bodyBold: true,
+        bodyItalic: true,
+        bodyUnderline: 'double',
+        marginPreset: 'normal',
+        fitPageCount: 0,
+        density: 'normal',
+        headerShowCompany: true,
+        headerShowAddress: true,
+        headerShowTaxId: true,
+        headerShowTitle: true,
+        headerShowMeta: true,
+        headerExtraText: '',
+        footerShowCompany: true,
+        footerShowText: true,
+        footerShowNote: true,
+        footerShowPageNum: true,
+        footerExtraText: '',
+        company,
+        columns: [{ key: 'a', header: 'A' }],
+        rows: [{ a: 'x' }],
+        filename: 't',
+      },
+      (n) => String(n),
+    );
+    expect(html).toContain('font-size: 12pt');
+    expect(html).toContain('color: #112233');
+    expect(html).toContain('font-weight: 700');
+    expect(html).toContain('font-style: italic');
+    expect(html).toContain('text-decoration: underline');
+    expect(html).toContain('text-decoration-style: double');
+    expect(html).toContain('background: #fef9c3');
+    expect(html).toContain('border: 1.5px solid #0f172a');
+  });
+
   it('applies forced RTL and wide margins from profile fields', () => {
     const html = renderReportDocumentHtml(
       {

@@ -1,12 +1,16 @@
 import type { CompanyPrintInfo } from '../ipcPrintData';
 import type {
   PrintAlign,
+  PrintBodyFontSize,
+  PrintBodyUnderline,
   PrintDensity,
   PrintFontFamily,
   PrintMarginPreset,
   PrintOrientation,
   PrintPageSize,
+  PrintTableBorder,
   PrintTableCellAlign,
+  PrintTableShade,
   PrintTextDirection,
   ReportPrintProfile,
 } from '../reportPrintProfiles';
@@ -161,6 +165,14 @@ export type ReportDocument = {
   logoAlign: PrintAlign;
   /** `auto` (default) = per-column; otherwise override all table cells. */
   tableCellAlign?: PrintTableCellAlign;
+  /** `0` = follow density. */
+  bodyFontSize?: PrintBodyFontSize;
+  bodyTextColor?: string;
+  tableShade?: PrintTableShade;
+  tableBorder?: PrintTableBorder;
+  bodyBold?: boolean;
+  bodyItalic?: boolean;
+  bodyUnderline?: PrintBodyUnderline;
   marginPreset: PrintMarginPreset;
   /** `0` = auto; otherwise distribute content across this many sheets. */
   fitPageCount: number;
@@ -222,6 +234,13 @@ export function profileToDocLayout(profile: ReportPrintProfile): Pick<
   | 'footerAlign'
   | 'logoAlign'
   | 'tableCellAlign'
+  | 'bodyFontSize'
+  | 'bodyTextColor'
+  | 'tableShade'
+  | 'tableBorder'
+  | 'bodyBold'
+  | 'bodyItalic'
+  | 'bodyUnderline'
   | 'marginPreset'
   | 'fitPageCount'
   | 'density'
@@ -250,6 +269,13 @@ export function profileToDocLayout(profile: ReportPrintProfile): Pick<
     footerAlign: profile.footerAlign,
     logoAlign: profile.logoAlign,
     tableCellAlign: profile.tableCellAlign,
+    bodyFontSize: profile.bodyFontSize,
+    bodyTextColor: profile.bodyTextColor,
+    tableShade: profile.tableShade,
+    tableBorder: profile.tableBorder,
+    bodyBold: profile.bodyBold,
+    bodyItalic: profile.bodyItalic,
+    bodyUnderline: profile.bodyUnderline,
     marginPreset: profile.marginPreset,
     fitPageCount: profile.fitPageCount,
     density: profile.density,

@@ -97,6 +97,56 @@ function densitySizes(density: PrintDensity | undefined, scale = 1): {
   };
 }
 
+/** When `bodyFontSize` is set, override body/table pt sizes (title/co keep density ratio). */
+function resolvePrintTypeSizes(
+  doc: ReportDocument,
+  fontScale: number,
+): { body: string; cell: string; th: string; title: string; co: string } {
+  const sizes = densitySizes(doc.density, fontScale);
+  const explicit = doc.bodyFontSize;
+  if (!explicit || explicit <= 0) return sizes;
+  const cell = Math.max(6, Math.round((explicit - 0.5) * 10) / 10);
+  const th = Math.max(6, Math.round((explicit - 1) * 10) / 10);
+  return {
+    ...sizes,
+    body: `${explicit}pt`,
+    cell: `${cell}pt`,
+    th: `${th}pt`,
+  };
+}
+
+function tableBorderCss(border: ReportDocument['tableBorder'] | undefined): {
+  cell: string;
+  thBottom: string;
+} {
+  switch (border) {
+    case 'none':
+      return { cell: 'border: none;', thBottom: 'border-bottom: none;' };
+    case 'solid':
+      return {
+        cell: 'border: 1px solid #94a3b8;',
+        thBottom: 'border-bottom: 1.5px solid',
+      };
+    case 'strong':
+      return {
+        cell: 'border: 1.5px solid #0f172a;',
+        thBottom: 'border-bottom: 2px solid',
+      };
+    case 'light':
+    default:
+      return {
+        cell: 'border: none; border-bottom: 1px solid #e2e8f0;',
+        thBottom: 'border-bottom: 1.5px solid',
+      };
+  }
+}
+
+function bodyTextDecorationCss(underline: ReportDocument['bodyUnderline'] | undefined): string {
+  if (underline === 'single') return 'underline';
+  if (underline === 'double') return 'underline';
+  return 'none';
+}
+
 /** Shrink fonts when fit-to-N packs more rows than the compact sheet capacity. */
 function fitPageFontScale(doc: ReportDocument, rowsPerPage: number): number {
   const natural = defaultPrintRowsPerPage({
@@ -547,7 +597,17 @@ export function renderReportDocumentHtml(
     : flattenReportRows(doc).length;
   const fitPerPage = fitPageRowsPerPage(tableRowCount, doc.fitPageCount);
   const fontScale = fitPerPage != null ? fitPageFontScale(doc, fitPerPage) : 1;
-  const sizes = densitySizes(doc.density, fontScale);
+  const sizes = resolvePrintTypeSizes(doc, fontScale);
+  const bodyTextColor = doc.bodyTextColor && /^#[0-9a-fA-F]{6}$/.test(doc.bodyTextColor)
+    ? doc.bodyTextColor
+    : '#0f172a';
+  const bodyFontWeight = doc.bodyBold ? '700' : '400';
+  const bodyFontStyle = doc.bodyItalic ? 'italic' : 'normal';
+  const bodyTextDecoration = bodyTextDecorationCss(doc.bodyUnderline);
+  const bodyTextDecorationStyle = doc.bodyUnderline === 'double' ? 'double' : 'solid';
+  const tableShade = (doc.tableShade || '').trim();
+  const tableShadeCss = tableShade ? `background: ${esc(tableShade)};` : '';
+  const borders = tableBorderCss(doc.tableBorder);
   const sheetBox = sheetPageBoxCss(doc.pageSize, doc.orientation);
   const isLandscape = doc.orientation === 'landscape';
   const pageCss =
@@ -714,7 +774,11 @@ export function renderReportDocumentHtml(
     padding: 0;
     font-family: ${fontStack};
     font-size: ${sizes.body};
-    color: #0f172a;
+    font-weight: ${bodyFontWeight};
+    font-style: ${bodyFontStyle};
+    text-decoration: ${bodyTextDecoration};
+    text-decoration-style: ${bodyTextDecorationStyle};
+    color: ${esc(bodyTextColor)};
     background: #fff;
     line-height: 1.3;
   }
@@ -871,21 +935,27 @@ export function renderReportDocumentHtml(
   thead { display: table-header-group; }
   th, td {
     padding: 2px 4px;
-    border-bottom: 1px solid #e2e8f0;
+    ${borders.cell}
     vertical-align: top;
     overflow-wrap: anywhere;
     word-break: break-word;
     font-size: ${sizes.cell};
     line-height: 1.25;
+    font-weight: ${bodyFontWeight};
+    font-style: ${bodyFontStyle};
+    text-decoration: ${bodyTextDecoration};
+    text-decoration-style: ${bodyTextDecorationStyle};
+    color: ${esc(bodyTextColor)};
+    ${tableShadeCss}
   }
   th {
-    background: color-mix(in srgb, ${esc(doc.accent)} 12%, #fff);
-    border-bottom: 1.5px solid ${esc(doc.accent)};
+    background: ${tableShade ? esc(tableShade) : `color-mix(in srgb, ${esc(doc.accent)} 12%, #fff)`};
+    ${borders.thBottom === 'border-bottom: none;' ? 'border-bottom: none;' : `${borders.thBottom} ${esc(doc.accent)};`}
     font-weight: 700;
     font-size: ${sizes.th};
   }
-  tr.zebra td { background: #f8fafc; }
-  tr.totals td { background: #f1f5f9; border-top: 1.5px solid #0f172a; }
+  tr.zebra td { background: ${tableShade ? esc(tableShade) : '#f8fafc'}; }
+  tr.totals td { background: ${tableShade ? esc(tableShade) : '#f1f5f9'}; border-top: 1.5px solid #0f172a; }
   .align-left { text-align: left; }
   .align-center { text-align: center; }
   .align-right { text-align: right; }
