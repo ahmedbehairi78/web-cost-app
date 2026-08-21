@@ -395,7 +395,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 |---------|--------|-----|
 | **فاتورة مشتريات** | حفظ → ترحيل فوري (أو read-only إن `transactionId`) · **آجلة/نقدية** (`paymentType`) | `recordPurchaseToProjectInventory` / `recordFixedAssetPurchase` — Cr مورد **21101…** أو عهدة **12102…** |
 | **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) |
-| **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (admin أو `ledger.create`) |
+| **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (`ledger.create` أو `ledger.edit`) — زر الاعتماد في **تفاصيل** التسوية وليس النموذج فقط |
 
 - **معاينة:** النقر على صف فاتورة/IPC في الجدول يفتح النافذة — المرحّلة = للقراءة فقط.
 - **فاتورة local:** احفظ **`invoiceLines`** مع الـ header في `purchaseTransactionsApi` — البنود في `purchase_transaction_items`. حقل **`paymentType`**: `credit` | `cash` (null = آجلة للتوافق).

@@ -1525,7 +1525,7 @@ const translations: Record<Language, Record<string, string>> = {
       'لكل بند: حساب مصروف، مبلغ، ومركز تكلفة (عقد). اختياري: ربط بند BOQ لتقارير تكاليف البنود فقط (لا يغيّر القيد). تُجمَّع البنود ذات العقد نفسه في قيد واحد عند الاعتماد.',
     manual_costs_custody_settlement_step_4_title: 'قدّم ثم اعتمد',
     manual_costs_custody_settlement_step_4_body:
-      'المسودة/التقديم لا ترحّل GL. الاعتماد ينشئ قيود: Dr مصروفات · Cr العهدة، ويكتب صفوف boq_actual_costs للبنود المربوطة بـ BOQ فقط.',
+      'بعد التقديم يظهر زر اعتماد وترحيل القيد في تفاصيل التسوية (ومن النموذج). الاعتماد ينشئ قيود: Dr مصروفات · Cr العهدة، ويكتب صفوف boq_actual_costs للبنود المربوطة بـ BOQ فقط. المسودة/التقديم لا ترحّل GL.',
     manual_technical_projects_create_title: 'إنشاء مشروع',
     manual_technical_projects_create_summary: 'تسجيل مشروع جديد كأساس للعقود وجداول الكميات والمستخلصات.',
     manual_technical_projects_create_before: 'صلاحية projects. كود المشروع فريد. العميل والحالة مطلوبان للتقارير.',
@@ -4034,7 +4034,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Per line: expense account, amount, and cost center (contract). Optional: link a BOQ item for BOQ cost reports only (no GL change). Same contract groups into one journal on approve.',
     manual_costs_custody_settlement_step_4_title: 'Submit then approve',
     manual_costs_custody_settlement_step_4_body:
-      'Draft/submit do not post GL. Approve posts Dr expenses · Cr custody, and writes boq_actual_costs only for lines linked to a BOQ item.',
+      'After submit, Approve & post appears on the settlement detail (and in the form). Approve posts Dr expenses · Cr custody, and writes boq_actual_costs only for lines linked to a BOQ item. Draft/submit do not post GL.',
     manual_technical_projects_create_title: 'Create a project',
     manual_technical_projects_create_summary: 'Register a new project as the base for contracts, BOQ, and billing.',
     manual_technical_projects_create_before: 'Requires projects permission. Unique project code. Client and status drive reports.',

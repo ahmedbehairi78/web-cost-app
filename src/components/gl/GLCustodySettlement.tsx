@@ -194,6 +194,7 @@ export function GLCustodySettlement({
   const [form, setForm] = useState(emptyForm(language));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const saveModeRef = useRef<'draft' | 'submit' | 'approve'>('submit');
+  const deepLinkOpenedRef = useRef<string | null>(null);
 
   const [isCustodyAccountModalOpen, setIsCustodyAccountModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
@@ -415,7 +416,14 @@ export function GLCustodySettlement({
 
   useEffect(() => {
     if (!initialOpenId || settlements.length === 0) return;
+    const row = settlements.find((s) => s.id === initialOpenId);
+    if (!row) return;
     setSelectedSettlementId(initialOpenId);
+    if (deepLinkOpenedRef.current === initialOpenId) return;
+    deepLinkOpenedRef.current = initialOpenId;
+    if (!isPosted(row) && (row.status === 'submitted' || row.status === 'draft')) {
+      openSettlementModal(row);
+    }
   }, [initialOpenId, settlements]);
 
   useEffect(() => {
@@ -554,24 +562,70 @@ export function GLCustodySettlement({
     return txIds;
   };
 
-  const handleSave = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (formReadOnly) return;
-    const mode = saveModeRef.current;
-    if (mode !== 'approve' && !allowLedgerCreate) {
-      toast.error(t('toast_custody_no_post_permission'));
+  const approveExisting = async (row: CustodySettlementRecord) => {
+    if (!canApproveSettlement) {
+      toast.error(language === 'ar' ? 'اعتماد مدير الحسابات فقط.' : 'Accounting manager approval only.');
       return;
     }
-    if (mode === 'approve' && !canApproveSettlement) {
-      toast.error(language === 'ar' ? 'اعتماد مدير الحسابات فقط.' : 'Accounting manager approval only.');
+    if (isPosted(row)) {
+      toast.error(language === 'ar' ? 'القيد مرحّل مسبقاً.' : 'Journal already posted.');
+      return;
+    }
+    if (row.status !== 'submitted' && row.status !== 'draft') {
+      toast.error(
+        language === 'ar' ? `لا يمكن اعتماد الحالة: ${row.status}` : `Cannot approve status: ${row.status}`,
+      );
+      return;
+    }
+    setIsSubmitting(true);
+    try {
+      if (isLocalBackend) {
+        const projectHint = projects.find((p) => p.id === row.projectId);
+        await ensureLocalProjectExists(row.projectId, {
+          projectName: projectHint?.projectName,
+          projectCode: projectHint?.projectCode,
+        });
+        await custodySettlementsApi.approve(row.id);
+      } else {
+        const txIds = await postCloudGl(row.settlementNumber);
+        await updateDoc(doc(db, 'custody_settlements', row.id), {
+          status: 'approved',
+          transactionIds: txIds,
+          updatedAt: serverTimestamp(),
+        });
+      }
+      setRefreshKey((k) => k + 1);
+      setModalOpen(false);
+      setEditingId(null);
+      await onSettlementSaved?.();
+      toast.success(language === 'ar' ? 'تم اعتماد التسوية وترحيل القيد.' : 'Settlement approved and posted.');
+    } catch (error) {
+      console.error('Custody settlement approve failed:', error);
+      toast.error(formatSaveError(error));
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleSave = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const mode = saveModeRef.current;
+    if (mode === 'approve') {
+      const row = editingRecord ?? selectedSettlement;
+      if (!row) return;
+      await approveExisting(row);
+      return;
+    }
+    if (formReadOnly) return;
+    if (!allowLedgerCreate) {
+      toast.error(t('toast_custody_no_post_permission'));
       return;
     }
     if (!validateForm()) return;
 
     setIsSubmitting(true);
     try {
-      const status: CustodySettlementStatus =
-        mode === 'draft' ? 'draft' : mode === 'approve' ? 'approved' : 'submitted';
+      const status: CustodySettlementStatus = mode === 'draft' ? 'draft' : 'submitted';
 
       if (isLocalBackend) {
         const projectHint = projects.find((p) => p.id === form.projectId);
@@ -580,24 +634,14 @@ export function GLCustodySettlement({
           projectCode: projectHint?.projectCode,
         });
 
-        if (mode === 'approve' && editingId) {
-          await custodySettlementsApi.approve(editingId);
-        } else if (editingId) {
+        if (editingId) {
           await custodySettlementsApi.update(editingId, buildPayload(status));
         } else {
           await custodySettlementsApi.create(buildPayload(status));
         }
       } else {
         const payload = buildPayload(status);
-        if (mode === 'approve' && editingRecord) {
-          const txIds = await postCloudGl(editingRecord.settlementNumber);
-          await updateDoc(doc(db, 'custody_settlements', editingId!), {
-            status: 'approved',
-            transactionIds: txIds,
-            ...payload,
-            updatedAt: serverTimestamp(),
-          });
-        } else if (editingId) {
+        if (editingId) {
           await updateDoc(doc(db, 'custody_settlements', editingId), {
             ...payload,
             updatedAt: serverTimestamp(),
@@ -634,11 +678,9 @@ export function GLCustodySettlement({
       setEditingId(null);
       await onSettlementSaved?.();
       toast.success(
-        mode === 'approve'
-          ? (language === 'ar' ? 'تم اعتماد التسوية وترحيل القيد.' : 'Settlement approved and posted.')
-          : mode === 'draft'
-            ? t('toast_custody_draft_saved')
-            : (language === 'ar' ? 'تم تقديم التسوية للاعتماد.' : 'Settlement submitted for approval.'),
+        mode === 'draft'
+          ? t('toast_custody_draft_saved')
+          : (language === 'ar' ? 'تم تقديم التسوية للاعتماد.' : 'Settlement submitted for approval.'),
       );
     } catch (error) {
       console.error('Custody settlement save failed:', error);
@@ -897,7 +939,14 @@ export function GLCustodySettlement({
                 contractLabel={contractLabel}
                 posted={isPosted(selectedSettlement)}
                 canEdit={allowLedgerCreate && !isPosted(selectedSettlement)}
+                canApprove={
+                  canApproveSettlement
+                  && selectedSettlement.status === 'submitted'
+                  && !isPosted(selectedSettlement)
+                }
+                approving={isSubmitting}
                 onEdit={() => openSettlementModal(selectedSettlement)}
+                onApprove={() => void approveExisting(selectedSettlement)}
                 onExport={() => void handleExportExcel(selectedSettlement)}
                 onPrint={handlePrintSelected}
               />

@@ -12,7 +12,11 @@ interface Props {
   contractLabel: (contractId: string) => string;
   posted: boolean;
   canEdit: boolean;
+  /** Accounting manager — post GL without opening the edit modal. */
+  canApprove?: boolean;
+  approving?: boolean;
   onEdit: () => void;
+  onApprove?: () => void;
   onExport: () => void;
   onPrint: () => void;
 }
@@ -33,7 +37,10 @@ export function CustodySettlementDetail({
   contractLabel,
   posted,
   canEdit,
+  canApprove = false,
+  approving = false,
   onEdit,
+  onApprove,
   onExport,
   onPrint,
 }: Props) {
@@ -72,6 +79,17 @@ export function CustodySettlementDetail({
           >
             {label}
           </span>
+          {canApprove && onApprove && (
+            <button
+              type="button"
+              disabled={approving}
+              onClick={onApprove}
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-500 disabled:opacity-60 transition-colors"
+            >
+              <CheckCircle2 size={14} />
+              {isAr ? 'اعتماد وترحيل القيد' : 'Approve & post'}
+            </button>
+          )}
           {canEdit && (
             <button
               type="button"
@@ -182,21 +200,34 @@ export function CustodySettlementDetail({
 
       <div
         className={cn(
-          'mt-4 pt-4 border-t flex items-center gap-2 text-[10px] text-gray-500',
+          'mt-4 pt-4 border-t flex flex-col gap-3',
           isDark ? 'border-gray-800/50' : 'border-gray-100',
         )}
       >
-        {posted ? (
-          <span className="inline-flex items-center gap-1 text-green-500 font-bold">
-            <CheckCircle2 size={12} />
-            {isAr ? 'مرحّل في دفتر اليومية' : 'Posted to GL'}
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1">
-            <Clock size={12} className="text-yellow-500" />
-            {isAr ? 'لم يُرحّل بعد' : 'Not posted yet'}
-          </span>
-        )}
+        {canApprove && onApprove && !posted ? (
+          <button
+            type="button"
+            disabled={approving}
+            onClick={onApprove}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 hover:bg-green-500 disabled:opacity-60 px-4 py-2.5 text-sm font-bold text-white"
+          >
+            <CheckCircle2 size={16} />
+            {isAr ? 'اعتماد وترحيل القيد' : 'Approve & post journal'}
+          </button>
+        ) : null}
+        <div className="flex items-center gap-2 text-[10px] text-gray-500">
+          {posted ? (
+            <span className="inline-flex items-center gap-1 text-green-500 font-bold">
+              <CheckCircle2 size={12} />
+              {isAr ? 'مرحّل في دفتر اليومية' : 'Posted to GL'}
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-1">
+              <Clock size={12} className="text-yellow-500" />
+              {isAr ? 'لم يُرحّل بعد' : 'Not posted yet'}
+            </span>
+          )}
+        </div>
       </div>
     </>
   );

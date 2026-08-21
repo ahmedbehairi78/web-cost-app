@@ -180,7 +180,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `server/src/modules/custodySettlements.ts` | **`custody_settlements`** CRUD; **`POST /:id/approve`** (admin or `ledger.create` → GL via `postCustodySettlementJournals`) |
 | `server/src/accounting/custodySettlementJournal.ts` | GL builder — groups expense items by `contractId`; one balanced tx per group + custody Cr |
 | `server/src/accounting/subcontractorIpcJournal.ts` | Subcontractor IPC journal on approve (server-side) |
-| `src/components/gl/GLCustodySettlement.tsx` | Custody tab — list + modal; per-project numbering `SET-{projectCode}-NNNN`; draft/submit/approve; export/print |
+| `src/components/gl/GLCustodySettlement.tsx` | Custody tab — list + **detail approve** + modal; per-project numbering `SET-{projectCode}-NNNN`; draft/submit/approve; export/print |
 | `src/lib/shellNavigation.ts` | Also **`setPendingCustodySettlementId`** / **`consumePendingCustodySettlementId`** for notification deep-links |
 | `server/src/permissions.ts` | Server-side `PermissionKey`, role presets |
 | `server/src/middleware/auth.ts` | `requireAuth`, `requirePermission`, `requireRole` middlewares |
@@ -724,7 +724,7 @@ The add/edit item modal uses **cascading dropdowns** driven by `existingItems` (
 
 - Invoice / IPC saves write **`supplierAccountId`** (COA doc id) plus **`supplierId`** when linked to **`suppliers`**. **`supplierName`** resolves from supplier directory names or COA labels.
 - **Custody tab** writes **`custody_settlements`** via **`custodySettlementsApi`** — **not** direct `accountingService.createTransaction` on save. GL posted server-side on **`POST /api/custody-settlements/:id/approve`** via **`postCustodySettlementJournals`** (`custodySettlementJournal.ts`).
-- **`GLCustodySettlement`** receives `accounts`, `contracts`, `canApproveSettlement` (`isAdmin || can('ledger').create`), optional **`initialOpenId`** (notification deep-link). Items group by **`contractId`** into balanced postings with **`costCenterId`**.
+- **`GLCustodySettlement`** receives `accounts`, `contracts`, `canApproveSettlement` (`ledger.create` **or** `ledger.edit` — same as server `hasModuleWrite('ledger')`), optional **`initialOpenId`** (notification deep-link selects the row **and** opens the form). **Approve** is on **`CustodySettlementDetail`** (main pane) as well as the modal — do not hide it behind «تعديل» only. Items group by **`contractId`** into balanced postings with **`costCenterId`**.
 - **Custody account picker (“اختر العهدة”)** lists **active leaf** accounts whose codes **`startWith('12102')`** and are **8 digits** (branch **الصناديق / cash on hand** under parent **`12102`**). **`AccountModal`** for new custody accounts uses **`defaultParentCode="12102"`** — not `12203` (شيكات برسم التحصيل).
 - **Notifications:** `subcontractor_ipc_pending` · `custody_settlement_pending` — **`NotificationBell`** deep-links to Actual Costs tab + document id (`shellNavigation` pending ids).
 
