@@ -1714,6 +1714,17 @@ export interface CashBudgetPeriodRow {
   lines?: CashBudgetLineRow[];
 }
 
+export interface CashBudgetCustodyFloorRow {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  accountNameEn?: string | null;
+  minBalance: number;
+  glBalance: number;
+  pendingSettlements: number;
+  replenish: number;
+}
+
 export const cashBudgetApi = {
   list: () => apiClient.get<CashBudgetPeriodRow[]>('/cash-budget'),
   get: (id: string) =>
@@ -1750,6 +1761,10 @@ export const cashBudgetApi = {
     apiClient.patch<Record<string, unknown>>(
       `/cash-budget/coa/${encodeURIComponent(accountId)}/min-balance`,
       { minBalance },
+    ),
+  custodyFloors: (asOf?: string) =>
+    apiClient.get<CashBudgetCustodyFloorRow[]>(
+      `/cash-budget/custody-floors${asOf ? `?asOf=${encodeURIComponent(asOf)}` : ''}`,
     ),
 };
 

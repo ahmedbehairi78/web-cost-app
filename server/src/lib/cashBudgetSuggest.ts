@@ -15,6 +15,7 @@ import {
   isSubcontractorLeafCode,
   isSupplierLeafCode,
   subAccountLabel,
+  ymdKey,
   type CashBudgetPeriodType,
 } from './cashBudget.js';
 
@@ -215,6 +216,82 @@ function sumPositiveNets(byCode: Map<string, LeafBucket>, match: (code: string) 
   return total;
 }
 
+export type CustodyFloorRow = {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  accountNameEn: string | null;
+  projectId: string | null;
+  minBalance: number;
+  glBalance: number;
+  pendingSettlements: number;
+  replenish: number;
+};
+
+export function computeCustodyFloorRows(
+  accounts: Array<{
+    id?: string | null;
+    accountCode?: string | null;
+    accountName?: string | null;
+    accountNameEn?: string | null;
+    projectId?: string | null;
+    minBalance?: unknown;
+  }>,
+  buckets: Map<string, LeafBucket>,
+  pendingByCustody: Map<string, number>,
+): CustodyFloorRow[] {
+  const rows: CustodyFloorRow[] = [];
+  for (const acc of accounts) {
+    const code = String(acc.accountCode ?? '').trim();
+    if (!isCustodyCashLeafCode(code)) continue;
+    const gl = buckets.get(code)?.net ?? 0;
+    const pending = pendingByCustody.get(code) ?? 0;
+    const minBalance = num(acc.minBalance);
+    rows.push({
+      accountId: String(acc.id ?? code),
+      accountCode: code,
+      accountName: leafName(acc.accountName, code),
+      accountNameEn: acc.accountNameEn ?? null,
+      projectId: acc.projectId ?? null,
+      minBalance,
+      glBalance: roundMoney(gl),
+      pendingSettlements: roundMoney(pending),
+      replenish: custodyReplenishAmount(minBalance, gl, pending),
+    });
+  }
+  return rows.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
+}
+
+export async function loadCustodyFloorRows(asOf: string): Promise<CustodyFloorRow[]> {
+  const day = ymdKey(asOf);
+  const [glLines, settlements, accounts, projectNames] = await Promise.all([
+    glLeafLinesThrough(day || asOf),
+    prisma.custodySettlement.findMany({
+      where: { isDeleted: false, status: 'submitted' },
+      select: { custodyAccountCode: true, totalAmount: true },
+    }),
+    prisma.chartOfAccount.findMany({
+      where: { isGroup: false, status: { not: 'disabled' } },
+      select: {
+        id: true,
+        accountCode: true,
+        accountName: true,
+        accountNameEn: true,
+        minBalance: true,
+        projectId: true,
+      },
+    }),
+    loadProjectNameMap(),
+  ]);
+  const buckets = foldLeafBuckets(glLines, projectNames);
+  const pendingByCustody = new Map<string, number>();
+  for (const row of settlements) {
+    const code = String(row.custodyAccountCode ?? '').trim();
+    pendingByCustody.set(code, roundMoney((pendingByCustody.get(code) ?? 0) + num(row.totalAmount)));
+  }
+  return computeCustodyFloorRows(accounts, buckets, pendingByCustody);
+}
+
 function obligationCategory(code: string): 'supplier' | 'subcontractor' | 'payroll' | null {
   if (isSupplierLeafCode(code)) return 'supplier';
   if (isSubcontractorLeafCode(code)) return 'subcontractor';
@@ -351,23 +428,18 @@ export async function buildCashBudgetSuggestion(input: {
     }
   }
 
-  for (const acc of accounts) {
-    const code = String(acc.accountCode ?? '').trim();
-    if (!isCustodyCashLeafCode(code)) continue;
-    const gl = buckets.get(code)?.net ?? 0;
-    const pending = pendingByCustody.get(code) ?? 0;
-    const replenish = custodyReplenishAmount(num(acc.minBalance), gl, pending);
-    if (replenish <= 0) continue;
-    const project = lookupProjectName(projectNames, acc.projectId);
+  for (const floor of computeCustodyFloorRows(accounts, buckets, pendingByCustody)) {
+    if (floor.replenish <= 0) continue;
+    const project = lookupProjectName(projectNames, floor.projectId);
     push({
       side: 'obligation',
       category: 'custody_replenish',
-      description: leafName(acc.accountName, code),
-      amount: replenish,
+      description: floor.accountName,
+      amount: floor.replenish,
       dueDate: asOf,
       originType: 'custody_min',
-      originId: acc.id || code,
-      projectId: project?.id ?? acc.projectId,
+      originId: floor.accountId || floor.accountCode,
+      projectId: project?.id ?? floor.projectId,
       contractId: null,
       notes: project?.name ?? null,
     });

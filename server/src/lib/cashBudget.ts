@@ -350,7 +350,6 @@ export function distributePoolByAccountWeight(
   const eligible = lines.filter((line) => {
     if (line.excluded) return false;
     if (line.side && line.side !== 'obligation') return false;
-    if (String(line.category ?? '') === 'custody_replenish') return false;
     return roundMoney(line.amount) > 0;
   });
 

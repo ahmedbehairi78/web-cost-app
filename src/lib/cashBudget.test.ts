@@ -242,7 +242,7 @@ describe('distributePoolByAccountWeight', () => {
     expect(map.get('c')).toBe(80_000);
   });
 
-  it('skips custody replenish lines', () => {
+  it('includes custody replenish in the settlement split', () => {
     const map = distributePoolByAccountWeight(
       [
         { id: 'a', originType: 'gl_leaf', originId: '21101010::_', description: 'ماي فارم', amount: 100, side: 'obligation', category: 'supplier' },
@@ -250,8 +250,8 @@ describe('distributePoolByAccountWeight', () => {
       ],
       50,
     );
-    expect(map.get('a')).toBe(50);
-    expect(map.get('r')).toBe(0);
+    expect(map.get('a')).toBe(25);
+    expect(map.get('r')).toBe(25);
   });
 });
 

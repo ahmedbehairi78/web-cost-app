@@ -6,7 +6,7 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
 import { roundMoney } from '../lib/money.js';
-import { businessTodayCompact } from '../lib/businessCalendar.js';
+import { businessTodayCompact, businessTodayYmd } from '../lib/businessCalendar.js';
 import {
   classifyCustodyAccountCodes,
   computeCashBudgetSummary,
@@ -21,7 +21,7 @@ import {
   subAccountLabel,
   ymdKey,
 } from '../lib/cashBudget.js';
-import { buildCashBudgetSuggestion, loadProjectNameMap, lookupProjectName } from '../lib/cashBudgetSuggest.js';
+import { buildCashBudgetSuggestion, loadCustodyFloorRows, loadProjectNameMap, lookupProjectName } from '../lib/cashBudgetSuggest.js';
 
 const SIDES = new Set(['obligation', 'source']);
 
@@ -199,6 +199,15 @@ cashBudgetRouter.get(
       return { ...header, summary, lineCount: row.lines.length };
     });
     res.json(serialize(list));
+  }),
+);
+
+cashBudgetRouter.get(
+  '/custody-floors',
+  asyncHandler(async (req, res) => {
+    const asOf = ymdKey(req.query.asOf) || ymdKey(req.query.periodEnd) || businessTodayYmd();
+    const rows = await loadCustodyFloorRows(asOf);
+    res.json(serialize(rows));
   }),
 );
 

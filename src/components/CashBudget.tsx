@@ -20,7 +20,6 @@ import {
   allocationSharePct,
   computeCashBudgetSummary,
   glLeafOriginCode,
-  isCustodyCashLeafCode,
   periodEndFor,
   subAccountLabel,
   summarizeAllocationByCostCenter,
@@ -33,21 +32,11 @@ import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import { ManualHelpButton } from './help/ManualHelpButton';
 import {
   cashBudgetApi,
-  chartOfAccountsApi,
   settingsApi,
+  type CashBudgetCustodyFloorRow,
   type CashBudgetLineRow,
   type CashBudgetPeriodRow,
 } from '../services/local/modulesApi';
-
-type CoaRow = {
-  id: string;
-  accountCode: string;
-  accountName: string;
-  accountNameEn?: string;
-  isGroup?: boolean;
-  status?: string;
-  minBalance?: number;
-};
 
 function errMessage(e: unknown, fallback: string): string {
   if (e && typeof e === 'object' && 'message' in e && typeof (e as { message: unknown }).message === 'string') {
@@ -90,7 +79,7 @@ export function CashBudget() {
   const [manualCategory, setManualCategory] = useState('other');
   const [manualDesc, setManualDesc] = useState('');
   const [manualAmount, setManualAmount] = useState('');
-  const [custodyLeaves, setCustodyLeaves] = useState<CoaRow[]>([]);
+  const [custodyLeaves, setCustodyLeaves] = useState<CashBudgetCustodyFloorRow[]>([]);
   const [floorDrafts, setFloorDrafts] = useState<Record<string, string>>({});
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
     companyName: '',
@@ -136,16 +125,13 @@ export function CashBudget() {
     }
   }, [t]);
 
-  const loadCustodyFloors = useCallback(async () => {
+  const loadCustodyFloors = useCallback(async (asOf?: string) => {
     try {
-      const rows = (await chartOfAccountsApi.list()) as CoaRow[];
-      const leaves = rows.filter(
-        (a) => !a.isGroup && a.status !== 'disabled' && isCustodyCashLeafCode(a.accountCode),
-      );
-      setCustodyLeaves(leaves);
+      const rows = await cashBudgetApi.custodyFloors(asOf);
+      setCustodyLeaves(rows ?? []);
       const drafts: Record<string, string> = {};
-      for (const leaf of leaves) {
-        drafts[leaf.id] = String(Number(leaf.minBalance) || 0);
+      for (const leaf of rows ?? []) {
+        drafts[leaf.accountId] = String(Number(leaf.minBalance) || 0);
       }
       setFloorDrafts(drafts);
     } catch {
@@ -156,11 +142,15 @@ export function CashBudget() {
   useEffect(() => {
     if (!isLocalBackend) return;
     void loadList();
-    void loadCustodyFloors();
     void settingsApi.getCompanyInfo().then((res) => {
       if (res.value) setCompanyInfo((prev) => ({ ...prev, ...res.value }));
     }).catch(() => { /* defaults */ });
-  }, [loadList, loadCustodyFloors]);
+  }, [loadList]);
+
+  useEffect(() => {
+    if (!isLocalBackend) return;
+    void loadCustodyFloors(detail?.periodEnd);
+  }, [loadCustodyFloors, detail?.periodEnd]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -351,8 +341,15 @@ export function CashBudget() {
     const value = Number(floorDrafts[accountId]);
     try {
       await cashBudgetApi.setMinBalance(accountId, Number.isFinite(value) ? value : 0);
-      toast.success(t('cb_min_saved'));
-      await loadCustodyFloors();
+      await loadCustodyFloors(detail?.periodEnd);
+      if (detail && canWrite && detail.status === 'draft') {
+        const next = await cashBudgetApi.suggest(detail.id);
+        setDetail(next);
+        await loadList();
+        toast.success(t('cb_min_saved_suggested'));
+      } else {
+        toast.success(t('cb_min_saved'));
+      }
     } catch (e) {
       toast.error(errMessage(e, t('cb_save_failed')));
     }
@@ -658,30 +655,39 @@ export function CashBudget() {
                     <thead>
                       <tr className="text-gray-500">
                         <th className="text-start font-medium py-1">{t('cb_col_account')}</th>
+                        <th className="text-end font-medium py-1">{t('cb_floor_gl')}</th>
                         <th className="text-end font-medium py-1">{t('cb_min_balance')}</th>
+                        <th className="text-end font-medium py-1">{t('cb_floor_shortfall')}</th>
                         <th />
                       </tr>
                     </thead>
                     <tbody>
                       {custodyLeaves.map((acc, index) => (
-                        <tr key={listKey(acc.id, index, 'floor')} className={isDark ? 'border-t border-gray-800' : 'border-t border-gray-100'}>
+                        <tr key={listKey(acc.accountId, index, 'floor')} className={isDark ? 'border-t border-gray-800' : 'border-t border-gray-100'}>
                           <td className="py-1.5">
                             {acc.accountCode} — {isAr ? acc.accountName : (acc.accountNameEn || acc.accountName)}
                           </td>
+                          <td className="py-1.5 text-end tabular-nums">{formatMoney(acc.glBalance)}</td>
                           <td className="py-1.5 text-end">
                             <input
                               type="number"
                               step="0.01"
                               min="0"
                               className={cn(inputCls, 'max-w-[8rem] ms-auto')}
-                              value={floorDrafts[acc.id] ?? '0'}
+                              value={floorDrafts[acc.accountId] ?? '0'}
                               disabled={!canWrite}
-                              onChange={(e) => setFloorDrafts((prev) => ({ ...prev, [acc.id]: e.target.value }))}
+                              onChange={(e) => setFloorDrafts((prev) => ({ ...prev, [acc.accountId]: e.target.value }))}
                             />
+                          </td>
+                          <td className={cn(
+                            'py-1.5 text-end tabular-nums font-medium',
+                            Number(acc.replenish) > 0 ? 'text-amber-600' : 'text-gray-500',
+                          )}>
+                            {formatMoney(acc.replenish)}
                           </td>
                           <td className="py-1.5 text-end">
                             {canWrite && (
-                              <button type="button" className={btnCls} onClick={() => void handleSaveFloor(acc.id)}>
+                              <button type="button" className={btnCls} onClick={() => void handleSaveFloor(acc.accountId)}>
                                 {t('cb_save_floor')}
                               </button>
                             )}
@@ -792,6 +798,9 @@ function LineTable({
                   <div>{accountLabel(line)}</div>
                   {line.origin === 'manual' ? (
                     <div className="text-[10px] text-gray-500">{t('cb_origin_manual')}</div>
+                  ) : null}
+                  {line.category === 'custody_replenish' ? (
+                    <div className="text-[10px] text-amber-600">{t('cb_cat_custody_replenish')}</div>
                   ) : null}
                 </td>
                 <td className="px-2 py-1.5">{projectLabel(line, isAr, t)}</td>

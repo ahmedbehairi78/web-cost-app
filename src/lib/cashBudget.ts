@@ -443,9 +443,8 @@ export function settlementCashPool(availableBankAndCash: number, obligationTotal
 
 /**
  * After approve: pay obligations from banks + treasury cash.
- * If cash ≥ obligations, each line gets its full amount (surplus stays in the gap).
+ * If cash ≥ obligations (including custody replenish), each line gets its full amount.
  * If cash is short, split the available cash by account weight, then by cost-center rows.
- * Skips custody replenish lines.
  */
 export function distributePoolByAccountWeight(
   lines: AllocatableCashBudgetLine[],
@@ -455,7 +454,6 @@ export function distributePoolByAccountWeight(
   const eligible = lines.filter((line) => {
     if (line.excluded) return false;
     if (line.side && line.side !== 'obligation') return false;
-    if (String(line.category ?? '') === 'custody_replenish') return false;
     return roundMoney(line.amount) > 0;
   });
 
