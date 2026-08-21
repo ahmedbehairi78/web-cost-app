@@ -34,6 +34,7 @@ export {
 export { renderReportDocumentHtml } from './renderHtml';
 export { exportReportDocumentPdf } from './exportPdf';
 export { openReportDocument } from './openDocument';
+export { REPORT_PRINT_IFRAME_SANDBOX, printHtmlInHiddenFrame } from './printFrame';
 export {
   serializePreviewDocument,
   applySelectionFontFamily,

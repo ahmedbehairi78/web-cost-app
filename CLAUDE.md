@@ -100,7 +100,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/liquidityMetrics.ts` | **Shared liquidity KPIs** — `computeLiquidityContractRow`, `computePortfolioPendingBilling`, `cashAndBankBalanceFromGlTxs`, `dashboardCollectionAmountForTx`, `dashboardIpcCollectionAmountForTx`, `receivablesBalanceFromGlTxs`, `hasCustomerReceivableGlActivity`, cheque ISS/CLR pairing; used by **`Dashboard.tsx`**, **`LiquidityReport.tsx`**, **`Projects.tsx`**. Tests: **`17`** cases in `src/lib/liquidityMetrics.test.ts`. |
 | `src/lib/dashboardMetrics.ts` | **Dashboard filters/compare/timeline** — `filterDashboardTransactions`, `computeDashboardPeriodStats`, `buildProjectCompareRows` (سيولة), `buildMonthlySeries` (أعمدة شهرية) · **`buildCashFlowSeries`** (تحليل التدفق النقدي — **شهري غير تراكمي**؛ نقطة أصل `__start__` = صفر ثم إجمالي كل شهر؛ الأشهر بلا حركة **`null`** ⇒ `connectNulls` يمدّ الخط؛ رسم Area خطي); UI: `DashboardFilterBar` · `ProjectCompareTable`. Tests: `dashboardMetrics.test.ts`. |
 | `src/lib/reportDocument/` | **منصة مستندات التقارير** — بيانات → HTML نظيف / PDF / طباعة؛ ورقة: هيدر مضغوط + جسم + **فوتر سطر واحد** (شركة عند start · نص/ملاحظة وسط · رقم صفحة عند end — يتبع `dir` اللغة) |
-| `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
+| `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin allow-modals"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron؛ `allow-modals` لازم لحوار الطباعة/PDF) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
 | `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level). **Selection mini-bar** (`ReportSelectionMiniToolbar` + `selectionFormat.ts`) formats **selected text only** (header/body/footer) with undo; print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
 | `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (62 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
@@ -1008,6 +1008,29 @@ npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/
 
 ---
 
+## 🔴 HANDOFF — زر طباعة وPDF في معاينة الطباعة ✅ (2026-08-21)
+
+> **جلسة 2026-08-21 مساءً:** أزرار **طباعة** و**PDF** في `ReportPreviewDialog` لا تفتح الحوار. السبب: إطار Blob بـ `sandbox="allow-same-origin"` **بدون** `allow-modals` — Chromium يمنع `window.print()` صامتًا؛ ومسار PDF في المتصفح يعتمد على نفس الحوار.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **sandbox** | `allow-same-origin allow-modals` — **بدون** `allow-top-navigation` / `allow-scripts` |
+| **طباعة** | من إطار المعاينة مباشرة إن أمكن · وإلا إطار مخفي Blob (`printFrame.ts`) |
+| **PDF** | Electron: `print-report-pdf` · متصفح/قشرة قديمة: حوار طباعة (حفظ PDF) بنفس الإطار المخفي |
+
+### لا تراجع
+
+- لا تحذف `allow-modals` من sandbox المعاينة/الطباعة.
+- لا تَعُد إلى `document.write` على `about:blank` لإطار الطباعة.
+
+```powershell
+npm run test -- src/lib/reportDocument/printFrame.test.ts src/lib/reportDocument/reportDocument.test.ts
+```
+
+---
+
 ## 🔴 HANDOFF — إغلاق معاينة الطباعة لا يُخرج الجلسة ✅ (2026-08-21)
 
 > **جلسة 2026-08-21:** إغلاق معاينة طباعة الموازنة النقدية (وأي `ReportPreviewDialog`) كان يُظهر شاشة تسجيل الدخول في Electron. السبب: iframe **`srcDoc`** غير مُقيَّد عند الإزالة يُفسَّر كتنقّل للإطار الرئيسي إلى `about:blank` → `did-fail-load` يعيد `loadURL` كبداية باردة.
@@ -1016,7 +1039,7 @@ npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/
 
 | المجال | ملخص |
 |--------|------|
-| **SPA** | المعاينة عبر **Blob URL** + `sandbox="allow-same-origin"` (بدون `allow-top-navigation`) · إزالة `src` قبل الإغلاق — لا `about:blank` |
+| **SPA** | المعاينة عبر **Blob URL** + `sandbox="allow-same-origin allow-modals"` (بدون `allow-top-navigation`) · إزالة `src` قبل الإغلاق — لا `about:blank` · الطباعة/PDF من إطار مخفي بنفس الـ sandbox (بدون `allow-modals` كان Chromium يمنع `window.print()`) |
 | **قشرة** | منع تنقّل الإطار الرئيسي إلى `about:*` · تجاهل `did-fail-load` لـ about · إعادة المحاولة تُبقي الجلسة إن سُجّلت النافذة مسبقاً |
 | **إصدار** | `package.json` → **1.0.9** — SPA يكفي للمتصفح/Railway؛ المثبّت يحتاج **`electron:publish`** |
 

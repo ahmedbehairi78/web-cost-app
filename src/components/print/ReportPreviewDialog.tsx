@@ -27,7 +27,7 @@ import {
   installIframeIdleActivityBridge,
   isIdleLockedDocument,
 } from '../../lib/idleActivityBridge';
-import { openReportDocument, renderReportDocumentHtml, type ReportDocument } from '../../lib/reportDocument';
+import { openReportDocument, renderReportDocumentHtml, REPORT_PRINT_IFRAME_SANDBOX, type ReportDocument } from '../../lib/reportDocument';
 import { ReportFormatToolbar } from '../reports/ReportFormatToolbar';
 import {
   ReportSelectionMiniToolbar,
@@ -109,8 +109,6 @@ export function ReportPreviewDialog({
   const [previewObjectUrl, setPreviewObjectUrl] = useState('');
   const [miniBar, setMiniBar] = useState<MiniToolbarPosition | null>(null);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
-  /** True after selection-scoped edits — print/PDF use live iframe HTML. */
-  const [selectionHtmlDirty, setSelectionHtmlDirty] = useState(false);
   const [formatPainterArmed, setFormatPainterArmed] = useState(false);
   const formatPainterClipboardRef = useRef<FormatPainterClipboard | null>(null);
   const formatPainterArmedRef = useRef(false);
@@ -134,7 +132,6 @@ export function ReportPreviewDialog({
     selectionCleanupRef.current?.();
     selectionCleanupRef.current = null;
     setPreviewDoc(null);
-    setSelectionHtmlDirty(false);
     const frame = previewFrameRef.current;
     if (frame) {
       frame.removeAttribute('src');
@@ -148,7 +145,6 @@ export function ReportPreviewDialog({
     dirtyRef.current = false;
     setProfile(resolveReportPrintProfile(storedProfiles, reportId));
     setDirty(false);
-    setSelectionHtmlDirty(false);
     setFormatPainterArmed(false);
     formatPainterArmedRef.current = false;
     formatPainterClipboardRef.current = null;
@@ -187,7 +183,6 @@ export function ReportPreviewDialog({
   useEffect(() => {
     hideMiniBar();
     setPreviewDoc(null);
-    setSelectionHtmlDirty(false);
     setFormatPainterArmed(false);
     formatPainterArmedRef.current = false;
     formatPainterClipboardRef.current = null;
@@ -227,7 +222,6 @@ export function ReportPreviewDialog({
           if (fromMouseUp && formatPainterClipboardRef.current && hasNonEmptySelection(doc!)) {
             const clip = formatPainterClipboardRef.current;
             if (applyFormatPainterClipboard(doc!, clip, textDirRef.current)) {
-              setSelectionHtmlDirty(true);
               setFormatPainterArmed(false);
               formatPainterArmedRef.current = false;
               formatPainterClipboardRef.current = null;
@@ -323,24 +317,40 @@ export function ReportPreviewDialog({
   }, [reportId]);
 
   const liveHtmlOverride = useCallback((): string | undefined => {
-    if (!selectionHtmlDirty || !previewDoc) return undefined;
+    if (!previewDoc) return undefined;
     try {
       return serializePreviewDocument(previewDoc);
     } catch {
       return undefined;
     }
-  }, [selectionHtmlDirty, previewDoc]);
+  }, [previewDoc]);
 
   const handlePrint = useCallback(() => {
     if (!docResult) return;
-    void openReportDocument(docResult, 'print', formatMoney, {}, liveHtmlOverride());
-  }, [docResult, formatMoney, liveHtmlOverride]);
+    const previewWin = previewFrameRef.current?.contentWindow;
+    if (previewWin) {
+      try {
+        previewWin.focus();
+        previewWin.print();
+        return;
+      } catch {
+        /* fall through to hidden frame */
+      }
+    }
+    void openReportDocument(docResult, 'print', formatMoney, {}, liveHtmlOverride() ?? previewHtml);
+  }, [docResult, formatMoney, liveHtmlOverride, previewHtml]);
 
   const handlePdf = useCallback(async () => {
     if (!docResult || exporting) return;
     setExporting(true);
     try {
-      await openReportDocument(docResult, 'pdf', formatMoney, {}, liveHtmlOverride());
+      await openReportDocument(
+        docResult,
+        'pdf',
+        formatMoney,
+        {},
+        liveHtmlOverride() ?? previewHtml || undefined,
+      );
     } catch (err) {
       console.error(err);
       toast.error(
@@ -351,7 +361,7 @@ export function ReportPreviewDialog({
     } finally {
       setExporting(false);
     }
-  }, [docResult, exporting, formatMoney, isAr, liveHtmlOverride]);
+  }, [docResult, exporting, formatMoney, isAr, liveHtmlOverride, previewHtml]);
 
   const storedResolved = resolveReportPrintProfile(storedProfiles, reportId);
   const profileDirty = dirty || !printProfileEquals(profile, storedResolved);
@@ -474,7 +484,7 @@ export function ReportPreviewDialog({
             ref={previewFrameRef}
             title={docResult?.title || 'preview'}
             src={previewObjectUrl}
-            sandbox="allow-same-origin"
+            sandbox={REPORT_PRINT_IFRAME_SANDBOX}
             referrerPolicy="no-referrer"
             className="block mx-auto bg-white border-0 shadow-2xl"
             style={{ width: `min(100%, ${frameWidth})`, minHeight: '80vh' }}
@@ -504,7 +514,7 @@ export function ReportPreviewDialog({
           language={language}
           t={t}
           position={miniBar}
-          onFormatted={() => setSelectionHtmlDirty(true)}
+          onFormatted={() => undefined}
           formatPainterArmed={formatPainterArmed}
           onFormatPainterArmedChange={setFormatPainter}
         />

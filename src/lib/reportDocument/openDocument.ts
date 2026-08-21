@@ -1,5 +1,6 @@
 import { renderReportDocumentHtml } from './renderHtml';
 import { exportReportDocumentPdf } from './exportPdf';
+import { printHtmlInHiddenFrame } from './printFrame';
 import type { ReportDocument, ReportDocumentAction, ReportDocumentLabels } from './types';
 
 const PREVIEW_ROOT = 'report-doc-preview-root';
@@ -31,43 +32,10 @@ function removePageStyle(): void {
 }
 
 function printHtmlDocument(html: string, doc: ReportDocument): void {
-  applyPageStyle(doc);
-  const iframe = document.createElement('iframe');
-  iframe.setAttribute('aria-hidden', 'true');
-  iframe.setAttribute('sandbox', 'allow-same-origin');
-  iframe.style.cssText =
-    'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none';
-  document.body.appendChild(iframe);
-
-  const win = iframe.contentWindow;
-  const idoc = iframe.contentDocument;
-  if (!win || !idoc) {
-    iframe.remove();
-    removePageStyle();
-    return;
-  }
-
-  idoc.open();
-  idoc.write(html);
-  idoc.close();
-
-  const cleanup = () => {
-    iframe.remove();
-    removePageStyle();
-    win.removeEventListener('afterprint', cleanup);
-  };
-  win.addEventListener('afterprint', cleanup);
-
-  // Allow layout + images
-  window.setTimeout(() => {
-    try {
-      win.focus();
-      win.print();
-    } catch {
-      cleanup();
-    }
-    window.setTimeout(cleanup, 60_000);
-  }, 250);
+  printHtmlInHiddenFrame(html, {
+    apply: () => applyPageStyle(doc),
+    remove: removePageStyle,
+  });
 }
 
 function openPreview(
