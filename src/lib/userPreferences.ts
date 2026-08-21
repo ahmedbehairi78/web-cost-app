@@ -5,6 +5,7 @@ import { isLocalBackend } from './dataBackend';
 import { settingsApi, type UserPreferences } from '../services/local/modulesApi';
 import { ensureApiAuthToken } from './authToken';
 import { parseDefaultModuleSelectValue } from './shellNavigation';
+import { moduleAccess } from './permissions';
 
 export type AppLanguagePreference = 'ar' | 'en';
 
@@ -50,13 +51,16 @@ export function canPersistUserPreferences(): boolean {
   return isLocalBackend || !!auth.currentUser;
 }
 
-/** Company-wide print design (`reportPrintProfiles`) — settings admin or Reports module. */
+/** Company-wide print design (`reportPrintProfiles`) — settings, reports, or cash-budget write. */
 export function canSaveCompanyPrintDesign(permissions?: {
   settings?: boolean;
   reports?: boolean;
+  cash_budget?: { view?: boolean; create?: boolean; edit?: boolean };
 } | null): boolean {
   if (!canPersistUserPreferences() || !permissions) return false;
-  return permissions.settings === true || permissions.reports === true;
+  if (permissions.settings === true || permissions.reports === true) return true;
+  const cash = moduleAccess(permissions as import('../types').UserPermissions, 'cash_budget');
+  return cash.create || cash.edit;
 }
 
 async function mirrorFirestoreUserPrefs(patch: Partial<UserPreferences>): Promise<void> {

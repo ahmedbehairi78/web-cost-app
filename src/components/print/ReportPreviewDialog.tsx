@@ -15,6 +15,7 @@ import {
 import { canSaveCompanyPrintDesign } from '../../lib/userPreferences';
 import { useOptionalPermissions } from '../../context/PermissionsContext';
 import { persistReportPrintProfiles } from '../../lib/reportPrintProfilesPersistence';
+import { ApiError } from '../../lib/apiClient';
 import {
   clearSelectionUndo,
   applyFormatPainterClipboard,
@@ -31,7 +32,7 @@ import {
   exportReportDocumentExcel,
   openReportDocument,
   renderReportDocumentHtml,
-  REPORT_PRINT_IFRAME_SANDBOX,
+  REPORT_PREVIEW_IFRAME_SANDBOX,
   type ReportDocument,
 } from '../../lib/reportDocument';
 import { ReportFormatToolbar } from '../reports/ReportFormatToolbar';
@@ -102,7 +103,7 @@ export function ReportPreviewDialog({
   const perms = useOptionalPermissions();
   const allowSave =
     canSaveDesign ??
-    canSaveCompanyPrintDesign(perms?.permissions);
+    Boolean(perms?.isAdmin || canSaveCompanyPrintDesign(perms?.permissions));
   const [profile, setProfile] = useState<ReportPrintProfile>(() =>
     resolveReportPrintProfile(storedProfiles, reportId),
   );
@@ -161,7 +162,8 @@ export function ReportPreviewDialog({
   // Apply company-stored design when it arrives after the dialog opened (async GET).
   useEffect(() => {
     if (!open || dirtyRef.current) return;
-    setProfile(resolveReportPrintProfile(storedProfiles, reportId));
+    const incoming = resolveReportPrintProfile(storedProfiles, reportId);
+    setProfile((prev) => (printProfileEquals(prev, incoming) ? prev : incoming));
   }, [open, reportId, storedProfiles]);
 
   useEffect(() => {
@@ -383,21 +385,23 @@ export function ReportPreviewDialog({
   const profileDirty = dirty || !printProfileEquals(profile, storedResolved);
 
   const handleSaveDesign = useCallback(async () => {
-    if (saving) return;
+    if (saving || !allowSave) return;
     setSaving(true);
     try {
       const merged = await persistReportPrintProfiles({ [reportId]: { ...profile } });
       dirtyRef.current = false;
       onProfilesSaved?.(merged);
+      setProfile(resolveReportPrintProfile(merged, reportId));
       setDirty(false);
       toast.success(t('report_fmt_saved'));
     } catch (err) {
       console.error(err);
-      toast.error(t('report_fmt_save_failed'));
+      const detail = err instanceof ApiError && err.message ? err.message : '';
+      toast.error(detail ? `${t('report_fmt_save_failed')} (${detail})` : t('report_fmt_save_failed'));
     } finally {
       setSaving(false);
     }
-  }, [saving, reportId, profile, onProfilesSaved, t]);
+  }, [saving, allowSave, reportId, profile, onProfilesSaved, t]);
 
   if (!open) return null;
 
@@ -419,8 +423,8 @@ export function ReportPreviewDialog({
           </p>
           <p className="m-0 text-[11px] text-slate-400">
             {isAr
-              ? 'معاينة مطابقة للطباعة — حدّد نصاً لتنسيقه فقط، ثم اطبع أو صدّر PDF'
-              : 'Exact print preview — select text to format only, then print or export PDF'}
+              ? 'شريط التنسيق يحفظ تصميم الصفحة للشركة. تنسيق النص المحدد لهذه المعاينة فقط.'
+              : 'The format toolbar saves the company page design. Selection formatting is for this preview only.'}
           </p>
         </div>
         <div className="flex items-center gap-1.5 ms-auto">
@@ -509,7 +513,7 @@ export function ReportPreviewDialog({
             ref={previewFrameRef}
             title={docResult?.title || 'preview'}
             src={previewObjectUrl}
-            sandbox={REPORT_PRINT_IFRAME_SANDBOX}
+            sandbox={REPORT_PREVIEW_IFRAME_SANDBOX}
             referrerPolicy="no-referrer"
             className="block mx-auto bg-white border-0 shadow-2xl"
             style={{ width: `min(100%, ${frameWidth})`, minHeight: '80vh' }}

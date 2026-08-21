@@ -446,26 +446,7 @@ export function CashBudget() {
       rows: obligationRows,
       sections: [
         {
-          kind: 'keyValue',
-          title: t('cb_sheet_summary'),
-          items: [
-            { label: t('cb_period_number'), value: detail.periodNumber },
-            { label: t('cb_period_type'), value: periodTypeLabel(detail.periodType, t) },
-            { label: t('cb_period_start'), value: detail.periodStart },
-            { label: t('cb_period_end'), value: detail.periodEnd },
-            { label: t('cb_col_status'), value: detail.status === 'approved' ? t('cb_status_approved') : t('cb_status_draft') },
-            { label: t('cb_settlement_pct'), value: `${settlementPct}%` },
-            { label: t('cb_kpi_banks'), value: formatMoney(summary.openingBank) },
-            { label: t('cb_kpi_cash'), value: formatMoney(summary.openingCash) },
-            { label: t('cb_kpi_sources'), value: formatMoney(summary.periodSources) },
-            { label: t('cb_kpi_obligations'), value: formatMoney(summary.obligations) },
-            { label: t('cb_gap'), value: formatMoney(summary.gap) },
-            { label: t('cb_kpi_pay_plan'), value: formatMoney(payFromBanks) },
-          ],
-        },
-        {
           kind: 'table',
-          title: t('cb_obligations'),
           columns: obligationCols,
           rows: obligationRows,
           totals: {
@@ -493,24 +474,6 @@ export function CashBudget() {
           },
           totalsLabel: t('cb_by_project'),
         },
-        ...(custodyLeaves.length > 0
-          ? [{
-              kind: 'table' as const,
-              title: t('cb_custody_floors'),
-              columns: [
-                { key: 'account', header: t('cb_col_account'), width: 28 },
-                { key: 'glBalance', header: t('cb_floor_gl'), width: 14, money: true },
-                { key: 'minBalance', header: t('cb_min_balance'), width: 14, money: true },
-                { key: 'replenish', header: t('cb_floor_shortfall'), width: 14, money: true },
-              ],
-              rows: custodyLeaves.map((acc) => ({
-                account: `${acc.accountCode} — ${isAr ? acc.accountName : (acc.accountNameEn || acc.accountName)}`,
-                glBalance: Number(acc.glBalance) || 0,
-                minBalance: Number(floorDrafts[acc.accountId] ?? acc.minBalance) || 0,
-                replenish: Number(acc.replenish) || 0,
-              })),
-            }]
-          : []),
       ],
       totals: {
         amount: summary.obligations,

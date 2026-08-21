@@ -175,17 +175,7 @@ function applyStylesToTableCells(cells: HTMLElement[], styles: Record<string, st
   }
 }
 
-function enableEdit(doc: Document): void {
-  try {
-    if (doc.designMode !== 'on') doc.designMode = 'on';
-  } catch {
-    /* ignore */
-  }
-}
-
-/** Block typing in the preview while allowing Ctrl/Cmd+Z undo. */
 export function installPreviewEditGuards(doc: Document): () => void {
-  enableEdit(doc);
   const onKey = (e: KeyboardEvent) => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
       e.preventDefault();
@@ -248,6 +238,14 @@ function wrapSelection(doc: Document, styles: Partial<CSSStyleDeclaration> & Rec
   next.selectNodeContents(span);
   sel.addRange(next);
   return true;
+}
+
+function enableEdit(doc: Document): void {
+  try {
+    if (doc.designMode !== 'on') doc.designMode = 'on';
+  } catch {
+    /* ignore */
+  }
 }
 
 function runCommand(doc: Document, command: string, value?: string): boolean {

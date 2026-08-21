@@ -113,6 +113,15 @@ describe('reportPrintProfiles format fields', () => {
     expect(merged.cash_budget?.orientation).toBe('landscape');
   });
 
+  it('mergeStoredReportPrintProfiles keeps other fields on the same report', () => {
+    const merged = mergeStoredReportPrintProfiles(
+      { cash_budget: { fontFamily: 'arial', orientation: 'portrait' } },
+      { cash_budget: { orientation: 'landscape' } },
+    );
+    expect(merged.cash_budget?.fontFamily).toBe('arial');
+    expect(merged.cash_budget?.orientation).toBe('landscape');
+  });
+
   it('printProfileEquals is true for equivalent sanitized profiles', () => {
     const a = resolveReportPrintProfile({ cash_budget: { fontFamily: 'tahoma' } }, 'cash_budget');
     const b = resolveReportPrintProfile({ cash_budget: { fontFamily: 'tahoma' } }, 'cash_budget');

@@ -4,6 +4,7 @@ import type { ReportPrintProfile, StoredReportPrintProfiles } from '../lib/repor
 import { mergeStoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 import { buildTableReportDocument, type BuildTableDocInput } from '../lib/reportDocument';
 import { canSaveCompanyPrintDesign } from '../lib/userPreferences';
+import { profilesFromCompanyValue } from '../lib/reportPrintProfilesPersistence';
 import { isLocalBackend } from '../lib/dataBackend';
 import { settingsApi } from '../services/local/modulesApi';
 import { useOptionalPermissions } from '../context/PermissionsContext';
@@ -51,8 +52,8 @@ export function useReportDocumentPreview({
     void settingsApi
       .getCompanyInfo()
       .then((res) => {
-        const fromServer = res.value?.reportPrintProfiles;
-        if (cancelled || !fromServer) return;
+        const fromServer = profilesFromCompanyValue(res.value);
+        if (cancelled || Object.keys(fromServer).length === 0) return;
         setSavedProfiles((prev) => mergeStoredReportPrintProfiles(fromServer, prev ?? undefined));
       })
       .catch(() => {

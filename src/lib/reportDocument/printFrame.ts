@@ -1,5 +1,11 @@
-/** Same-origin so the parent can call print(); allow-modals for the print dialog. Never allow-top-navigation. */
+/** Hidden print iframe: print dialog only — no scripts. */
 export const REPORT_PRINT_IFRAME_SANDBOX = 'allow-same-origin allow-modals';
+
+/**
+ * Live preview: selection formatting uses execCommand/designMode, which Chromium
+ * blocks without allow-scripts. Still no top-level navigation.
+ */
+export const REPORT_PREVIEW_IFRAME_SANDBOX = 'allow-same-origin allow-modals allow-scripts';
 
 function isBlobFrame(iframe: HTMLIFrameElement): boolean {
   try {

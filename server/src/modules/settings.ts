@@ -96,6 +96,31 @@ async function readSetting(key: string): Promise<unknown | null> {
   return row?.value ?? null;
 }
 
+function coerceSettingObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>;
+      }
+    } catch {
+      /* keep empty */
+    }
+  }
+  return {};
+}
+
+function readReportPrintProfiles(company: Record<string, unknown>): Record<string, unknown> {
+  const raw = company.reportPrintProfiles ?? company.report_print_profiles;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>;
+  }
+  return {};
+}
+
 async function writeSetting(key: string, value: unknown): Promise<void> {
   await prisma.setting.upsert({
     where: { key },
@@ -129,7 +154,18 @@ settingsRouter.put(
       res.status(400).json({ error: 'Invalid company_info payload' });
       return;
     }
-    await writeSetting(COMPANY_INFO_KEY, body);
+    const existing = coerceSettingObject(await readSetting(COMPANY_INFO_KEY));
+    const incomingProfiles = body.reportPrintProfiles ?? body.report_print_profiles;
+    const next = {
+      ...existing,
+      ...body,
+      reportPrintProfiles:
+        incomingProfiles && typeof incomingProfiles === 'object' && !Array.isArray(incomingProfiles)
+          ? incomingProfiles
+          : (existing.reportPrintProfiles ?? existing.report_print_profiles ?? {}),
+    };
+    delete (next as { report_print_profiles?: unknown }).report_print_profiles;
+    await writeSetting(COMPANY_INFO_KEY, next);
     res.json(serialize({ ok: true }));
   }),
 );
@@ -142,7 +178,7 @@ settingsRouter.put(
 settingsRouter.patch(
   '/company_info/report-print-profiles',
   requireAuth,
-  requireReferenceRead('reports', 'settings'),
+  requireReferenceRead('reports', 'settings', 'cash_budget', 'ledger', 'billing', 'payroll', 'banks', 'inventory', 'assets'),
   asyncHandler(async (req, res) => {
     const body = req.body as { reportPrintProfiles?: unknown };
     if (!body || typeof body !== 'object' || Array.isArray(body)) {
@@ -153,24 +189,23 @@ settingsRouter.patch(
       res.status(400).json({ error: 'reportPrintProfiles required' });
       return;
     }
-    const existing = (await readSetting(COMPANY_INFO_KEY)) as Record<string, unknown> | null;
-    const existingObj =
-      existing && typeof existing === 'object' && !Array.isArray(existing) ? existing : {};
-    const prevProfiles =
-      existingObj.reportPrintProfiles &&
-      typeof existingObj.reportPrintProfiles === 'object' &&
-      !Array.isArray(existingObj.reportPrintProfiles)
-        ? (existingObj.reportPrintProfiles as Record<string, unknown>)
-        : {};
+    const existingObj = coerceSettingObject(await readSetting(COMPANY_INFO_KEY));
+    const prevProfiles = readReportPrintProfiles(existingObj);
+    const incoming = body.reportPrintProfiles as Record<string, unknown>;
+    const mergedProfiles: Record<string, unknown> = { ...prevProfiles };
+    for (const [id, patch] of Object.entries(incoming)) {
+      const prev = mergedProfiles[id];
+      const prevObj = prev && typeof prev === 'object' && !Array.isArray(prev) ? (prev as Record<string, unknown>) : {};
+      const patchObj = patch && typeof patch === 'object' && !Array.isArray(patch) ? (patch as Record<string, unknown>) : {};
+      mergedProfiles[id] = { ...prevObj, ...patchObj };
+    }
     const next = {
       ...existingObj,
-      reportPrintProfiles: {
-        ...prevProfiles,
-        ...(body.reportPrintProfiles as Record<string, unknown>),
-      },
+      reportPrintProfiles: mergedProfiles,
     };
+    delete (next as { report_print_profiles?: unknown }).report_print_profiles;
     await writeSetting(COMPANY_INFO_KEY, next);
-    res.json(serialize({ ok: true }));
+    res.json(serialize({ ok: true, reportPrintProfiles: mergedProfiles }));
   }),
 );
 

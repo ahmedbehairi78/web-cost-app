@@ -1415,7 +1415,10 @@ export const settingsApi = {
   putCompanyInfo: (data: CompanyPrintSettings) =>
     apiClient.put<{ ok: boolean }>('/settings/company_info', data),
   patchReportPrintProfiles: (reportPrintProfiles: NonNullable<CompanyPrintSettings['reportPrintProfiles']>) =>
-    apiClient.patch<{ ok: boolean }>('/settings/company_info/report-print-profiles', { reportPrintProfiles }),
+    apiClient.patch<{ ok: boolean; reportPrintProfiles?: CompanyPrintSettings['reportPrintProfiles'] }>(
+      '/settings/company_info/report-print-profiles',
+      { reportPrintProfiles },
+    ),
   getUserPreferences: () => apiClient.get<UserPreferences>('/settings/user-preferences'),
   patchUserPreferences: (data: Partial<UserPreferences>) =>
     apiClient.patch<UserPreferences>('/settings/user-preferences', data),

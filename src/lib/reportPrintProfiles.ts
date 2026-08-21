@@ -395,12 +395,17 @@ export function sanitizeProfile(
 
 export type StoredReportPrintProfiles = Partial<Record<ReportPrintId, Partial<ReportPrintProfile>>>;
 
-/** Overlay wins per report id — never drop other reports when saving one design. */
+/** Overlay wins per report id; fields on the same report are merged (not replaced). */
 export function mergeStoredReportPrintProfiles(
   base: StoredReportPrintProfiles | undefined,
   overlay: StoredReportPrintProfiles | undefined,
 ): StoredReportPrintProfiles {
-  return { ...(base || {}), ...(overlay || {}) };
+  const out: StoredReportPrintProfiles = { ...(base || {}) };
+  for (const [id, patch] of Object.entries(overlay || {})) {
+    const key = id as ReportPrintId;
+    out[key] = { ...(out[key] || {}), ...(patch || {}) };
+  }
+  return out;
 }
 
 export function printProfileEquals(

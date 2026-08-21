@@ -35,6 +35,7 @@ export function ThemedToaster() {
   return (
     <Toaster
       position="top-center"
+      containerStyle={{ zIndex: 11050 }}
       toastOptions={{
         duration: 4000,
         style,
