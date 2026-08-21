@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   REPORT_PRINT_DEFAULTS,
+  physicalTableCellTextAlign,
   resolvePrintTextDir,
   resolveReportPrintProfile,
   sanitizeProfile,
@@ -75,5 +76,14 @@ describe('reportPrintProfiles format fields', () => {
     expect(resolvePrintTextDir('auto', 'en')).toBe('ltr');
     expect(resolvePrintTextDir('ltr', 'ar')).toBe('ltr');
     expect(resolvePrintTextDir('rtl', 'en')).toBe('rtl');
+  });
+
+  it('physicalTableCellTextAlign keeps amounts on the same side as RTL headers', () => {
+    expect(physicalTableCellTextAlign('auto', 'rtl')).toBeNull();
+    expect(physicalTableCellTextAlign('center', 'rtl')).toBe('center');
+    expect(physicalTableCellTextAlign('start', 'rtl')).toBe('right');
+    expect(physicalTableCellTextAlign('end', 'rtl')).toBe('left');
+    expect(physicalTableCellTextAlign('start', 'ltr')).toBe('left');
+    expect(physicalTableCellTextAlign('end', 'ltr')).toBe('right');
   });
 });

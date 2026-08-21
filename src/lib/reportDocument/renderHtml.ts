@@ -2,6 +2,7 @@ import { resolveHeaderLogo } from '../concordPlusBrand';
 import {
   PRINT_FONT_CSS,
   PRINT_MARGIN_CSS,
+  physicalTableCellTextAlign,
   resolvePrintTextDir,
   type PrintDensity,
 } from '../reportPrintProfiles';
@@ -530,8 +531,17 @@ export function renderReportDocumentHtml(
   const logoJustify = logoJustifyCss(doc.logoAlign ?? 'start');
   const logoAlign = doc.logoAlign ?? 'start';
   const tableCellAlign = doc.tableCellAlign ?? 'auto';
+  const tableCellPhysical = physicalTableCellTextAlign(tableCellAlign, dir);
   const htmlClassAttr =
     tableCellAlign === 'auto' ? '' : ` class="tbl-align-${tableCellAlign}"`;
+  const tableCellAlignCss = tableCellPhysical
+    ? `html.tbl-align-${tableCellAlign} th,
+  html.tbl-align-${tableCellAlign} td,
+  html.tbl-align-${tableCellAlign} .num .num-val,
+  html.tbl-align-${tableCellAlign} .num .num-empty {
+    text-align: ${tableCellPhysical} !important;
+  }`
+    : '';
   const tableRowCount = doc.sections?.length
     ? (doc.sections.find((s) => s.kind === 'table' && s.flow)?.rows.length ?? 0)
     : flattenReportRows(doc).length;
@@ -881,15 +891,7 @@ export function renderReportDocumentHtml(
   .align-right { text-align: right; }
   [dir="rtl"] .align-left { text-align: right; }
   [dir="rtl"] .align-right { text-align: left; }
-  html.tbl-align-start th, html.tbl-align-start td { text-align: start !important; }
-  html.tbl-align-center th, html.tbl-align-center td { text-align: center !important; }
-  html.tbl-align-end th, html.tbl-align-end td { text-align: end !important; }
-  html.tbl-align-start .num .num-val,
-  html.tbl-align-start .num .num-empty { text-align: start !important; }
-  html.tbl-align-center .num .num-val,
-  html.tbl-align-center .num .num-empty { text-align: center !important; }
-  html.tbl-align-end .num .num-val,
-  html.tbl-align-end .num .num-empty { text-align: end !important; }
+  ${tableCellAlignCss}
   th.num, td.num {
     text-align: right !important;
     white-space: nowrap;

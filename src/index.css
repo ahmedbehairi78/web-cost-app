@@ -733,19 +733,27 @@ input[type="number"] {
   text-align: end;
 }
 
-.report-page-viewer .report-print-area[data-table-align="start"] th,
-.report-page-viewer .report-print-area[data-table-align="start"] td {
-  text-align: start !important;
-}
-
 .report-page-viewer .report-print-area[data-table-align="center"] th,
 .report-page-viewer .report-print-area[data-table-align="center"] td {
   text-align: center !important;
 }
 
-.report-page-viewer .report-print-area[data-table-align="end"] th,
-.report-page-viewer .report-print-area[data-table-align="end"] td {
-  text-align: end !important;
+/* Physical sides so LTR numeric cells stay under RTL headers. */
+.report-page-viewer .report-print-area[dir="rtl"][data-table-align="start"] th,
+.report-page-viewer .report-print-area[dir="rtl"][data-table-align="start"] td {
+  text-align: right !important;
+}
+.report-page-viewer .report-print-area[dir="ltr"][data-table-align="start"] th,
+.report-page-viewer .report-print-area[dir="ltr"][data-table-align="start"] td {
+  text-align: left !important;
+}
+.report-page-viewer .report-print-area[dir="rtl"][data-table-align="end"] th,
+.report-page-viewer .report-print-area[dir="rtl"][data-table-align="end"] td {
+  text-align: left !important;
+}
+.report-page-viewer .report-print-area[dir="ltr"][data-table-align="end"] th,
+.report-page-viewer .report-print-area[dir="ltr"][data-table-align="end"] td {
+  text-align: right !important;
 }
 
 .report-page-viewer .report-print-report-title {

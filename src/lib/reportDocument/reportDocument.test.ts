@@ -146,7 +146,95 @@ describe('reportDocument', () => {
       (n) => n.toFixed(2),
     );
     expect(html).toContain('class="tbl-align-center"');
-    expect(html).toContain('html.tbl-align-center th, html.tbl-align-center td');
+    expect(html).toContain('text-align: center !important');
+  });
+
+  it('maps start/end table align to physical sides so LTR amounts sit under RTL headers', () => {
+    const startHtml = renderReportDocumentHtml(
+      {
+        id: 't',
+        title: 'T',
+        language: 'ar',
+        orientation: 'portrait',
+        pageSize: 'A4',
+        accent: '#003B71',
+        showHeader: false,
+        showFooter: false,
+        showLogo: false,
+        fontFamily: 'calibri',
+        textDirection: 'auto',
+        titleAlign: 'center',
+        footerAlign: 'center',
+        logoAlign: 'start',
+        tableCellAlign: 'start',
+        marginPreset: 'normal',
+        fitPageCount: 0,
+        density: 'normal',
+        headerShowCompany: true,
+        headerShowAddress: true,
+        headerShowTaxId: true,
+        headerShowTitle: true,
+        headerShowMeta: true,
+        headerExtraText: '',
+        footerShowCompany: true,
+        footerShowText: true,
+        footerShowNote: true,
+        footerShowPageNum: true,
+        footerExtraText: '',
+        company,
+        columns: [
+          { key: 'label', header: 'بند' },
+          { key: 'amount', header: 'المبلغ', money: true },
+        ],
+        rows: [{ label: 'أ', amount: 21272.25 }],
+        filename: 't',
+      },
+      (n) => n.toFixed(2),
+    );
+    expect(startHtml).toContain('class="tbl-align-start"');
+    expect(startHtml).toContain('dir="rtl"');
+    expect(startHtml).toMatch(/html\.tbl-align-start[\s\S]*text-align:\s*right\s*!important/);
+    expect(startHtml).toContain('.num .num-val');
+
+    const endHtml = renderReportDocumentHtml(
+      {
+        id: 't',
+        title: 'T',
+        language: 'ar',
+        orientation: 'portrait',
+        pageSize: 'A4',
+        accent: '#003B71',
+        showHeader: false,
+        showFooter: false,
+        showLogo: false,
+        fontFamily: 'calibri',
+        textDirection: 'auto',
+        titleAlign: 'center',
+        footerAlign: 'center',
+        logoAlign: 'start',
+        tableCellAlign: 'end',
+        marginPreset: 'normal',
+        fitPageCount: 0,
+        density: 'normal',
+        headerShowCompany: true,
+        headerShowAddress: true,
+        headerShowTaxId: true,
+        headerShowTitle: true,
+        headerShowMeta: true,
+        headerExtraText: '',
+        footerShowCompany: true,
+        footerShowText: true,
+        footerShowNote: true,
+        footerShowPageNum: true,
+        footerExtraText: '',
+        company,
+        columns: [{ key: 'amount', header: 'المبلغ', money: true }],
+        rows: [{ amount: 10 }],
+        filename: 't',
+      },
+      (n) => n.toFixed(2),
+    );
+    expect(endHtml).toMatch(/html\.tbl-align-end[\s\S]*text-align:\s*left\s*!important/);
   });
 
   it('applies forced RTL and wide margins from profile fields', () => {

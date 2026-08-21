@@ -356,3 +356,18 @@ export function resolvePrintTextDir(
   if (textDirection === 'rtl' || textDirection === 'ltr') return textDirection;
   return language === 'ar' ? 'rtl' : 'ltr';
 }
+
+/**
+ * Physical left/center/right for table cells.
+ * Numeric cells wrap values in `dir="ltr"` so CSS `start`/`end` on `.num-val`
+ * is the opposite of Arabic headers — always use this physical mapping.
+ */
+export function physicalTableCellTextAlign(
+  align: PrintTableCellAlign,
+  dir: 'rtl' | 'ltr',
+): 'left' | 'center' | 'right' | null {
+  if (align === 'auto') return null;
+  if (align === 'center') return 'center';
+  if (align === 'start') return dir === 'rtl' ? 'right' : 'left';
+  return dir === 'rtl' ? 'left' : 'right';
+}
