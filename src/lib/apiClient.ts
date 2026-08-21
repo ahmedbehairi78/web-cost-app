@@ -6,6 +6,7 @@ import {
   isAuthenticatedApiPaused,
   notifyApiUnauthorized,
 } from './apiSession';
+import { isIdleLockedDocument } from './idleActivityBridge';
 import { NetworkError } from './offline/NetworkError';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
@@ -34,7 +35,11 @@ async function parseResponse(response: Response) {
 }
 
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
-  if (isAuthenticatedApiPaused() && !isAuthExemptApiPath(path)) {
+  // Idle privacy lock / factory-reset pause: skip authenticated traffic (no 401 spam).
+  if (
+    (isAuthenticatedApiPaused() || isIdleLockedDocument())
+    && !isAuthExemptApiPath(path)
+  ) {
     throw new ApiPausedError();
   }
   let idToken = getApiAuthIdToken();
@@ -59,7 +64,8 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   const payload = await parseResponse(response);
   if (!response.ok) {
     if (response.status === 401 && !isAuthExemptApiPath(path)) {
-      notifyApiUnauthorized();
+      // Already on the idle lock — do not re-fire unauthorized (probe/logout) storms.
+      if (!isIdleLockedDocument()) notifyApiUnauthorized();
     }
     throw new ApiError((payload as { error?: string })?.error || response.statusText, response.status, payload);
   }

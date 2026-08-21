@@ -25,6 +25,9 @@ import {
   subscribeSpaUpdateAvailable,
 } from '../lib/spaBuild';
 import { ShellAnchoredDropdown } from './ShellAnchoredDropdown';
+import { ApiError } from '../lib/apiClient';
+import { isAuthenticatedApiPaused } from '../lib/apiSession';
+import { isIdleLockedDocument } from '../lib/idleActivityBridge';
 
 const POLL_MS = 90_000;
 
@@ -47,24 +50,38 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
   const [spaUpdate, setSpaUpdate] = useState(isSpaUpdateAvailable);
   const [applyingSpa, setApplyingSpa] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const pausedForAuthRef = useRef(false);
 
   const refresh = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await notificationsApi.feed();
-      setItems(data.items);
-      setUnreadCount(data.unreadCount);
-      for (const item of data.items) {
-        if (item.priority === 'urgent' && !item.read) {
-          const title = language === 'ar' ? item.titleAr : item.titleEn;
-          notifyDesktopUrgent(title, t('notifications_title'), item.key);
+    if (isIdleLockedDocument() || isAuthenticatedApiPaused()) return;
+    if (pausedForAuthRef.current) return;
+    if (inFlightRef.current) return inFlightRef.current;
+
+    const run = (async () => {
+      setLoading(true);
+      try {
+        const data = await notificationsApi.feed();
+        setItems(data.items);
+        setUnreadCount(data.unreadCount);
+        for (const item of data.items) {
+          if (item.priority === 'urgent' && !item.read) {
+            const title = language === 'ar' ? item.titleAr : item.titleEn;
+            notifyDesktopUrgent(title, t('notifications_title'), item.key);
+          }
         }
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 401) {
+          pausedForAuthRef.current = true;
+        }
+        /* ignore ApiPausedError / offline */
+      } finally {
+        setLoading(false);
+        inFlightRef.current = null;
       }
-    } catch {
-      /* ignore when API unavailable */
-    } finally {
-      setLoading(false);
-    }
+    })();
+    inFlightRef.current = run;
+    return run;
   }, [language, t]);
 
   useEffect(() => subscribeSpaUpdateAvailable(() => setSpaUpdate(true)), []);
@@ -77,8 +94,17 @@ export function NotificationBell({ openWindow, theme, variant = 'sidebar' }: Not
   useEffect(() => {
     void refresh();
     const timer = window.setInterval(() => void refresh(), POLL_MS);
-    const onFocus = () => void refresh();
-    const onForceRefresh = () => void refresh();
+    const onFocus = () => {
+      if (isIdleLockedDocument()) return;
+      // After unlock / tab focus, allow one retry even if a prior 401 paused polling.
+      pausedForAuthRef.current = false;
+      void refresh();
+    };
+    const onForceRefresh = () => {
+      if (isIdleLockedDocument()) return;
+      pausedForAuthRef.current = false;
+      void refresh();
+    };
     window.addEventListener('focus', onFocus);
     window.addEventListener('notifications:refresh', onForceRefresh);
     return () => {
