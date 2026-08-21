@@ -24,6 +24,7 @@ describe('reportPrintProfiles format fields', () => {
     expect(income.bodyBold).toBe(false);
     expect(income.bodyItalic).toBe(false);
     expect(income.bodyUnderline).toBe('none');
+    expect(income.selectionPatches).toEqual([]);
   });
 
   it('sanitizeProfile accepts new fields and ignores invalid', () => {
@@ -127,6 +128,19 @@ describe('reportPrintProfiles format fields', () => {
     const b = resolveReportPrintProfile({ cash_budget: { fontFamily: 'tahoma' } }, 'cash_budget');
     expect(printProfileEquals(a, b)).toBe(true);
     expect(printProfileEquals(a, REPORT_PRINT_DEFAULTS.cash_budget)).toBe(false);
+  });
+
+  it('sanitizeProfile keeps selection patches from the floating format bar', () => {
+    const fallback = REPORT_PRINT_DEFAULTS.cash_budget;
+    const patched = sanitizeProfile(fallback, {
+      selectionPatches: [{ k: 'c', i: 0, r: 1, c: 2, s: 'font-size: 12pt; background: #fef08a' }],
+    });
+    expect(patched.selectionPatches).toEqual([
+      { k: 'c', i: 0, r: 1, c: 2, s: 'font-size: 12pt; background: #fef08a' },
+    ]);
+    expect(sanitizeProfile(fallback, { selectionPatches: [{ k: 'x', i: 0, s: 'color:red' }] }).selectionPatches).toEqual(
+      [],
+    );
   });
 
   it('resolvePrintTextDir respects auto and overrides', () => {

@@ -17,8 +17,10 @@ import { useOptionalPermissions } from '../../context/PermissionsContext';
 import { persistReportPrintProfiles } from '../../lib/reportPrintProfilesPersistence';
 import { ApiError } from '../../lib/apiClient';
 import {
-  clearSelectionUndo,
   applyFormatPainterClipboard,
+  applySelectionStylePatches,
+  clearSelectionUndo,
+  extractSelectionStylePatches,
   hasNonEmptySelection,
   installPreviewEditGuards,
   serializePreviewDocument,
@@ -107,6 +109,8 @@ export function ReportPreviewDialog({
   const [profile, setProfile] = useState<ReportPrintProfile>(() =>
     resolveReportPrintProfile(storedProfiles, reportId),
   );
+  const profileRef = useRef(profile);
+  profileRef.current = profile;
   const [showFormat, setShowFormat] = useState(true);
   const [dirty, setDirty] = useState(false);
   const dirtyRef = useRef(false);
@@ -196,6 +200,19 @@ export function ReportPreviewDialog({
     formatPainterClipboardRef.current = null;
   }, [previewObjectUrl, hideMiniBar]);
 
+  const captureLiveSelectionPatches = useCallback(() => {
+    const d = previewFrameRef.current?.contentDocument;
+    if (!d) return;
+    dirtyRef.current = true;
+    setDirty(true);
+    const patches = extractSelectionStylePatches(d);
+    setProfile((prev) =>
+      JSON.stringify(prev.selectionPatches) === JSON.stringify(patches)
+        ? prev
+        : { ...prev, selectionPatches: patches },
+    );
+  }, []);
+
   const attachSelectionListeners = useCallback(
     (frame: HTMLIFrameElement) => {
       selectionCleanupRef.current?.();
@@ -234,6 +251,7 @@ export function ReportPreviewDialog({
               formatPainterArmedRef.current = false;
               formatPainterClipboardRef.current = null;
               if (doc!.body) doc!.body.style.cursor = '';
+              captureLiveSelectionPatches();
             }
           }
 
@@ -271,8 +289,13 @@ export function ReportPreviewDialog({
         doc!.removeEventListener('keyup', onSel);
       };
     },
-    [hideMiniBar],
+    [hideMiniBar, captureLiveSelectionPatches],
   );
+
+  const layoutKey = useMemo(() => {
+    const { selectionPatches: _ignored, ...layout } = profile;
+    return JSON.stringify(layout);
+  }, [profile]);
 
   const docResult = useMemo(() => {
     if (!open) return null;
@@ -282,7 +305,9 @@ export function ReportPreviewDialog({
       console.error(err);
       return null;
     }
-  }, [open, buildDocument, profile]);
+    // Rebuild HTML only when page-layout fields change — not selection patches.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, buildDocument, layoutKey]);
 
   const previewHtml = useMemo(() => {
     if (!docResult) return '';
@@ -388,7 +413,12 @@ export function ReportPreviewDialog({
     if (saving || !allowSave) return;
     setSaving(true);
     try {
-      const merged = await persistReportPrintProfiles({ [reportId]: { ...profile } });
+      const liveDoc = previewFrameRef.current?.contentDocument;
+      const selectionPatches = liveDoc
+        ? extractSelectionStylePatches(liveDoc)
+        : profile.selectionPatches;
+      const toSave = { ...profile, selectionPatches };
+      const merged = await persistReportPrintProfiles({ [reportId]: toSave });
       dirtyRef.current = false;
       onProfilesSaved?.(merged);
       setProfile(resolveReportPrintProfile(merged, reportId));
@@ -422,9 +452,7 @@ export function ReportPreviewDialog({
             {docResult?.title || t('report_print_preview_title')}
           </p>
           <p className="m-0 text-[11px] text-slate-400">
-            {isAr
-              ? 'شريط التنسيق يحفظ تصميم الصفحة للشركة. تنسيق النص المحدد لهذه المعاينة فقط.'
-              : 'The format toolbar saves the company page design. Selection formatting is for this preview only.'}
+            {t('report_fmt_save_hint')}
           </p>
         </div>
         <div className="flex items-center gap-1.5 ms-auto">
@@ -521,6 +549,7 @@ export function ReportPreviewDialog({
               const frame = e.currentTarget;
               try {
                 const d = frame.contentDocument;
+                if (d) applySelectionStylePatches(d, profileRef.current.selectionPatches);
                 const h = d?.documentElement?.scrollHeight || d?.body?.scrollHeight || 0;
                 if (h > 0) frame.style.height = `${h + 24}px`;
               } catch {
@@ -543,7 +572,7 @@ export function ReportPreviewDialog({
           language={language}
           t={t}
           position={miniBar}
-          onFormatted={() => undefined}
+          onFormatted={captureLiveSelectionPatches}
           formatPainterArmed={formatPainterArmed}
           onFormatPainterArmedChange={setFormatPainter}
         />

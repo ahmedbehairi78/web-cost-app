@@ -101,7 +101,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/dashboardMetrics.ts` | **Dashboard filters/compare/timeline** — `filterDashboardTransactions`, `computeDashboardPeriodStats`, `buildProjectCompareRows` (سيولة), `buildMonthlySeries` (أعمدة شهرية) · **`buildCashFlowSeries`** (تحليل التدفق النقدي — **شهري غير تراكمي**؛ نقطة أصل `__start__` = صفر ثم إجمالي كل شهر؛ الأشهر بلا حركة **`null`** ⇒ `connectNulls` يمدّ الخط؛ رسم Area خطي); UI: `DashboardFilterBar` · `ProjectCompareTable`. Tests: `dashboardMetrics.test.ts`. |
 | `src/lib/reportDocument/` | **منصة مستندات التقارير** — بيانات → HTML نظيف / PDF / طباعة؛ ورقة: هيدر مضغوط + جسم + **فوتر سطر واحد** (شركة عند start · نص/ملاحظة وسط · رقم صفحة عند end — يتبع `dir` اللغة) |
 | `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin allow-modals"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron؛ `allow-modals` لازم لحوار الطباعة/PDF) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
-| `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level). **Selection mini-bar** (`ReportSelectionMiniToolbar` + `selectionFormat.ts`) formats **selected text only** (header/body/footer) with undo; print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
+| `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography + **`selectionPatches`**) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level) **and** **selection mini-bar**; **حفظ التصميم** persists both. Mini-bar formats selected cells/text (`selectionFormat.ts`); patches reapplied by table/sheet index on next preview (live numbers). Print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
 | `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (62 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
 | `src/lib/cashBudget.ts` | **Cash budget math** — period end · `custodyReplenishAmount` · `computeCashBudgetSummary` (opening not double-counted) · server copy `server/src/lib/cashBudget.ts` |
@@ -1004,6 +1004,29 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 npx prisma migrate deploy
 npm run test -- src/lib/cashBudget.test.ts src/lib/operationsManual.test.ts src/lib/moduleViewPermissions.test.ts
 # أعد تشغيل API → موازنة نقدية (بعد البنوك) → فترة أسبوعية → اقتراح → اعتماد (بلا GL)
+```
+
+---
+
+## 🔴 HANDOFF — حفظ تنسيق الشريط الأساسي والعائم ✅ (2026-08-21)
+
+> **جلسة 2026-08-21:** **حفظ التصميم** كان يخزّن شريط الصفحة فقط؛ تنسيق الشريط العائم يضيع بعد إغلاق المعاينة.
+
+### ما تم
+
+| المجال | ملخص |
+|--------|------|
+| **حفظ** | زر الحفظ يلتقط `selectionPatches` من المعاينة + حقول `ReportPrintProfile` |
+| **استعادة** | بعد بناء HTML تُطبَّق الرقع حسب فهرس الجدول/الورقة (الأرقام تبقى حيّة) |
+| **زر حفظ** | يتفعّل من الشريط الأساسي **أو** العائم |
+
+### لا تراجع
+
+- لا تعتبر تنسيق التحديد «لهذه المعاينة فقط» بعد الحفظ.
+- لا تُعد بناء iframe عند تغيّر الرقع وحدها (يكفي `layoutKey`).
+
+```powershell
+npm run test -- src/lib/reportDocument/selectionFormat.test.ts src/lib/reportPrintProfiles.test.ts
 ```
 
 ---

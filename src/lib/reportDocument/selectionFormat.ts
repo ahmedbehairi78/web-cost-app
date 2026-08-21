@@ -1,8 +1,11 @@
 /**
  * Selection-scoped formatting for the print-preview iframe.
- * Applies styles only to the current text selection (or its nearest cell),
- * not the whole ReportPrintProfile.
+ * Applies styles only to the current text selection (or its nearest cell).
+ * Cell/header patches can be persisted on ReportPrintProfile.selectionPatches.
  */
+
+import type { PrintSelectionStylePatch } from '../reportPrintProfiles';
+import { sanitizeSelectionStylePatches } from '../reportPrintProfiles';
 
 export type SelectionFontFamily = 'calibri' | 'segoe' | 'tahoma' | 'arial';
 export type SelectionAlign = 'start' | 'center' | 'end';
@@ -574,4 +577,116 @@ export function serializePreviewDocument(doc: Document): string {
     ? `<!DOCTYPE ${doc.doctype.name}>`
     : '<!DOCTYPE html>';
   return `${doctype}\n${doc.documentElement.outerHTML}`;
+}
+
+function compactCss(cssText: string): string {
+  return cssText.replace(/\s+/g, ' ').trim();
+}
+
+function mergeCellCssText(cell: HTMLElement): string {
+  const parts: string[] = [];
+  const own = compactCss(cell.style.cssText);
+  if (own) parts.push(own);
+  cell.querySelectorAll('[data-sel-fmt]').forEach((node) => {
+    const css = compactCss((node as HTMLElement).style.cssText);
+    if (css) parts.push(css);
+  });
+  return compactCss(parts.join('; '));
+}
+
+function firstNumValCss(cell: HTMLElement): string {
+  const el = cell.querySelector('.num-val') as HTMLElement | null;
+  if (!el) return '';
+  return compactCss(el.style.cssText);
+}
+
+/**
+ * Capture mini-bar inline styles by table/sheet index so they can be saved
+ * with the company print design and reapplied on the next live document.
+ */
+export function extractSelectionStylePatches(doc: Document): PrintSelectionStylePatch[] {
+  const raw: PrintSelectionStylePatch[] = [];
+  const root = doc.body ?? doc.documentElement;
+  if (!root) return [];
+
+  root.querySelectorAll('header.hdr').forEach((el, i) => {
+    const s = compactCss((el as HTMLElement).style.cssText);
+    if (s) raw.push({ k: 'h', i, s });
+  });
+  root.querySelectorAll('footer.ftr').forEach((el, i) => {
+    const s = compactCss((el as HTMLElement).style.cssText);
+    if (s) raw.push({ k: 'f', i, s });
+  });
+  root.querySelectorAll('h1').forEach((el, i) => {
+    const s = compactCss((el as HTMLElement).style.cssText);
+    if (s) raw.push({ k: 'ti', i, s });
+  });
+
+  root.querySelectorAll('table').forEach((tableEl, tableIndex) => {
+    const table = tableEl as HTMLTableElement;
+    const tableCss = compactCss(table.style.cssText);
+    if (tableCss) raw.push({ k: 't', i: tableIndex, s: tableCss });
+    Array.from(table.rows).forEach((row, rowIndex) => {
+      Array.from(row.cells).forEach((cell, cellIndex) => {
+        const s = mergeCellCssText(cell);
+        const n = firstNumValCss(cell);
+        if (!s && !n) return;
+        const patch: PrintSelectionStylePatch = { k: 'c', i: tableIndex, r: rowIndex, c: cellIndex, s };
+        if (n && n !== s) patch.n = n;
+        raw.push(patch);
+      });
+    });
+  });
+
+  return sanitizeSelectionStylePatches(raw);
+}
+
+export function applySelectionStylePatches(doc: Document, patches: PrintSelectionStylePatch[]): void {
+  const list = sanitizeSelectionStylePatches(patches);
+  if (!list.length) return;
+  const root = doc.body ?? doc.documentElement;
+  if (!root) return;
+
+  const headers = root.querySelectorAll('header.hdr');
+  const footers = root.querySelectorAll('footer.ftr');
+  const titles = root.querySelectorAll('h1');
+  const tables = root.querySelectorAll('table');
+
+  for (const patch of list) {
+    if (patch.k === 'h') {
+      const el = headers.item(patch.i) as HTMLElement | null;
+      if (el && patch.s) el.style.cssText = patch.s;
+      continue;
+    }
+    if (patch.k === 'f') {
+      const el = footers.item(patch.i) as HTMLElement | null;
+      if (el && patch.s) el.style.cssText = patch.s;
+      continue;
+    }
+    if (patch.k === 'ti') {
+      const el = titles.item(patch.i) as HTMLElement | null;
+      if (el && patch.s) el.style.cssText = patch.s;
+      continue;
+    }
+    const table = tables.item(patch.i) as HTMLTableElement | null;
+    if (!table) continue;
+    if (patch.k === 't') {
+      if (patch.s) table.style.cssText = patch.s;
+      continue;
+    }
+    const rowIndex = patch.r ?? -1;
+    const cellIndex = patch.c ?? -1;
+    const row = table.rows.item(rowIndex);
+    const cell = row?.cells.item(cellIndex) as HTMLElement | undefined;
+    if (!cell) continue;
+    if (patch.s) cell.style.cssText = patch.s;
+    if (patch.n) {
+      cell.querySelectorAll('.num-val').forEach((el) => {
+        (el as HTMLElement).style.cssText = patch.n!;
+      });
+    }
+    if (/font-size/i.test(patch.s) || /font-size/i.test(patch.n || '')) {
+      table.style.tableLayout = 'auto';
+    }
+  }
 }

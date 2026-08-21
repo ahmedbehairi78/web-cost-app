@@ -6,8 +6,10 @@ import {
   applySelectionColor,
   applySelectionFontSize,
   applySelectionShade,
+  applySelectionStylePatches,
   canSelectionUndo,
   clearSelectionUndo,
+  extractSelectionStylePatches,
   readSelectionFormatState,
   serializePreviewDocument,
   toggleSelectionBold,
@@ -133,5 +135,25 @@ describe('selectionFormat', () => {
     expect(a.style.border).toMatch(/1\.5px|0f172a|#/i);
     expect(document.getElementById('c')!.style.border).toBe('');
     expect(document.querySelector('span[data-sel-fmt]')).toBeNull();
+  });
+
+  it('extracts cell styles and reapplies them on a rebuilt table', () => {
+    document.body.innerHTML =
+      '<table><tr><td id="a">One</td><td id="b">Two</td></tr></table>';
+    clearSelectionUndo(document);
+    selectAllText('#a');
+    expect(applySelectionShade(document, '#fef08a')).toBe(true);
+    expect(applySelectionFontSize(document, 12)).toBe(true);
+    const patches = extractSelectionStylePatches(document);
+    expect(patches.some((p) => p.k === 'c' && p.r === 0 && p.c === 0)).toBe(true);
+
+    document.body.innerHTML =
+      '<table><tr><td id="a2">New amount 99</td><td id="b2">Two</td></tr></table>';
+    applySelectionStylePatches(document, patches);
+    const restored = document.getElementById('a2')!;
+    expect(restored.style.fontSize).toBe('12pt');
+    expect(restored.style.background || restored.style.backgroundColor).toMatch(/#fef08a|rgb\(\s*254/i);
+    expect(document.getElementById('b2')!.style.fontSize).toBe('');
+    expect(restored.textContent).toBe('New amount 99');
   });
 });

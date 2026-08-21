@@ -151,6 +151,60 @@ export interface ReportPrintProfile {
   footerShowPageNum: boolean;
   /** Optional free-text line in the footer. */
   footerExtraText: string;
+  /**
+   * Cell/header/footer inline styles from the floating selection bar.
+   * Re-applied by table/sheet index when the preview is rebuilt (numbers stay live).
+   */
+  selectionPatches: PrintSelectionStylePatch[];
+}
+
+/** Compact patch written by the selection mini-bar and restored on preview open. */
+export type PrintSelectionStylePatch = {
+  /** c = table cell, t = table, h = header, f = footer, ti = title (h1). */
+  k: 'c' | 't' | 'h' | 'f' | 'ti';
+  /** Table index (c/t) or sheet/element index (h/f/ti). */
+  i: number;
+  r?: number;
+  c?: number;
+  /** element.style.cssText */
+  s: string;
+  /** Optional `.num-val` cssText inside the cell. */
+  n?: string;
+};
+
+const SELECTION_PATCH_KINDS = new Set<PrintSelectionStylePatch['k']>(['c', 't', 'h', 'f', 'ti']);
+const SELECTION_PATCH_MAX = 2000;
+const SELECTION_PATCH_CSS_MAX = 500;
+
+export function sanitizeSelectionStylePatches(raw: unknown): PrintSelectionStylePatch[] {
+  if (!Array.isArray(raw)) return [];
+  const out: PrintSelectionStylePatch[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const p = item as Partial<PrintSelectionStylePatch>;
+    if (!SELECTION_PATCH_KINDS.has(p.k as PrintSelectionStylePatch['k'])) continue;
+    const i = Number(p.i);
+    if (!Number.isInteger(i) || i < 0 || i > 9999) continue;
+    const s = typeof p.s === 'string' ? p.s.replace(/\s+/g, ' ').trim().slice(0, SELECTION_PATCH_CSS_MAX) : '';
+    const n =
+      typeof p.n === 'string' && p.n.trim()
+        ? p.n.replace(/\s+/g, ' ').trim().slice(0, SELECTION_PATCH_CSS_MAX)
+        : undefined;
+    const patch: PrintSelectionStylePatch = { k: p.k as PrintSelectionStylePatch['k'], i, s };
+    if (patch.k === 'c') {
+      const r = Number(p.r);
+      const c = Number(p.c);
+      if (!Number.isInteger(r) || r < 0 || r > 9999) continue;
+      if (!Number.isInteger(c) || c < 0 || c > 999) continue;
+      patch.r = r;
+      patch.c = c;
+    }
+    if (n) patch.n = n;
+    if (!patch.s && !patch.n) continue;
+    out.push(patch);
+    if (out.length >= SELECTION_PATCH_MAX) break;
+  }
+  return out;
 }
 
 export const REPORT_PRINT_IDS: ReportPrintId[] = [
@@ -267,6 +321,7 @@ const BASE_PRINT_LAYOUT: Omit<ReportPrintProfile, 'orientation' | 'pageSize' | '
   footerShowNote: true,
   footerShowPageNum: true,
   footerExtraText: '',
+  selectionPatches: [],
 };
 
 export const REPORT_PRINT_DEFAULTS: Record<ReportPrintId, ReportPrintProfile> = {
@@ -390,6 +445,9 @@ export function sanitizeProfile(
     footerShowPageNum:
       typeof raw.footerShowPageNum === 'boolean' ? raw.footerShowPageNum : fallback.footerShowPageNum,
     footerExtraText: sanitizeExtraText(raw.footerExtraText, fallback.footerExtraText),
+    selectionPatches: sanitizeSelectionStylePatches(
+      raw.selectionPatches ?? fallback.selectionPatches,
+    ),
   };
 }
 
