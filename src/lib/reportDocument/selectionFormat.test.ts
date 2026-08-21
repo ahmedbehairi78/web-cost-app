@@ -75,18 +75,40 @@ describe('selectionFormat', () => {
     expect(c1.querySelector('[style*="background"]')).toBeNull();
   });
 
-  it('format painter copies bold+color onto another selection', () => {
+  it('applies font size to the whole table cell without extracting table markup', () => {
     document.body.innerHTML =
-      '<p id="src"><span style="font-weight:700;color:#ff0000">Source</span></p><p id="dst">Target text</p>';
+      '<table style="table-layout:fixed;width:100%"><tr>' +
+      '<td id="c1" class="num"><span class="num-val">14,890.58</span></td>' +
+      '<td id="c2" class="num"><span class="num-val">21,272.25</span></td>' +
+      '</tr></table>';
     clearSelectionUndo(document);
-    selectAllText('#src span');
-    const clip = readSelectionFormatState(document);
-    clip.bold = true;
-    clip.color = '#ff0000';
-    selectAllText('#dst');
-    expect(applyFormatPainterClipboard(document, clip, 'ltr')).toBe(true);
-    const dst = document.getElementById('dst')!;
-    expect(dst.innerHTML.toLowerCase()).toMatch(/font-weight:\s*700|bold/i);
-    expect(dst.innerHTML.toLowerCase()).toMatch(/#ff0000|rgb\(\s*255/);
+    selectAllText('#c1');
+    expect(applySelectionFontSize(document, 12)).toBe(true);
+    const table = document.querySelector('table')!;
+    expect(table.querySelectorAll('td')).toHaveLength(2);
+    expect(table.style.tableLayout).toBe('auto');
+    expect(document.getElementById('c1')!.style.fontSize).toBe('12pt');
+    expect(document.getElementById('c1')!.querySelector('.num-val')!.getAttribute('style') || '').toMatch(/12pt/);
+    expect(document.getElementById('c2')!.style.fontSize).toBe('');
+    expect(document.querySelector('span[data-sel-fmt]')).toBeNull();
+  });
+
+  it('does not collapse columns when font size is applied across two cells', () => {
+    document.body.innerHTML =
+      '<table><tr><td id="a">One</td><td id="b">Two</td></tr></table>';
+    clearSelectionUndo(document);
+    const a = document.getElementById('a')!;
+    const b = document.getElementById('b')!;
+    const range = document.createRange();
+    range.setStart(a.firstChild!, 0);
+    range.setEnd(b.firstChild!, 3);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    expect(applySelectionFontSize(document, 12)).toBe(true);
+    expect(document.querySelectorAll('td')).toHaveLength(2);
+    expect(a.style.fontSize).toBe('12pt');
+    expect(b.style.fontSize).toBe('12pt');
+    expect(a.parentElement?.tagName).toBe('TR');
   });
 });

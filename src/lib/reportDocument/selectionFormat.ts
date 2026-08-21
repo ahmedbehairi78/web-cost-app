@@ -94,6 +94,87 @@ function closestCell(node: Node | null): HTMLElement | null {
   return cur.closest('td, th') as HTMLElement | null;
 }
 
+function applyInlineStyles(el: HTMLElement, styles: Record<string, string>): void {
+  for (const [k, v] of Object.entries(styles)) {
+    if (!v) continue;
+    (el.style as unknown as Record<string, string>)[k] = v;
+  }
+}
+
+function fragmentHasTableParts(node: Node): boolean {
+  if (node.nodeType === Node.ELEMENT_NODE) {
+    const el = node as Element;
+    const tag = el.tagName;
+    if (tag === 'TABLE' || tag === 'TBODY' || tag === 'THEAD' || tag === 'TFOOT' || tag === 'TR' || tag === 'TD' || tag === 'TH') {
+      return true;
+    }
+    if (el.querySelector('table, tbody, thead, tfoot, tr, td, th')) return true;
+  }
+  for (const child of Array.from(node.childNodes)) {
+    if (fragmentHasTableParts(child)) return true;
+  }
+  return false;
+}
+
+/** Unique table cells intersecting the current selection. */
+function cellsInSelection(doc: Document): HTMLElement[] {
+  const sel = getSel(doc);
+  if (!sel?.rangeCount) return [];
+  const range = sel.getRangeAt(0);
+  const start = closestCell(range.startContainer);
+  const end = closestCell(range.endContainer);
+  if (start && start === end) return [start];
+
+  const seen = new Set<HTMLElement>();
+  const cells: HTMLElement[] = [];
+  const add = (c: HTMLElement | null) => {
+    if (c && !seen.has(c)) {
+      seen.add(c);
+      cells.push(c);
+    }
+  };
+
+  const ancestor = range.commonAncestorContainer;
+  const root =
+    ancestor.nodeType === Node.ELEMENT_NODE
+      ? (ancestor as Element)
+      : ancestor.parentElement;
+  if (!root) {
+    add(start);
+    add(end);
+    return cells;
+  }
+  const table =
+    (root.closest?.('table') as HTMLElement | null)
+    ?? (root.tagName === 'TABLE' ? (root as HTMLElement) : null);
+  const search = table || root;
+  try {
+    search.querySelectorAll('td, th').forEach((node) => {
+      if (range.intersectsNode(node)) add(node as HTMLElement);
+    });
+  } catch {
+    add(start);
+    add(end);
+  }
+  if (cells.length === 0) {
+    add(start);
+    add(end);
+  }
+  return cells;
+}
+
+function applyStylesToTableCells(cells: HTMLElement[], styles: Record<string, string>): void {
+  for (const cell of cells) {
+    applyInlineStyles(cell, styles);
+    cell.querySelectorAll('.num-val').forEach((el) => applyInlineStyles(el as HTMLElement, styles));
+    const table = cell.closest('table');
+    if (table && styles.fontSize) {
+      // Fixed equal columns cannot grow with a larger cell font — numbers overflow.
+      table.style.tableLayout = 'auto';
+    }
+  }
+}
+
 function enableEdit(doc: Document): void {
   try {
     if (doc.designMode !== 'on') doc.designMode = 'on';
@@ -132,16 +213,33 @@ function wrapSelection(doc: Document, styles: Partial<CSSStyleDeclaration> & Rec
   const range = sel.getRangeAt(0);
   if (range.collapsed) return false;
 
+  const styleMap = styles as Record<string, string>;
+  const cells = cellsInSelection(doc);
+  // Wrapping a span across cells extracts <td>/<tr> and collapses the table.
+  if (cells.length > 1) {
+    applyStylesToTableCells(cells, styleMap);
+    return true;
+  }
+
   const span = doc.createElement('span');
   span.setAttribute('data-sel-fmt', '1');
-  for (const [k, v] of Object.entries(styles)) {
+  for (const [k, v] of Object.entries(styleMap)) {
     if (v) (span.style as unknown as Record<string, string>)[k] = v;
   }
 
   try {
     range.surroundContents(span);
   } catch {
+    if (cells.length === 1) {
+      applyStylesToTableCells(cells, styleMap);
+      return true;
+    }
     const frag = range.extractContents();
+    if (fragmentHasTableParts(frag)) {
+      range.insertNode(frag);
+      if (cells.length) applyStylesToTableCells(cells, styleMap);
+      return cells.length > 0;
+    }
     span.appendChild(frag);
     range.insertNode(span);
   }
@@ -164,6 +262,11 @@ function runCommand(doc: Document, command: string, value?: string): boolean {
 export function applySelectionFontFamily(doc: Document, family: SelectionFontFamily): boolean {
   if (!hasNonEmptySelection(doc)) return false;
   pushSelectionUndo(doc);
+  const cells = cellsInSelection(doc);
+  if (cells.length > 0) {
+    applyStylesToTableCells(cells, { fontFamily: FONT_NAME[family] });
+    return true;
+  }
   const ok = runCommand(doc, 'fontName', FONT_NAME[family]);
   if (!ok) wrapSelection(doc, { fontFamily: FONT_NAME[family] });
   return true;
@@ -172,6 +275,11 @@ export function applySelectionFontFamily(doc: Document, family: SelectionFontFam
 export function applySelectionFontSize(doc: Document, pt: number): boolean {
   if (!hasNonEmptySelection(doc) || pt <= 0) return false;
   pushSelectionUndo(doc);
+  const cells = cellsInSelection(doc);
+  if (cells.length > 0) {
+    applyStylesToTableCells(cells, { fontSize: `${pt}pt` });
+    return true;
+  }
   wrapSelection(doc, { fontSize: `${pt}pt` });
   return true;
 }
@@ -398,7 +506,12 @@ export function applyFormatPainterClipboard(
     styles.backgroundColor = clip.shade;
   }
 
-  wrapSelection(doc, styles);
+  const cells = cellsInSelection(doc);
+  if (cells.length > 0) {
+    applyStylesToTableCells(cells, styles);
+  } else {
+    wrapSelection(doc, styles);
+  }
 
   if (clip.align) {
     const physical =
