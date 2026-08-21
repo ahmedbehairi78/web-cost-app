@@ -4,6 +4,7 @@ import { shouldPauseIdleLogout } from '../lib/offline/idleGate';
 import { isBrowserOnline, subscribeOnlineStatus } from '../lib/offline/networkStatus';
 import { OFFLINE_CHANGED_EVENT } from '../lib/offline/types';
 import { getSystemIdleSeconds, isElectronShell } from '../lib/electronShell';
+import { IDLE_ACTIVITY_EVENT } from '../lib/idleActivityBridge';
 import { SYSTEM_IDLE_POLL_MS, systemIdleReached } from '../lib/systemIdle';
 
 const ACTIVITY_EVENTS = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'wheel'] as const;
@@ -113,6 +114,10 @@ export function useIdleLogout(
       }
     };
 
+    const onBridgeActivity = () => {
+      if (usingWindowActivity) scheduleWindow();
+    };
+
     const unsubOnline = subscribeOnlineStatus(() => {
       if (usingWindowActivity) scheduleWindow();
     });
@@ -120,6 +125,7 @@ export function useIdleLogout(
       if (usingWindowActivity) scheduleWindow();
     };
     window.addEventListener(OFFLINE_CHANGED_EVENT, onOfflineChanged);
+    window.addEventListener(IDLE_ACTIVITY_EVENT, onBridgeActivity);
 
     if (isElectronShell()) {
       void tickSystemIdle();
@@ -137,6 +143,7 @@ export function useIdleLogout(
       detachWindowActivity();
       unsubOnline();
       window.removeEventListener(OFFLINE_CHANGED_EVENT, onOfflineChanged);
+      window.removeEventListener(IDLE_ACTIVITY_EVENT, onBridgeActivity);
     };
   }, [enabled, idleMs]);
 }

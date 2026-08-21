@@ -201,19 +201,21 @@ function openPreview(
 /**
  * Unified entry: preview / print / pdf from a structured ReportDocument
  * (never clones the interactive screen).
+ * Optional `htmlOverride` prints a live-edited preview (selection formatting).
  */
 export async function openReportDocument(
   doc: ReportDocument,
   action: ReportDocumentAction,
   formatMoney: (n: number) => string,
   labels: Partial<ReportDocumentLabels> = {},
+  htmlOverride?: string,
 ): Promise<void> {
   const merged = { ...DEFAULT_LABELS, ...labels };
-  const html = renderReportDocumentHtml(doc, formatMoney);
+  const html = htmlOverride ?? renderReportDocumentHtml(doc, formatMoney);
 
   if (action === 'pdf') {
     try {
-      await exportReportDocumentPdf(doc, formatMoney);
+      await exportReportDocumentPdf(doc, formatMoney, htmlOverride);
     } catch (err) {
       console.error(err);
       throw err;

@@ -78,6 +78,7 @@ import {
   shouldRunElectronColdStartReset,
   currentShouldReuseDesktopPasswordSession,
 } from './lib/sessionLogout';
+import { setIdleLockedDocumentFlag } from './lib/idleActivityBridge';
 import {
   API_UNAUTHORIZED_EVENT,
   FACTORY_RESET_DONE_EVENT,
@@ -931,6 +932,11 @@ export default function App() {
   }, []);
 
   useEffect(() => subscribeSessionLock(setIdleLocked), []);
+
+  useEffect(() => {
+    setIdleLockedDocumentFlag(idleLocked);
+    return () => setIdleLockedDocumentFlag(false);
+  }, [idleLocked]);
 
   useIdleLogout(isAuthenticated && !idleLocked, () => {
     setIdleLocked(true);

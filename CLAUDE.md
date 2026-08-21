@@ -101,7 +101,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/dashboardMetrics.ts` | **Dashboard filters/compare/timeline** — `filterDashboardTransactions`, `computeDashboardPeriodStats`, `buildProjectCompareRows` (سيولة), `buildMonthlySeries` (أعمدة شهرية) · **`buildCashFlowSeries`** (تحليل التدفق النقدي — **شهري غير تراكمي**؛ نقطة أصل `__start__` = صفر ثم إجمالي كل شهر؛ الأشهر بلا حركة **`null`** ⇒ `connectNulls` يمدّ الخط؛ رسم Area خطي); UI: `DashboardFilterBar` · `ProjectCompareTable`. Tests: `dashboardMetrics.test.ts`. |
 | `src/lib/reportDocument/` | **منصة مستندات التقارير** — بيانات → HTML نظيف / PDF / طباعة؛ ورقة: هيدر مضغوط + جسم + **فوتر سطر واحد** (شركة عند start · نص/ملاحظة وسط · رقم صفحة عند end — يتبع `dir` اللغة) |
 | `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
-| `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in Reports format toolbar** (`ReportFormatToolbar`) + **selection mini-bar** in `ReportPreviewDialog`; General Settings **Print** keeps company name/address/tax/logo/footer text only. |
+| `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level). **Selection mini-bar** (`ReportSelectionMiniToolbar` + `selectionFormat.ts`) formats **selected text only** (header/body/footer) with undo; print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
 | `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (62 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
 | `src/lib/cashBudget.ts` | **Cash budget math** — period end · `custodyReplenishAmount` · `computeCashBudgetSummary` (opening not double-counted) · server copy `server/src/lib/cashBudget.ts` |
@@ -1115,9 +1115,10 @@ npm run electron:build:shell
 | **جلسة** | النوافذ والمسودات تبقى تحت القفل؛ لا `resetStartupSession` عند الفتح |
 | **نوافذ متعددة** | `BroadcastChannel` يقفل/يفتح كل نوافذ Ctrl+N معاً بعد نجاح كلمة المرور |
 | **قشرة قديمة** | بدون IPC → نشاط النافذة فقط (كما قبل) لكن القفل بدون إغلاق |
+| **معاينة طباعة (2026-08-21)** | `SHELL_IDLE_LOCK_Z` فوق `ReportPreviewDialog` (كان القفل مختفياً تحت الموازنة/الطباعة) · جسر نشاط iframe · Escape لا يغلق المعاينة أثناء القفل |
 
 ```powershell
-npm run test -- src/lib/systemIdle.test.ts
+npm run test -- src/lib/systemIdle.test.ts src/lib/idleActivityBridge.test.ts
 npm run electron:build:shell   # لازم للقشرة حتى يعمل نشاط الجهاز
 ```
 
@@ -1127,6 +1128,7 @@ npm run electron:build:shell   # لازم للقشرة حتى يعمل نشاط 
 - الخروج المؤقت **يتطلب كلمة المرور** — لا زر متابعة بدونها.
 - لا تستدعِ `handlePasswordLogin` / `resetStartupSession` عند فتح القفل (يمسح النوافذ).
 - لا تعتمد على `mousemove` داخل النافذة وحدها في Electron بعد تحديث القشرة.
+- لا تضع معاينة التقرير (`SHELL_REPORT_PREVIEW_Z`) فوق شاشة قفل الخمول — استخدم `SHELL_IDLE_LOCK_Z`.
 
 ---
 

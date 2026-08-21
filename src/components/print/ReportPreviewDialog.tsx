@@ -5,12 +5,25 @@ import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import { SHELL_REPORT_PREVIEW_Z } from '../../lib/shellTheme';
 import {
+  resolvePrintTextDir,
   resolveReportPrintProfile,
   type ReportPrintId,
   type ReportPrintProfile,
   type StoredReportPrintProfiles,
 } from '../../lib/reportPrintProfiles';
 import { persistReportPrintProfiles } from '../../lib/reportPrintProfilesPersistence';
+import {
+  clearSelectionUndo,
+  applyFormatPainterClipboard,
+  hasNonEmptySelection,
+  installPreviewEditGuards,
+  serializePreviewDocument,
+  type FormatPainterClipboard,
+} from '../../lib/reportDocument/selectionFormat';
+import {
+  installIframeIdleActivityBridge,
+  isIdleLockedDocument,
+} from '../../lib/idleActivityBridge';
 import { openReportDocument, renderReportDocumentHtml, type ReportDocument } from '../../lib/reportDocument';
 import { ReportFormatToolbar } from '../reports/ReportFormatToolbar';
 import {
@@ -87,14 +100,33 @@ export function ReportPreviewDialog({
   const previewFrameRef = useRef<HTMLIFrameElement>(null);
   const [previewObjectUrl, setPreviewObjectUrl] = useState('');
   const [miniBar, setMiniBar] = useState<MiniToolbarPosition | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  /** True after selection-scoped edits — print/PDF use live iframe HTML. */
+  const [selectionHtmlDirty, setSelectionHtmlDirty] = useState(false);
+  const [formatPainterArmed, setFormatPainterArmed] = useState(false);
+  const formatPainterClipboardRef = useRef<FormatPainterClipboard | null>(null);
+  const formatPainterArmedRef = useRef(false);
+  const textDirRef = useRef<'rtl' | 'ltr'>('rtl');
   const selectionCleanupRef = useRef<(() => void) | null>(null);
 
   const hideMiniBar = useCallback(() => setMiniBar(null), []);
+
+  const setFormatPainter = useCallback((armed: boolean, clipboard: FormatPainterClipboard | null) => {
+    setFormatPainterArmed(armed);
+    formatPainterArmedRef.current = armed;
+    formatPainterClipboardRef.current = clipboard;
+    const doc = previewFrameRef.current?.contentDocument;
+    if (doc?.body) {
+      doc.body.style.cursor = armed ? 'cell' : '';
+    }
+  }, []);
 
   const closePreview = useCallback(() => {
     hideMiniBar();
     selectionCleanupRef.current?.();
     selectionCleanupRef.current = null;
+    setPreviewDoc(null);
+    setSelectionHtmlDirty(false);
     const frame = previewFrameRef.current;
     if (frame) {
       frame.removeAttribute('src');
@@ -103,13 +135,15 @@ export function ReportPreviewDialog({
     onClose();
   }, [onClose, hideMiniBar]);
 
-  // Re-seed the working profile each time the dialog opens (or the doc type changes).
   useEffect(() => {
     if (!open) return;
     setProfile(resolveReportPrintProfile(storedProfiles, reportId));
     setDirty(false);
+    setSelectionHtmlDirty(false);
+    setFormatPainterArmed(false);
+    formatPainterArmedRef.current = false;
+    formatPainterClipboardRef.current = null;
     hideMiniBar();
-    // storedProfiles intentionally read only at open time — edits live in local state.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, reportId]);
 
@@ -117,7 +151,13 @@ export function ReportPreviewDialog({
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
+      // Idle lock sits above this dialog — do not steal Escape / close preview under the lock.
+      if (isIdleLockedDocument()) return;
       e.preventDefault();
+      if (formatPainterArmedRef.current) {
+        setFormatPainter(false, null);
+        return;
+      }
       if (miniBar) {
         hideMiniBar();
         return;
@@ -126,11 +166,16 @@ export function ReportPreviewDialog({
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, closePreview, miniBar, hideMiniBar]);
+  }, [open, closePreview, miniBar, hideMiniBar, setFormatPainter]);
 
-  // Rebuild clears iframe selection — hide the floating strip.
+  // Profile rebuild replaces iframe — clear selection UI + undo + painter.
   useEffect(() => {
     hideMiniBar();
+    setPreviewDoc(null);
+    setSelectionHtmlDirty(false);
+    setFormatPainterArmed(false);
+    formatPainterArmedRef.current = false;
+    formatPainterClipboardRef.current = null;
   }, [previewObjectUrl, hideMiniBar]);
 
   const attachSelectionListeners = useCallback(
@@ -145,7 +190,12 @@ export function ReportPreviewDialog({
       }
       if (!doc) return;
 
-      const syncFromSelection = () => {
+      clearSelectionUndo(doc);
+      const removeGuards = installPreviewEditGuards(doc);
+      const removeIdleBridge = installIframeIdleActivityBridge(doc);
+      setPreviewDoc(doc);
+
+      const syncFromSelection = (fromMouseUp = false) => {
         try {
           const sel = doc!.getSelection?.() || frame.contentWindow?.getSelection();
           if (!sel || sel.isCollapsed || !sel.rangeCount) {
@@ -157,6 +207,19 @@ export function ReportPreviewDialog({
             hideMiniBar();
             return;
           }
+
+          // Format painter: apply copied format onto the new selection (Word-like).
+          if (fromMouseUp && formatPainterClipboardRef.current && hasNonEmptySelection(doc!)) {
+            const clip = formatPainterClipboardRef.current;
+            if (applyFormatPainterClipboard(doc!, clip, textDirRef.current)) {
+              setSelectionHtmlDirty(true);
+              setFormatPainterArmed(false);
+              formatPainterArmedRef.current = false;
+              formatPainterClipboardRef.current = null;
+              if (doc!.body) doc!.body.style.cursor = '';
+            }
+          }
+
           const range = sel.getRangeAt(0);
           const rect = range.getBoundingClientRect();
           if (!rect || (rect.width === 0 && rect.height === 0)) {
@@ -173,16 +236,21 @@ export function ReportPreviewDialog({
       };
 
       const onSel = () => {
-        window.requestAnimationFrame(syncFromSelection);
+        window.requestAnimationFrame(() => syncFromSelection(false));
+      };
+      const onMouseUp = () => {
+        window.requestAnimationFrame(() => syncFromSelection(true));
       };
 
       doc.addEventListener('selectionchange', onSel);
-      doc.addEventListener('mouseup', onSel);
+      doc.addEventListener('mouseup', onMouseUp);
       doc.addEventListener('keyup', onSel);
 
       selectionCleanupRef.current = () => {
+        removeGuards();
+        removeIdleBridge();
         doc!.removeEventListener('selectionchange', onSel);
-        doc!.removeEventListener('mouseup', onSel);
+        doc!.removeEventListener('mouseup', onMouseUp);
         doc!.removeEventListener('keyup', onSel);
       };
     },
@@ -209,8 +277,12 @@ export function ReportPreviewDialog({
     }
   }, [docResult, formatMoney]);
 
-  // Blob URL + sandbox: unsandboxed srcDoc can navigate the Electron main frame to
-  // about:blank on unmount, which retries loadURL as a cold start (login screen).
+  const textDir = useMemo(
+    () => resolvePrintTextDir(profile.textDirection, language),
+    [profile.textDirection, language],
+  );
+  textDirRef.current = textDir;
+
   useEffect(() => {
     if (!open || !previewHtml) {
       setPreviewObjectUrl('');
@@ -233,16 +305,25 @@ export function ReportPreviewDialog({
     setDirty(true);
   }, [reportId]);
 
+  const liveHtmlOverride = useCallback((): string | undefined => {
+    if (!selectionHtmlDirty || !previewDoc) return undefined;
+    try {
+      return serializePreviewDocument(previewDoc);
+    } catch {
+      return undefined;
+    }
+  }, [selectionHtmlDirty, previewDoc]);
+
   const handlePrint = useCallback(() => {
     if (!docResult) return;
-    void openReportDocument(docResult, 'print', formatMoney);
-  }, [docResult, formatMoney]);
+    void openReportDocument(docResult, 'print', formatMoney, {}, liveHtmlOverride());
+  }, [docResult, formatMoney, liveHtmlOverride]);
 
   const handlePdf = useCallback(async () => {
     if (!docResult || exporting) return;
     setExporting(true);
     try {
-      await openReportDocument(docResult, 'pdf', formatMoney);
+      await openReportDocument(docResult, 'pdf', formatMoney, {}, liveHtmlOverride());
     } catch (err) {
       console.error(err);
       toast.error(
@@ -253,7 +334,7 @@ export function ReportPreviewDialog({
     } finally {
       setExporting(false);
     }
-  }, [docResult, exporting, formatMoney, isAr]);
+  }, [docResult, exporting, formatMoney, isAr, liveHtmlOverride]);
 
   const handleSaveDesign = useCallback(async () => {
     if (saving) return;
@@ -288,7 +369,6 @@ export function ReportPreviewDialog({
       aria-modal="true"
       dir={isAr ? 'rtl' : 'ltr'}
     >
-      {/* Chrome bar */}
       <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-slate-900 text-slate-100 shrink-0">
         <div className="min-w-0">
           <p className="m-0 font-bold text-sm truncate">
@@ -296,8 +376,8 @@ export function ReportPreviewDialog({
           </p>
           <p className="m-0 text-[11px] text-slate-400">
             {isAr
-              ? 'معاينة مطابقة للطباعة — عدّل التنسيق ثم اطبع أو صدّر PDF'
-              : 'Exact print preview — adjust the format, then print or export PDF'}
+              ? 'معاينة مطابقة للطباعة — حدّد نصاً لتنسيقه فقط، ثم اطبع أو صدّر PDF'
+              : 'Exact print preview — select text to format only, then print or export PDF'}
           </p>
         </div>
         <div className="flex items-center gap-1.5 ms-auto">
@@ -357,7 +437,6 @@ export function ReportPreviewDialog({
         </div>
       </div>
 
-      {/* Format toolbar strip */}
       {showFormat ? (
         <div className="px-4 pt-3 bg-slate-200 shrink-0 [&>div]:mb-3" dir={isAr ? 'rtl' : 'ltr'}>
           <ReportFormatToolbar
@@ -371,7 +450,6 @@ export function ReportPreviewDialog({
         </div>
       ) : null}
 
-      {/* Preview viewport */}
       <div className="flex-1 min-h-0 overflow-auto p-5">
         {previewObjectUrl ? (
           <iframe
@@ -401,13 +479,16 @@ export function ReportPreviewDialog({
         )}
       </div>
 
-      {miniBar ? (
+      {miniBar && previewDoc ? (
         <ReportSelectionMiniToolbar
-          profile={profile}
-          onChange={patchProfile}
+          previewDoc={previewDoc}
+          textDir={textDir}
           language={language}
           t={t}
           position={miniBar}
+          onFormatted={() => setSelectionHtmlDirty(true)}
+          formatPainterArmed={formatPainterArmed}
+          onFormatPainterArmedChange={setFormatPainter}
         />
       ) : null}
     </div>,

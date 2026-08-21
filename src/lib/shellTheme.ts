@@ -60,6 +60,11 @@ export const SHELL_MODAL_STACK_Z = 'z-[10060]';
  * (SHELL_MODAL_Z / STACK) so Print from an open detail dialog is visible.
  */
 export const SHELL_REPORT_PREVIEW_Z = 'z-[10100]';
+/**
+ * Idle privacy lock (Login overlay) — must sit above report preview + selection
+ * mini-toolbar (z ≈ 10100–10200) so password unlock is reachable.
+ */
+export const SHELL_IDLE_LOCK_Z = 'z-[12000]';
 export const SHELL_MODAL_ROOT_CLASS = 'shell-modal-root';
 
 export function shellAppBackground(mode: AppTheme): string {

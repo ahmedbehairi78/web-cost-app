@@ -11,6 +11,8 @@ import { authApi } from '../services/local/authApi';
 import { ApiError } from '../lib/apiClient';
 import type { AppUser } from '../types';
 import { cn } from '../lib/utils';
+import { SHELL_IDLE_LOCK_Z } from '../lib/shellTheme';
+
 import {
   clearFreshLoginRequired,
   mustPasswordLogin,
@@ -205,7 +207,10 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
 
   return (
     <div
-      className="login-screen fixed inset-0 z-[9999] flex items-center justify-center p-4 shell-transition"
+      className={cn(
+        'login-screen fixed inset-0 flex items-center justify-center p-4 shell-transition',
+        idleResume ? SHELL_IDLE_LOCK_Z : 'z-[9999]',
+      )}
       dir={language === 'ar' ? 'rtl' : 'ltr'}
     >
       <motion.div
