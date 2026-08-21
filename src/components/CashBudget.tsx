@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Check,
-  FileSpreadsheet,
   Loader2,
   Plus,
   Printer,
@@ -31,7 +30,6 @@ import {
   type CostCenterAllocationTotal,
 } from '../lib/cashBudget';
 import { moduleAccess } from '../lib/permissions';
-import { exportCashBudgetExcel } from '../lib/cashBudgetExcel';
 import { useReportDocumentPreview } from '../hooks/useReportDocumentPreview';
 import type { CompanyPrintInfo } from '../lib/ipcPrintData';
 import { ManualHelpButton } from './help/ManualHelpButton';
@@ -70,18 +68,6 @@ function periodTypeLabel(type: string, t: (key: string) => string): string {
   if (type === 'weekly') return t('cb_weekly');
   if (type === 'biweekly') return t('cb_biweekly');
   return t('cb_monthly');
-}
-
-function categoryLabel(category: string, t: (key: string) => string): string {
-  if (category === 'supplier') return t('cb_cat_supplier');
-  if (category === 'subcontractor') return t('cb_cat_subcontractor');
-  if (category === 'custody_settlement') return t('cb_cat_custody_settlement');
-  if (category === 'custody_replenish') return t('cb_cat_custody_replenish');
-  if (category === 'payroll') return t('cb_cat_payroll');
-  if (category === 'opening_bank') return t('cb_cat_opening_bank');
-  if (category === 'opening_cash') return t('cb_cat_opening_cash');
-  if (category === 'collection') return t('cb_cat_collection');
-  return t('cb_cat_other');
 }
 
 export function CashBudget() {
@@ -460,7 +446,26 @@ export function CashBudget() {
       rows: obligationRows,
       sections: [
         {
+          kind: 'keyValue',
+          title: t('cb_sheet_summary'),
+          items: [
+            { label: t('cb_period_number'), value: detail.periodNumber },
+            { label: t('cb_period_type'), value: periodTypeLabel(detail.periodType, t) },
+            { label: t('cb_period_start'), value: detail.periodStart },
+            { label: t('cb_period_end'), value: detail.periodEnd },
+            { label: t('cb_col_status'), value: detail.status === 'approved' ? t('cb_status_approved') : t('cb_status_draft') },
+            { label: t('cb_settlement_pct'), value: `${settlementPct}%` },
+            { label: t('cb_kpi_banks'), value: formatMoney(summary.openingBank) },
+            { label: t('cb_kpi_cash'), value: formatMoney(summary.openingCash) },
+            { label: t('cb_kpi_sources'), value: formatMoney(summary.periodSources) },
+            { label: t('cb_kpi_obligations'), value: formatMoney(summary.obligations) },
+            { label: t('cb_gap'), value: formatMoney(summary.gap) },
+            { label: t('cb_kpi_pay_plan'), value: formatMoney(payFromBanks) },
+          ],
+        },
+        {
           kind: 'table',
+          title: t('cb_obligations'),
           columns: obligationCols,
           rows: obligationRows,
           totals: {
@@ -488,6 +493,24 @@ export function CashBudget() {
           },
           totalsLabel: t('cb_by_project'),
         },
+        ...(custodyLeaves.length > 0
+          ? [{
+              kind: 'table' as const,
+              title: t('cb_custody_floors'),
+              columns: [
+                { key: 'account', header: t('cb_col_account'), width: 28 },
+                { key: 'glBalance', header: t('cb_floor_gl'), width: 14, money: true },
+                { key: 'minBalance', header: t('cb_min_balance'), width: 14, money: true },
+                { key: 'replenish', header: t('cb_floor_shortfall'), width: 14, money: true },
+              ],
+              rows: custodyLeaves.map((acc) => ({
+                account: `${acc.accountCode} — ${isAr ? acc.accountName : (acc.accountNameEn || acc.accountName)}`,
+                glBalance: Number(acc.glBalance) || 0,
+                minBalance: Number(floorDrafts[acc.accountId] ?? acc.minBalance) || 0,
+                replenish: Number(acc.replenish) || 0,
+              })),
+            }]
+          : []),
       ],
       totals: {
         amount: summary.obligations,
@@ -497,93 +520,6 @@ export function CashBudget() {
       footerNote: `${t('cb_kpi_banks')}: ${formatMoney(summary.openingBank)} · ${t('cb_kpi_cash')}: ${formatMoney(summary.openingCash)} · ${t('cb_kpi_sources')}: ${formatMoney(summary.periodSources)} · ${t('cb_kpi_obligations')}: ${formatMoney(summary.obligations)}${showAllocated ? ` · ${t('cb_col_allocated')}: ${formatMoney(detail.distributablePool ?? 0)}` : ''}`,
       filename: `cash-budget-${detail.periodNumber}`,
     });
-  };
-
-  const handleExportExcel = () => {
-    if (!detail || !summary) {
-      toast.error(t('cb_select_period'));
-      return;
-    }
-    try {
-      exportCashBudgetExcel({
-        filename: isAr ? `موازنة_نقدية_${detail.periodNumber}` : `cash-budget-${detail.periodNumber}`,
-        labels: {
-          sheetSummary: t('cb_sheet_summary'),
-          sheetObligations: t('cb_obligations'),
-          sheetProjects: t('cb_by_project'),
-          sheetCustody: t('cb_custody_floors'),
-          periodNumber: t('cb_period_number'),
-          periodType: t('cb_period_type'),
-          periodStart: t('cb_period_start'),
-          periodEnd: t('cb_period_end'),
-          status: t('cb_col_status'),
-          settlementPct: t('cb_settlement_pct'),
-          kpiBanks: t('cb_kpi_banks'),
-          kpiCash: t('cb_kpi_cash'),
-          kpiSources: t('cb_kpi_sources'),
-          kpiObligations: t('cb_kpi_obligations'),
-          kpiGap: t('cb_gap'),
-          kpiPayPlan: t('cb_kpi_pay_plan'),
-          colAccount: t('cb_col_account'),
-          colProject: t('project'),
-          colCategory: t('cb_col_category'),
-          colAmount: t('cb_col_amount'),
-          colAllocated: t('cb_col_allocated'),
-          colAllocPct: t('cb_col_alloc_pct'),
-          colExcluded: t('cb_excluded'),
-          colOrigin: t('cb_col_origin'),
-          colObligationTotal: t('cb_col_cc_obligation'),
-          colAllocatedTotal: t('cb_col_cc_allocated'),
-          colGlBalance: t('cb_floor_gl'),
-          colMinBalance: t('cb_min_balance'),
-          colReplenish: t('cb_floor_shortfall'),
-          yes: t('cb_yes'),
-          no: t('cb_no'),
-        },
-        summary: {
-          periodNumber: detail.periodNumber,
-          periodType: periodTypeLabel(detail.periodType, t),
-          periodStart: detail.periodStart,
-          periodEnd: detail.periodEnd,
-          status: detail.status === 'approved' ? t('cb_status_approved') : t('cb_status_draft'),
-          settlementPct,
-          banks: summary.openingBank,
-          cash: summary.openingCash,
-          collections: summary.periodSources,
-          obligations: summary.obligations,
-          gap: summary.gap,
-          payPlan: payFromBanks,
-        },
-        lines: obligationLines.map((l) => {
-          const allocated = Number(l.allocatedCash ?? 0);
-          return {
-            account: accountLabel(l),
-            project: projectLabel(l, isAr, t),
-            category: categoryLabel(l.category, t),
-            amount: Number(l.amount),
-            allocated,
-            allocPct: l.excluded ? 0 : allocationSharePct(allocated, allocationPool),
-            excluded: Boolean(l.excluded),
-            origin: l.origin === 'manual' ? t('cb_origin_manual') : (l.origin ?? ''),
-          };
-        }),
-        projects: projectTotals.map((row) => ({
-          name: isAr ? row.name : row.nameEn,
-          obligation: row.obligation,
-          allocated: row.allocated,
-          pct: row.pct,
-        })),
-        custody: custodyLeaves.map((acc) => ({
-          account: `${acc.accountCode} — ${isAr ? acc.accountName : (acc.accountNameEn || acc.accountName)}`,
-          glBalance: Number(acc.glBalance) || 0,
-          minBalance: Number(floorDrafts[acc.accountId] ?? acc.minBalance) || 0,
-          replenish: Number(acc.replenish) || 0,
-        })),
-      });
-    } catch (e) {
-      console.error(e);
-      toast.error(t('cb_export_failed'));
-    }
   };
 
   const cardCls = cn(
@@ -697,9 +633,6 @@ export function CashBudget() {
                 )}
                 <button type="button" className={btnCls} onClick={handlePrint}>
                   <Printer size={14} /> {t('cb_print')}
-                </button>
-                <button type="button" className={btnCls} onClick={handleExportExcel}>
-                  <FileSpreadsheet size={14} /> {t('cb_export_excel')}
                 </button>
                 {isDraft && canWrite && (
                   <button type="button" className={primaryBtn} disabled={busy} onClick={() => void handleApprove()}>

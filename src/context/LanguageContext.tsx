@@ -626,6 +626,8 @@ const translations: Record<Language, Record<string, string>> = {
     report_print_preview_title: 'معاينة قبل الطباعة',
     report_print_preview_hint: 'راجع التقرير ثم اضغط طباعة لفتح حوار الطابعة، أو إلغاء للعودة.',
     report_print_action: 'طباعة',
+    report_export_excel: 'تصدير Excel',
+    report_export_failed: 'تعذر تصدير Excel',
     print_design_title: 'تصميم طباعة التقارير',
     print_design_desc: 'خصّص شكل الطباعة لكل تقرير على حدة (اتجاه الصفحة، الحجم، الكثافة، اللون، الترويسة والتذييل). تُحفظ على مستوى الشركة لكل المستخدمين.',
     print_design_report: 'التقرير',
@@ -2568,7 +2570,7 @@ const translations: Record<Language, Record<string, string>> = {
       'الفجوة = (بنوك + خزينة + مستخلصات تحت التحصيل) − الالتزامات. بنود البنوك والخزينة في الجدول لا تُضاف مرة ثانية إلى المستخلصات.',
     manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة أو Excel',
     manual_cash_budget_plan_step_4_body:
-      'اختر نسبة سداد من إجمالي المديونية (25/50/75/100 أو نسبة حرّة). الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد. السداد المقترح = الأقل بين بنوك 12101 والالتزامات × النسبة، موزَّعاً حسب وزن الحساب. صناديق/عهد 12102 لا تُوزَّع. أعد الفتح لتعديل البنود؛ يمكن تغيير النسبة بعد الاعتماد. زر Excel يصدّر الملخص والالتزامات وإجمالي المشروع وحدود العهد.',
+      'اختر نسبة سداد من إجمالي المديونية (25/50/75/100 أو نسبة حرّة). الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد. السداد المقترح = الأقل بين بنوك 12101 والالتزامات × النسبة، موزَّعاً حسب وزن الحساب. صناديق/عهد 12102 لا تُوزَّع. أعد الفتح لتعديل البنود؛ يمكن تغيير النسبة بعد الاعتماد. الطباعة تفتح المعاينة؛ منها صدّر Excel شيت واحد للتقرير كامل.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -3170,6 +3172,8 @@ const translations: Record<Language, Record<string, string>> = {
     report_print_preview_title: 'Print preview',
     report_print_preview_hint: 'Review the report, then click Print to open the printer dialog, or Cancel to go back.',
     report_print_action: 'Print',
+    report_export_excel: 'Export Excel',
+    report_export_failed: 'Could not export Excel',
     print_design_title: 'Report print design',
     print_design_desc: 'Customize how each report prints (page orientation, size, density, color, header and footer). Saved at company level for all users.',
     print_design_report: 'Report',
@@ -5114,7 +5118,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Gap = (banks + treasury + uncollected IPCs) − obligations. Bank and treasury table lines are not added again on top of IPC receivables.',
     manual_cash_budget_plan_step_4_title: 'Approve, print, or Excel',
     manual_cash_budget_plan_step_4_body:
-      'Choose a settlement percent of total payables (25/50/75/100 or a custom rate). Approve removes excluded lines and locks edits with no journal. Proposed payment = the lower of banks 12101 and obligations × percent, split by account weight. Cash/custody 12102 is not allocated. Reopen to edit lines; the percent can still be changed after approve. Excel exports the summary, obligation lines, project totals, and custody floors.',
+      'Choose a settlement percent of total payables (25/50/75/100 or a custom rate). Approve removes excluded lines and locks edits with no journal. Proposed payment = the lower of banks 12101 and obligations × percent, split by account weight. Cash/custody 12102 is not allocated. Reopen to edit lines; the percent can still be changed after approve. Print opens the preview; export Excel from there as a single sheet of the full report.',
   }
 };
 

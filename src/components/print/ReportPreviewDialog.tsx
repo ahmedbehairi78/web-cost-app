@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FileDown, Printer, Save, SlidersHorizontal, X } from 'lucide-react';
+import { FileDown, FileSpreadsheet, Printer, Save, SlidersHorizontal, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '../../lib/utils';
 import { SHELL_REPORT_PREVIEW_Z } from '../../lib/shellTheme';
@@ -27,7 +27,13 @@ import {
   installIframeIdleActivityBridge,
   isIdleLockedDocument,
 } from '../../lib/idleActivityBridge';
-import { openReportDocument, renderReportDocumentHtml, REPORT_PRINT_IFRAME_SANDBOX, type ReportDocument } from '../../lib/reportDocument';
+import {
+  exportReportDocumentExcel,
+  openReportDocument,
+  renderReportDocumentHtml,
+  REPORT_PRINT_IFRAME_SANDBOX,
+  type ReportDocument,
+} from '../../lib/reportDocument';
 import { ReportFormatToolbar } from '../reports/ReportFormatToolbar';
 import {
   ReportSelectionMiniToolbar,
@@ -363,6 +369,16 @@ export function ReportPreviewDialog({
     }
   }, [docResult, exporting, formatMoney, isAr, liveHtmlOverride, previewHtml]);
 
+  const handleExcel = useCallback(() => {
+    if (!docResult) return;
+    try {
+      exportReportDocumentExcel(docResult, formatMoney);
+    } catch (err) {
+      console.error(err);
+      toast.error(t('report_export_failed'));
+    }
+  }, [docResult, formatMoney, t]);
+
   const storedResolved = resolveReportPrintProfile(storedProfiles, reportId);
   const profileDirty = dirty || !printProfileEquals(profile, storedResolved);
 
@@ -436,6 +452,15 @@ export function ReportPreviewDialog({
               {t('report_fmt_save')}
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={handleExcel}
+            disabled={!docResult}
+            className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold bg-emerald-700 text-white hover:bg-emerald-600 disabled:opacity-50"
+          >
+            <FileSpreadsheet size={14} />
+            {t('report_export_excel')}
+          </button>
           <button
             type="button"
             onClick={handlePdf}
