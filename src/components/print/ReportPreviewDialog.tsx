@@ -349,7 +349,7 @@ export function ReportPreviewDialog({
         'pdf',
         formatMoney,
         {},
-        liveHtmlOverride() ?? previewHtml || undefined,
+        liveHtmlOverride() ?? (previewHtml || undefined),
       );
     } catch (err) {
       console.error(err);
