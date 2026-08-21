@@ -103,6 +103,52 @@ describe('reportDocument', () => {
     expect(html).toContain('class="sheet');
   });
 
+  it('overrides table cell alignment from print profile', () => {
+    const html = renderReportDocumentHtml(
+      {
+        id: 't',
+        title: 'T',
+        language: 'ar',
+        orientation: 'portrait',
+        pageSize: 'A4',
+        accent: '#003B71',
+        showHeader: true,
+        showFooter: false,
+        showLogo: false,
+        fontFamily: 'calibri',
+        textDirection: 'auto',
+        titleAlign: 'center',
+        footerAlign: 'center',
+        logoAlign: 'start',
+        tableCellAlign: 'center',
+        marginPreset: 'normal',
+        fitPageCount: 0,
+        density: 'normal',
+        headerShowCompany: true,
+        headerShowAddress: true,
+        headerShowTaxId: true,
+        headerShowTitle: true,
+        headerShowMeta: true,
+        headerExtraText: '',
+        footerShowCompany: true,
+        footerShowText: true,
+        footerShowNote: true,
+        footerShowPageNum: true,
+        footerExtraText: '',
+        company,
+        columns: [
+          { key: 'label', header: 'بند', align: 'right' },
+          { key: 'amount', header: 'مبلغ', money: true },
+        ],
+        rows: [{ label: 'أ', amount: 12.5 }],
+        filename: 't',
+      },
+      (n) => n.toFixed(2),
+    );
+    expect(html).toContain('class="tbl-align-center"');
+    expect(html).toContain('html.tbl-align-center th, html.tbl-align-center td');
+  });
+
   it('applies forced RTL and wide margins from profile fields', () => {
     const html = renderReportDocumentHtml(
       {

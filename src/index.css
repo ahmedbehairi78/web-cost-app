@@ -733,6 +733,21 @@ input[type="number"] {
   text-align: end;
 }
 
+.report-page-viewer .report-print-area[data-table-align="start"] th,
+.report-page-viewer .report-print-area[data-table-align="start"] td {
+  text-align: start !important;
+}
+
+.report-page-viewer .report-print-area[data-table-align="center"] th,
+.report-page-viewer .report-print-area[data-table-align="center"] td {
+  text-align: center !important;
+}
+
+.report-page-viewer .report-print-area[data-table-align="end"] th,
+.report-page-viewer .report-print-area[data-table-align="end"] td {
+  text-align: end !important;
+}
+
 .report-page-viewer .report-print-report-title {
   margin: 0;
   font-size: 13pt;

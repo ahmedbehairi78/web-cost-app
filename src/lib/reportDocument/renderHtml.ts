@@ -529,6 +529,9 @@ export function renderReportDocumentHtml(
   const titleAlign = titleAlignCss(doc.titleAlign ?? 'center');
   const logoJustify = logoJustifyCss(doc.logoAlign ?? 'start');
   const logoAlign = doc.logoAlign ?? 'start';
+  const tableCellAlign = doc.tableCellAlign ?? 'auto';
+  const htmlClassAttr =
+    tableCellAlign === 'auto' ? '' : ` class="tbl-align-${tableCellAlign}"`;
   const tableRowCount = doc.sections?.length
     ? (doc.sections.find((s) => s.kind === 'table' && s.flow)?.rows.length ?? 0)
     : flattenReportRows(doc).length;
@@ -687,7 +690,7 @@ export function renderReportDocumentHtml(
     .join('\n');
 
   return `<!DOCTYPE html>
-<html lang="${doc.language}" dir="${dir}">
+<html lang="${doc.language}" dir="${dir}"${htmlClassAttr}>
 <head>
 <meta charset="utf-8" />
 <title>${esc(doc.title)}</title>
@@ -878,6 +881,15 @@ export function renderReportDocumentHtml(
   .align-right { text-align: right; }
   [dir="rtl"] .align-left { text-align: right; }
   [dir="rtl"] .align-right { text-align: left; }
+  html.tbl-align-start th, html.tbl-align-start td { text-align: start !important; }
+  html.tbl-align-center th, html.tbl-align-center td { text-align: center !important; }
+  html.tbl-align-end th, html.tbl-align-end td { text-align: end !important; }
+  html.tbl-align-start .num .num-val,
+  html.tbl-align-start .num .num-empty { text-align: start !important; }
+  html.tbl-align-center .num .num-val,
+  html.tbl-align-center .num .num-empty { text-align: center !important; }
+  html.tbl-align-end .num .num-val,
+  html.tbl-align-end .num .num-empty { text-align: end !important; }
   th.num, td.num {
     text-align: right !important;
     white-space: nowrap;

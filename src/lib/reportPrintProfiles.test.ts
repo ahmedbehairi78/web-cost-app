@@ -13,6 +13,7 @@ describe('reportPrintProfiles format fields', () => {
     expect(income.textDirection).toBe('auto');
     expect(income.marginPreset).toBe('normal');
     expect(income.fitPageCount).toBe(0);
+    expect(income.tableCellAlign).toBe('auto');
   });
 
   it('sanitizeProfile accepts new fields and ignores invalid', () => {
@@ -25,6 +26,7 @@ describe('reportPrintProfiles format fields', () => {
       headerShowCompany: false,
       footerShowPageNum: false,
       headerExtraText: '  hello  world  ',
+      tableCellAlign: 'center',
     });
     expect(good.fontFamily).toBe('segoe');
     expect(good.textDirection).toBe('rtl');
@@ -33,17 +35,20 @@ describe('reportPrintProfiles format fields', () => {
     expect(good.headerShowCompany).toBe(false);
     expect(good.footerShowPageNum).toBe(false);
     expect(good.headerExtraText).toBe('hello world');
+    expect(good.tableCellAlign).toBe('center');
 
     const bad = sanitizeProfile(fallback, {
       fontFamily: 'nope' as 'calibri',
       textDirection: 'xx' as 'auto',
       marginPreset: 'huge' as 'normal',
       fitPageCount: 99 as 0,
+      tableCellAlign: 'justify' as 'auto',
     });
     expect(bad.fontFamily).toBe(fallback.fontFamily);
     expect(bad.textDirection).toBe(fallback.textDirection);
     expect(bad.marginPreset).toBe(fallback.marginPreset);
     expect(bad.fitPageCount).toBe(fallback.fitPageCount);
+    expect(bad.tableCellAlign).toBe(fallback.tableCellAlign);
   });
 
   it('defaults include header/footer content toggles', () => {

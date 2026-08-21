@@ -6,6 +6,7 @@ import type {
   PrintMarginPreset,
   PrintOrientation,
   PrintPageSize,
+  PrintTableCellAlign,
   PrintTextDirection,
   ReportPrintProfile,
 } from '../reportPrintProfiles';
@@ -158,6 +159,8 @@ export type ReportDocument = {
   titleAlign: PrintAlign;
   footerAlign: PrintAlign;
   logoAlign: PrintAlign;
+  /** `auto` (default) = per-column; otherwise override all table cells. */
+  tableCellAlign?: PrintTableCellAlign;
   marginPreset: PrintMarginPreset;
   /** `0` = auto; otherwise distribute content across this many sheets. */
   fitPageCount: number;
@@ -218,6 +221,7 @@ export function profileToDocLayout(profile: ReportPrintProfile): Pick<
   | 'titleAlign'
   | 'footerAlign'
   | 'logoAlign'
+  | 'tableCellAlign'
   | 'marginPreset'
   | 'fitPageCount'
   | 'density'
@@ -245,6 +249,7 @@ export function profileToDocLayout(profile: ReportPrintProfile): Pick<
     titleAlign: profile.titleAlign,
     footerAlign: profile.footerAlign,
     logoAlign: profile.logoAlign,
+    tableCellAlign: profile.tableCellAlign,
     marginPreset: profile.marginPreset,
     fitPageCount: profile.fitPageCount,
     density: profile.density,

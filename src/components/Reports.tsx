@@ -1893,6 +1893,7 @@ export function Reports() {
         className="report-print-area print:p-0 print:bg-white print:text-black"
         dir={printPreviewDir}
         data-title-align={currentPrintProfile.titleAlign}
+        data-table-align={currentPrintProfile.tableCellAlign}
         data-show-header={currentPrintProfile.showHeader ? 'true' : 'false'}
         data-show-footer={currentPrintProfile.showFooter ? 'true' : 'false'}
         style={printPreviewStyle}

@@ -33,6 +33,8 @@ export type PrintOrientation = 'portrait' | 'landscape';
 export type PrintPageSize = 'A4' | 'A3';
 export type PrintDensity = 'compact' | 'normal' | 'comfortable';
 export type PrintAlign = 'start' | 'center' | 'end';
+/** `auto` = keep per-column align (text start / numbers decimal-right). */
+export type PrintTableCellAlign = 'auto' | PrintAlign;
 export type PrintTitleSize = 'sm' | 'md' | 'lg' | 'xl';
 export type PrintLogoSize = 'sm' | 'md' | 'lg' | 'xl';
 /** Reserved vertical space for the repeating header / footer band. */
@@ -50,6 +52,7 @@ export type PrintMarginPreset = 'narrow' | 'normal' | 'wide';
 export type PrintFitPageCount = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 8 | 10 | 12 | 15 | 20;
 
 export const PRINT_ALIGNS: PrintAlign[] = ['start', 'center', 'end'];
+export const PRINT_TABLE_CELL_ALIGNS: PrintTableCellAlign[] = ['auto', 'start', 'center', 'end'];
 export const PRINT_TITLE_SIZES: PrintTitleSize[] = ['sm', 'md', 'lg', 'xl'];
 export const PRINT_LOGO_SIZES: PrintLogoSize[] = ['sm', 'md', 'lg', 'xl'];
 export const PRINT_BAND_SIZES: PrintBandSize[] = ['sm', 'md', 'lg', 'xl'];
@@ -74,6 +77,11 @@ export interface ReportPrintProfile {
   titleAlign: PrintAlign;
   titleFontSize: PrintTitleSize;
   footerAlign: PrintAlign;
+  /**
+   * Horizontal text alignment inside table cells (headers + body + totals).
+   * `auto` keeps column-level align (labels vs numeric decimal-right).
+   */
+  tableCellAlign: PrintTableCellAlign;
   showLogo: boolean;
   logoAlign: PrintAlign;
   logoSize: PrintLogoSize;
@@ -189,6 +197,7 @@ const BASE_PRINT_LAYOUT: Omit<ReportPrintProfile, 'orientation' | 'pageSize' | '
   titleAlign: 'center',
   titleFontSize: 'md',
   footerAlign: 'center',
+  tableCellAlign: 'auto',
   showLogo: true,
   logoAlign: 'start',
   logoSize: 'md',
@@ -268,6 +277,9 @@ export function sanitizeProfile(
     footerAlign: PRINT_ALIGNS.includes(raw.footerAlign as PrintAlign)
       ? (raw.footerAlign as PrintAlign)
       : fallback.footerAlign,
+    tableCellAlign: PRINT_TABLE_CELL_ALIGNS.includes(raw.tableCellAlign as PrintTableCellAlign)
+      ? (raw.tableCellAlign as PrintTableCellAlign)
+      : fallback.tableCellAlign,
     showLogo: typeof raw.showLogo === 'boolean' ? raw.showLogo : fallback.showLogo,
     logoAlign: PRINT_ALIGNS.includes(raw.logoAlign as PrintAlign)
       ? (raw.logoAlign as PrintAlign)

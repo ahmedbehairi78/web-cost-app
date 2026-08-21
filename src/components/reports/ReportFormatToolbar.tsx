@@ -9,6 +9,7 @@ import {
   type PrintFontFamily,
   type PrintMarginPreset,
   type PrintOrientation,
+  type PrintTableCellAlign,
   type PrintTextDirection,
   type ReportPrintProfile,
 } from '../../lib/reportPrintProfiles';
@@ -157,6 +158,20 @@ export function ReportFormatToolbar({
               value={profile.titleAlign}
               onChange={(e) => onChange({ titleAlign: e.target.value as PrintAlign })}
             >
+              <option value="start">{t('print_align_start')}</option>
+              <option value="center">{t('print_align_center')}</option>
+              <option value="end">{t('print_align_end')}</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-0.5 min-w-0">
+            <span className={cn('text-[9px] font-bold uppercase', ui.mutedText)}>{t('report_fmt_table_align')}</span>
+            <select
+              className={cn(selectCls, ui.input, 'w-full')}
+              value={profile.tableCellAlign}
+              title={t('report_fmt_table_align_hint')}
+              onChange={(e) => onChange({ tableCellAlign: e.target.value as PrintTableCellAlign })}
+            >
+              <option value="auto">{t('report_fmt_table_align_auto')}</option>
               <option value="start">{t('print_align_start')}</option>
               <option value="center">{t('print_align_center')}</option>
               <option value="end">{t('print_align_end')}</option>
