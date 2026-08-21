@@ -335,16 +335,33 @@ export type AllocatableCashBudgetLine = {
   description?: string | null;
 };
 
-export function settlementCashPool(availableBankAndCash: number, obligationTotal: number): number {
+export function clampSettlementPct(value: unknown): number {
+  if (value == null || value === '') return 100;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 100;
+  return roundMoney(Math.min(100, Math.max(0, n)));
+}
+
+export function obligationPayTarget(obligationTotal: number, settlementPct: unknown): number {
+  const pct = clampSettlementPct(settlementPct);
+  return roundMoney((Math.max(0, roundMoney(obligationTotal)) * pct) / 100);
+}
+
+export function settlementCashPool(
+  availableBankAndCash: number,
+  obligationTotal: number,
+  settlementPct: unknown = 100,
+): number {
   return roundMoney(Math.min(
     Math.max(0, roundMoney(availableBankAndCash)),
-    Math.max(0, roundMoney(obligationTotal)),
+    obligationPayTarget(obligationTotal, settlementPct),
   ));
 }
 
 export function distributePoolByAccountWeight(
   lines: AllocatableCashBudgetLine[],
   pool: number,
+  settlementPct: unknown = 100,
 ): Map<string, number> {
   const out = new Map<string, number>();
   const eligible = lines.filter((line) => {
@@ -374,7 +391,7 @@ export function distributePoolByAccountWeight(
     .sort((a, b) => a.key.localeCompare(b.key));
 
   const totalWeight = roundMoney(groupList.reduce((sum, group) => roundMoney(sum + group.weight), 0));
-  const pooled = settlementCashPool(pool, totalWeight);
+  const pooled = settlementCashPool(pool, totalWeight, settlementPct);
   if (totalWeight <= 0 || pooled <= 0) return out;
 
   let allocatedGroups = 0;

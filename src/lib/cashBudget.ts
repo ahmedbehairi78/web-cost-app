@@ -433,22 +433,40 @@ export type AllocatableCashBudgetLine = {
   description?: string | null;
 };
 
-/** Cash to allocate after approve: never more than what is owed. */
-export function settlementCashPool(availableBankAndCash: number, obligationTotal: number): number {
+/** 0–100. Invalid / empty → 100. */
+export function clampSettlementPct(value: unknown): number {
+  if (value == null || value === '') return 100;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 100;
+  return roundMoney(Math.min(100, Math.max(0, n)));
+}
+
+export function obligationPayTarget(obligationTotal: number, settlementPct: unknown): number {
+  const pct = clampSettlementPct(settlementPct);
+  return roundMoney((Math.max(0, roundMoney(obligationTotal)) * pct) / 100);
+}
+
+/** Cash to allocate: min(banks, obligations × settlement%). */
+export function settlementCashPool(
+  availableBankAndCash: number,
+  obligationTotal: number,
+  settlementPct: unknown = 100,
+): number {
   return roundMoney(Math.min(
     Math.max(0, roundMoney(availableBankAndCash)),
-    Math.max(0, roundMoney(obligationTotal)),
+    obligationPayTarget(obligationTotal, settlementPct),
   ));
 }
 
 /**
- * After approve: pay obligations from banks + treasury cash.
- * If cash ≥ obligations (including custody replenish), each line gets its full amount.
- * If cash is short, split the available cash by account weight, then by cost-center rows.
+ * After approve (and live preview): pay the chosen % of obligations from banks 12101.
+ * If cash ≥ target, each line gets its share of the target (full line when pct = 100).
+ * If cash is short, split available cash by account weight, then by cost-center rows.
  */
 export function distributePoolByAccountWeight(
   lines: AllocatableCashBudgetLine[],
   pool: number,
+  settlementPct: unknown = 100,
 ): Map<string, number> {
   const out = new Map<string, number>();
   const eligible = lines.filter((line) => {
@@ -478,7 +496,7 @@ export function distributePoolByAccountWeight(
     .sort((a, b) => a.key.localeCompare(b.key));
 
   const totalWeight = roundMoney(groupList.reduce((sum, group) => roundMoney(sum + group.weight), 0));
-  const pooled = settlementCashPool(pool, totalWeight);
+  const pooled = settlementCashPool(pool, totalWeight, settlementPct);
   if (totalWeight <= 0 || pooled <= 0) return out;
 
   let allocatedGroups = 0;

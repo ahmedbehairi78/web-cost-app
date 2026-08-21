@@ -130,6 +130,10 @@ const translations: Record<Language, Record<string, string>> = {
     cb_kpi_cash: 'النقد والعهد',
     cb_kpi_sources: 'مستخلصات تحت التحصيل',
     cb_kpi_obligations: 'الالتزامات',
+    cb_kpi_pay_plan: 'مبلغ السداد المقترح',
+    cb_settlement_pct: 'نسبة سداد المديونية %',
+    cb_settlement_pct_hint: 'يُوزَّع الأقل بين رصيد البنوك وإجمالي الالتزامات × النسبة.',
+    cb_settlement_capped: 'خُفِّض لأن رصيد البنوك أقل من النسبة المختارة',
     cb_gap: 'الفائض / العجز',
     cb_equation_hint: 'المتاح = بنوك 12101 + خزينة/عهد 12102 + مستخلصات تحت التحصيل 12201. الالتزامات = أرصدة دائنة للموردين 21101 ولمقاولي الباطن 21102 + رواتب مستحقة 21501 + تعويض العهد إذا قلّ الرصيد عن الحد. الأرصدة حتى نهاية الفترة من دفتر اليومية.',
     cb_obligations: 'التزامات (مستحق علينا)',
@@ -148,7 +152,7 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_alloc_pct: 'نسبة التوزيع',
     cb_no_cost_center: '—',
     cb_no_project: '—',
-    cb_allocated_hint: 'بعد الاعتماد يُقترح سداد الالتزامات من أرصدة البنوك 12101 فقط. الصناديق والعهد 12102 ومستخلصات تحت التحصيل 12201 تبقى في الفجوة ولا تُوزَّع. إن كفت البنوك يُسدَّد كل بند بالكامل، وإلا يُوزَّع المتاح حسب وزن الحساب.',
+    cb_allocated_hint: 'يُقترح السداد من أرصدة البنوك 12101 فقط حسب نسبة سداد المديونية. الصناديق والعهد 12102 ومستخلصات تحت التحصيل تبقى في الفجوة. إن كفت البنوك للنسبة المختارة يُوزَّع ذلك المبلغ حسب وزن كل حساب، وإلا يُوزَّع المتاح من البنوك.',
     cb_by_cost_center: 'إجمالي التوزيع حسب مركز التكلفة',
     cb_by_project: 'إجمالي التوزيع حسب المشروع',
     cb_col_cc_obligation: 'إجمالي المستحق',
@@ -2534,7 +2538,7 @@ const translations: Record<Language, Record<string, string>> = {
       'الفجوة = (بنوك + خزينة + مستخلصات تحت التحصيل) − الالتزامات. بنود البنوك والخزينة في الجدول لا تُضاف مرة ثانية إلى المستخلصات.',
     manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة',
     manual_cash_budget_plan_step_4_body:
-      'الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد محاسبي. بعدها يُقترح سداد الالتزامات من البنوك 12101 فقط — لا تُوزَّع صناديق/عهد 12102 ولا مستخلصات تحت التحصيل. إن كفت البنوك يُسدَّد كل بند بالكامل، وإلا يُوزَّع المتاح حسب وزن الحساب. يظهر إجمالي السداد لكل مشروع. أعد الفتح للتعديل.',
+      'اختر نسبة سداد من إجمالي المديونية (25/50/75/100 أو نسبة حرّة). الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد. السداد المقترح = الأقل بين بنوك 12101 والالتزامات × النسبة، موزَّعاً حسب وزن الحساب. صناديق/عهد 12102 لا تُوزَّع. أعد الفتح لتعديل البنود؛ يمكن تغيير النسبة بعد الاعتماد.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -2640,6 +2644,10 @@ const translations: Record<Language, Record<string, string>> = {
     cb_kpi_cash: 'Cash & custody',
     cb_kpi_sources: 'Uncollected IPCs',
     cb_kpi_obligations: 'Obligations',
+    cb_kpi_pay_plan: 'Proposed payment',
+    cb_settlement_pct: 'Payables settlement %',
+    cb_settlement_pct_hint: 'Distributed amount = the lower of bank cash and total obligations × the chosen percent.',
+    cb_settlement_capped: 'Reduced because bank cash is below the chosen percent',
     cb_gap: 'Surplus / deficit',
     cb_equation_hint: 'Available = banks 12101 + cash/custody 12102 + uncollected IPCs 12201. Obligations = credit balances on suppliers 21101 and subcontractors 21102 + accrued salaries 21501 + custody replenish when below minimum. Balances are as of the period end from the GL.',
     cb_obligations: 'Obligations (amounts we owe)',
@@ -2658,7 +2666,7 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_alloc_pct: 'Allocation %',
     cb_no_cost_center: '—',
     cb_no_project: '—',
-    cb_allocated_hint: 'After approval, obligations are paid from bank balances 12101 only. Cash/custody 12102 and uncollected IPCs 12201 stay in the gap and are not allocated. If banks cover the payables, each line is paid in full; otherwise the available amount is split by account weight.',
+    cb_allocated_hint: 'Proposed payment comes from bank balances 12101 only, using the settlement percent of total payables. Cash/custody 12102 and uncollected IPCs stay in the gap. If banks cover the chosen percent, that amount is split by account weight; otherwise available bank cash is split.',
     cb_by_cost_center: 'Allocation totals by cost center',
     cb_by_project: 'Allocation totals by project',
     cb_col_cc_obligation: 'Obligations total',
@@ -5046,7 +5054,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Gap = (banks + treasury + uncollected IPCs) − obligations. Bank and treasury table lines are not added again on top of IPC receivables.',
     manual_cash_budget_plan_step_4_title: 'Approve or print',
     manual_cash_budget_plan_step_4_body:
-      'Approve permanently removes excluded lines and locks edits with no accounting journal. Obligations are then paid from banks 12101 only — cash/custody 12102 and uncollected IPCs are not allocated. If banks cover the payables, each line is paid in full; otherwise the available amount is split by account weight. A totals table per project is shown. Reopen to edit.',
+      'Choose a settlement percent of total payables (25/50/75/100 or a custom rate). Approve removes excluded lines and locks edits with no journal. Proposed payment = the lower of banks 12101 and obligations × percent, split by account weight. Cash/custody 12102 is not allocated. Reopen to edit lines; the percent can still be changed after approve.',
   }
 };
 

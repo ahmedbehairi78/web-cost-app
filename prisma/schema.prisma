@@ -1843,6 +1843,8 @@ model CashBudgetPeriod {
   status      String   @default("draft") // draft | approved
   openingBank Decimal  @default(0) @map("opening_bank") @db.Decimal(18, 3)
   openingCash Decimal  @default(0) @map("opening_cash") @db.Decimal(18, 3)
+  /** Percent of total obligations to settle from bank cash (0–100). */
+  settlementPct Decimal @default(100) @map("settlement_pct") @db.Decimal(18, 3)
   notes       String?
   createdBy   String?  @map("created_by")
   approvedBy  String?  @map("approved_by")

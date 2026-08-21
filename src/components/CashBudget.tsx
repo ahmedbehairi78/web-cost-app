@@ -18,9 +18,12 @@ import { businessTodayYmd } from '../lib/businessCalendar';
 import {
   CASH_BUDGET_PERIOD_TYPES,
   allocationSharePct,
+  clampSettlementPct,
   computeCashBudgetSummary,
   glLeafOriginCode,
+  obligationPayTarget,
   periodEndFor,
+  settlementCashPool,
   subAccountLabel,
   summarizeAllocationByCostCenter,
   type CashBudgetPeriodType,
@@ -81,6 +84,7 @@ export function CashBudget() {
   const [manualAmount, setManualAmount] = useState('');
   const [custodyLeaves, setCustodyLeaves] = useState<CashBudgetCustodyFloorRow[]>([]);
   const [floorDrafts, setFloorDrafts] = useState<Record<string, string>>({});
+  const [pctDraft, setPctDraft] = useState('100');
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo>({
     companyName: '',
     companyNameEn: '',
@@ -186,6 +190,13 @@ export function CashBudget() {
   }, [detail, isAr, t]);
 
   const allocationPool = Number(detail?.distributablePool ?? 0);
+  const settlementPct = clampSettlementPct(pctDraft);
+  const settlementTarget = summary
+    ? obligationPayTarget(summary.obligations, settlementPct)
+    : 0;
+  const payFromBanks = summary
+    ? settlementCashPool(Number(detail?.bankPool ?? summary.openingBank), summary.obligations, settlementPct)
+    : 0;
 
   const projectTotals = useMemo(
     () =>
@@ -208,6 +219,11 @@ export function CashBudget() {
 
   const isDraft = detail?.status === 'draft';
   const newEnd = periodEndFor(newType, newStart);
+
+  useEffect(() => {
+    if (!detail) return;
+    setPctDraft(String(clampSettlementPct(detail.settlementPct)));
+  }, [detail?.id, detail?.settlementPct]);
 
   const refreshAfterMutation = useCallback(async (id: string) => {
     await Promise.all([loadList(), loadDetail(id)]);
@@ -248,7 +264,7 @@ export function CashBudget() {
     if (!detail || !canWrite) return;
     setBusy(true);
     try {
-      const next = await cashBudgetApi.approve(detail.id);
+      const next = await cashBudgetApi.approve(detail.id, { settlementPct });
       setDetail(next);
       await loadList();
       toast.success(t('cb_approved'));
@@ -282,6 +298,23 @@ export function CashBudget() {
       toast.success(t('cb_deleted'));
       setSelectedId(null);
       setDetail(null);
+      await loadList();
+    } catch (e) {
+      toast.error(errMessage(e, t('cb_save_failed')));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveSettlementPct = async (raw?: string) => {
+    if (!detail || !canWrite) return;
+    const pct = clampSettlementPct(raw ?? pctDraft);
+    setPctDraft(String(pct));
+    if (clampSettlementPct(detail.settlementPct) === pct) return;
+    setBusy(true);
+    try {
+      const next = await cashBudgetApi.patch(detail.id, { settlementPct: pct });
+      setDetail(next);
       await loadList();
     } catch (e) {
       toast.error(errMessage(e, t('cb_save_failed')));
@@ -357,7 +390,7 @@ export function CashBudget() {
 
   const handlePrint = () => {
     if (!detail || !summary) return;
-    const showAllocated = detail.status === 'approved';
+    const showAllocated = true;
     const obligationCols = [
       { key: 'description', header: t('cb_col_account'), width: 24 },
       { key: 'project', header: t('project'), width: 18 },
@@ -582,7 +615,7 @@ export function CashBudget() {
               </div>
 
               {summary && (
-                <div className="grid grid-cols-2 xl:grid-cols-5 gap-2">
+                <div className="grid grid-cols-2 xl:grid-cols-6 gap-2">
                   <KpiCard label={t('cb_kpi_banks')} value={formatMoney(summary.openingBank)} isDark={isDark} />
                   <KpiCard label={t('cb_kpi_cash')} value={formatMoney(summary.openingCash)} isDark={isDark} />
                   <KpiCard label={t('cb_kpi_sources')} value={formatMoney(summary.periodSources)} isDark={isDark} />
@@ -593,12 +626,42 @@ export function CashBudget() {
                     isDark={isDark}
                     tone={summary.gap < 0 ? 'bad' : 'good'}
                   />
+                  <KpiCard label={t('cb_kpi_pay_plan')} value={formatMoney(payFromBanks)} isDark={isDark} />
                 </div>
               )}
+              <div className={cn(cardCls, 'flex flex-wrap items-end gap-2')}>
+                  <div>
+                    <label className="text-[11px] text-gray-500">{t('cb_settlement_pct')}</label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step="0.01"
+                      className={cn(inputCls, 'w-28')}
+                      value={pctDraft}
+                      disabled={busy || !canWrite}
+                      onChange={(e) => setPctDraft(e.target.value)}
+                      onBlur={() => void handleSaveSettlementPct()}
+                    />
+                  </div>
+                  {[25, 50, 75, 100].map((pct) => (
+                    <button
+                      key={pct}
+                      type="button"
+                      className={cn(btnCls, clampSettlementPct(pctDraft) === pct && 'bg-blue-600 text-white hover:bg-blue-500')}
+                      disabled={busy || !canWrite}
+                      onClick={() => void handleSaveSettlementPct(String(pct))}
+                    >
+                      {pct}%
+                    </button>
+                  ))}
+                  <p className="text-[11px] text-gray-500 flex-1 min-w-[12rem]">
+                    {t('cb_settlement_pct_hint')} {settlementPct}% · {t('cb_kpi_pay_plan')}: {formatMoney(payFromBanks)}
+                    {settlementTarget !== payFromBanks ? ` · ${t('cb_settlement_capped')}` : ''}
+                  </p>
+                </div>
               <p className="text-[11px] text-gray-500">{t('cb_equation_hint')}</p>
-              {!isDraft && (
-                <p className="text-[11px] text-gray-500">{t('cb_allocated_hint')}</p>
-              )}
+              <p className="text-[11px] text-gray-500">{t('cb_allocated_hint')}</p>
 
               <div className="space-y-3">
                 <LineTable
@@ -607,7 +670,7 @@ export function CashBudget() {
                   formatMoney={formatMoney}
                   isDark={isDark}
                   isAr={isAr}
-                  showAllocated={!isDraft}
+                  showAllocated
                   allocationPool={allocationPool}
                   canEdit={Boolean(isDraft && canWrite)}
                   onToggleExcluded={handleToggleExcluded}
@@ -621,7 +684,7 @@ export function CashBudget() {
                     formatMoney={formatMoney}
                     isDark={isDark}
                     isAr={isAr}
-                    showAllocated={!isDraft}
+                    showAllocated
                   />
                 )}
               </div>

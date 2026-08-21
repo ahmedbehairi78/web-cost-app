@@ -1709,6 +1709,8 @@ export interface CashBudgetPeriodRow {
   openingCash: number;
   notes?: string | null;
   summary: CashBudgetSummaryDto;
+  settlementPct?: number;
+  bankPool?: number;
   distributablePool?: number;
   lineCount?: number;
   lines?: CashBudgetLineRow[];
@@ -1731,7 +1733,7 @@ export const cashBudgetApi = {
     apiClient.get<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}`),
   create: (body: { periodType: CashBudgetPeriodType; periodStart: string; notes?: string }) =>
     apiClient.post<CashBudgetPeriodRow>('/cash-budget', body),
-  patch: (id: string, body: { notes?: string | null; openingBank?: number; openingCash?: number }) =>
+  patch: (id: string, body: { notes?: string | null; openingBank?: number; openingCash?: number; settlementPct?: number }) =>
     apiClient.patch<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}`, body),
   suggest: (id: string) =>
     apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/suggest`, {}),
@@ -1751,8 +1753,8 @@ export const cashBudgetApi = {
     apiClient.delete<{ ok: boolean }>(
       `/cash-budget/${encodeURIComponent(id)}/lines/${encodeURIComponent(lineId)}`,
     ),
-  approve: (id: string) =>
-    apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/approve`, {}),
+  approve: (id: string, body?: { settlementPct?: number }) =>
+    apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/approve`, body ?? {}),
   reopen: (id: string) =>
     apiClient.post<CashBudgetPeriodRow>(`/cash-budget/${encodeURIComponent(id)}/reopen`, {}),
   remove: (id: string) =>

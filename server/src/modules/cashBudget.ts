@@ -8,7 +8,7 @@ import { serialize } from '../prisma/serialize.js';
 import { roundMoney } from '../lib/money.js';
 import { businessTodayCompact, businessTodayYmd } from '../lib/businessCalendar.js';
 import {
-  classifyCustodyAccountCodes,
+  clampSettlementPct,
   computeCashBudgetSummary,
   distributableBankAndCashPool,
   distributePoolByAccountWeight,
@@ -113,6 +113,7 @@ async function presentPeriod<T extends {
   status?: string;
   openingBank: unknown;
   openingCash: unknown;
+  settlementPct?: unknown;
   lines: Array<{
     id?: string;
     side: string;
@@ -126,22 +127,14 @@ async function presentPeriod<T extends {
   }>;
 }>(row: T) {
   const named = await decorateLineCostCenters(row.lines);
-  if (row.status !== 'approved') {
-    return withSummary({ ...row, lines: named });
-  }
-  const accounts = await prisma.chartOfAccount.findMany({
-    where: { isGroup: false },
-    select: { accountCode: true, minBalance: true, accountName: true, accountNameEn: true },
-  });
-  const custodyCodes = classifyCustodyAccountCodes(accounts);
-  const pool = distributableBankAndCashPool(
+  const settlementPct = clampSettlementPct(row.settlementPct);
+  const bankPool = distributableBankAndCashPool(
     named.map((line) => ({
       category: line.category,
       amount: Number(line.amount),
       excluded: line.excluded,
       originId: line.originId ?? null,
     })),
-    custodyCodes,
   );
   const allocated = distributePoolByAccountWeight(
     named.map((line) => ({
@@ -154,7 +147,8 @@ async function presentPeriod<T extends {
       originId: line.originId ?? null,
       description: line.description,
     })),
-    pool,
+    bankPool,
+    settlementPct,
   );
   const lines = named.map((line) => ({
     ...line,
@@ -162,7 +156,11 @@ async function presentPeriod<T extends {
   }));
   let settled = 0;
   for (const amt of allocated.values()) settled = roundMoney(settled + amt);
-  return { ...withSummary({ ...row, lines }), distributablePool: settled };
+  return {
+    ...withSummary({ ...row, lines, settlementPct }),
+    bankPool,
+    distributablePool: settled,
+  };
 }
 
 function assertDraft(status: string): string | null {
@@ -293,15 +291,24 @@ cashBudgetRouter.patch(
       res.status(404).json({ error: 'Not found' });
       return;
     }
-    const locked = assertDraft(row.status);
-    if (locked) {
-      res.status(409).json({ error: locked });
-      return;
-    }
-    const data: { notes?: string | null; openingBank?: number; openingCash?: number } = {};
+    const data: {
+      notes?: string | null;
+      openingBank?: number;
+      openingCash?: number;
+      settlementPct?: number;
+    } = {};
     if (typeof req.body?.notes === 'string' || req.body?.notes === null) data.notes = req.body.notes;
     if (req.body?.openingBank != null) data.openingBank = roundMoney(Number(req.body.openingBank));
     if (req.body?.openingCash != null) data.openingCash = roundMoney(Number(req.body.openingCash));
+    if (req.body?.settlementPct != null) data.settlementPct = clampSettlementPct(req.body.settlementPct);
+    const touchesLockedFields = data.notes !== undefined || data.openingBank !== undefined || data.openingCash !== undefined;
+    if (touchesLockedFields) {
+      const locked = assertDraft(row.status);
+      if (locked) {
+        res.status(409).json({ error: locked });
+        return;
+      }
+    }
     const updated = await prisma.cashBudgetPeriod.update({
       where: { id: row.id },
       data,
@@ -495,7 +502,13 @@ cashBudgetRouter.post(
       });
       return tx.cashBudgetPeriod.update({
         where: { id: row.id },
-        data: { status: 'approved', approvedBy: req.user?.id ?? null },
+        data: {
+          status: 'approved',
+          approvedBy: req.user?.id ?? null,
+          ...(req.body?.settlementPct != null
+            ? { settlementPct: clampSettlementPct(req.body.settlementPct) }
+            : {}),
+        },
         include: { lines: { where: { isDeleted: false }, orderBy: { sortOrder: 'asc' } } },
       });
     });

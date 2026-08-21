@@ -4,8 +4,10 @@ import {
   allocationSharePct,
   computeCashBudgetSummary,
   custodyReplenishAmount,
-  distributePoolByAccountWeight,
-  distributableBankAndCashPool,
+    clampSettlementPct,
+    distributePoolByAccountWeight,
+    distributableBankAndCashPool,
+    obligationPayTarget,
   isBankLeafCode,
   isClientReceivableLeafCode,
   isCustodyCashLeafCode,
@@ -197,6 +199,20 @@ describe('allocatePayableByCostCenter', () => {
   });
 });
 
+describe('settlement percent', () => {
+  it('clamps to 0–100 and defaults invalid values to 100', () => {
+    expect(clampSettlementPct(50)).toBe(50);
+    expect(clampSettlementPct(150)).toBe(100);
+    expect(clampSettlementPct(-10)).toBe(0);
+    expect(clampSettlementPct('')).toBe(100);
+  });
+
+  it('computes the pay target as obligations × percent', () => {
+    expect(obligationPayTarget(205_761.94, 50)).toBe(102_880.97);
+    expect(obligationPayTarget(200_000, 100)).toBe(200_000);
+  });
+});
+
 describe('distributableBankAndCashPool', () => {
   it('uses banks only and skips all 12102 cash/custody and uncollected IPCs', () => {
     const pool = distributableBankAndCashPool(
@@ -240,6 +256,21 @@ describe('distributePoolByAccountWeight', () => {
     expect(map.get('a')).toBe(50_000);
     expect(map.get('b')).toBe(70_000);
     expect(map.get('c')).toBe(80_000);
+  });
+
+  it('limits the pool to the chosen percent of total payables', () => {
+    const map = distributePoolByAccountWeight(
+      [
+        { id: 'a', originType: 'gl_leaf', originId: '21101010::c1', description: 'ماي فارم', amount: 50_000, side: 'obligation', category: 'supplier' },
+        { id: 'b', originType: 'gl_leaf', originId: '21101010::c2', description: 'ماي فارم', amount: 70_000, side: 'obligation', category: 'supplier' },
+        { id: 'c', originType: 'gl_leaf', originId: '21101011::_', description: 'مورد آخر', amount: 80_000, side: 'obligation', category: 'supplier' },
+      ],
+      344_379.96,
+      50,
+    );
+    expect(map.get('a')).toBe(25_000);
+    expect(map.get('b')).toBe(35_000);
+    expect(map.get('c')).toBe(40_000);
   });
 
   it('includes custody replenish in the settlement split', () => {
