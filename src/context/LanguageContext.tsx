@@ -144,11 +144,11 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_amount: 'المبلغ',
     cb_col_account: 'الحساب',
     cb_col_cost_center: 'مركز التكلفة',
-    cb_col_allocated: 'توزيع البنوك والنقدية',
+    cb_col_allocated: 'المبلغ المقترح للسداد',
     cb_col_alloc_pct: 'نسبة التوزيع',
     cb_no_cost_center: '—',
     cb_no_project: '—',
-    cb_allocated_hint: 'بعد الاعتماد يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) حسب وزن رصيد كل حساب.',
+    cb_allocated_hint: 'بعد الاعتماد يُقترح سداد الالتزامات من أرصدة البنوك 12101 فقط. الصناديق والعهد 12102 ومستخلصات تحت التحصيل 12201 تبقى في الفجوة ولا تُوزَّع. إن كفت البنوك يُسدَّد كل بند بالكامل، وإلا يُوزَّع المتاح حسب وزن الحساب.',
     cb_by_cost_center: 'إجمالي التوزيع حسب مركز التكلفة',
     cb_by_project: 'إجمالي التوزيع حسب المشروع',
     cb_col_cc_obligation: 'إجمالي المستحق',
@@ -2531,7 +2531,7 @@ const translations: Record<Language, Record<string, string>> = {
       'الفجوة = (بنوك + خزينة + مستخلصات تحت التحصيل) − الالتزامات. بنود البنوك والخزينة في الجدول لا تُضاف مرة ثانية إلى المستخلصات.',
     manual_cash_budget_plan_step_4_title: 'اعتماد أو طباعة',
     manual_cash_budget_plan_step_4_body:
-      'الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد محاسبي. بعدها يُوزَّع رصيد البنوك والصناديق (بدون العهد وبدون مستخلصات تحت التحصيل) على الحسابات حسب وزن الرصيد، ويظهر إجمالي التوزيع لكل مركز تكلفة. أعد الفتح للتعديل.',
+      'الاعتماد يحذف البنود المستبعدة ويقفل التعديل بلا قيد محاسبي. بعدها يُقترح سداد الالتزامات من البنوك 12101 فقط — لا تُوزَّع صناديق/عهد 12102 ولا مستخلصات تحت التحصيل. إن كفت البنوك يُسدَّد كل بند بالكامل، وإلا يُوزَّع المتاح حسب وزن الحساب. يظهر إجمالي السداد لكل مشروع. أعد الفتح للتعديل.',
   },
   en: {
     dashboard: 'Dashboard',
@@ -2651,11 +2651,11 @@ const translations: Record<Language, Record<string, string>> = {
     cb_col_amount: 'Amount',
     cb_col_account: 'Account',
     cb_col_cost_center: 'Cost center',
-    cb_col_allocated: 'Bank & cash allocation',
+    cb_col_allocated: 'Proposed payment',
     cb_col_alloc_pct: 'Allocation %',
     cb_no_cost_center: '—',
     cb_no_project: '—',
-    cb_allocated_hint: 'After approval, bank and treasury cash (excluding custody and uncollected IPCs) is allocated by each account’s balance weight.',
+    cb_allocated_hint: 'After approval, obligations are paid from bank balances 12101 only. Cash/custody 12102 and uncollected IPCs 12201 stay in the gap and are not allocated. If banks cover the payables, each line is paid in full; otherwise the available amount is split by account weight.',
     cb_by_cost_center: 'Allocation totals by cost center',
     cb_by_project: 'Allocation totals by project',
     cb_col_cc_obligation: 'Obligations total',
@@ -5040,7 +5040,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Gap = (banks + treasury + uncollected IPCs) − obligations. Bank and treasury table lines are not added again on top of IPC receivables.',
     manual_cash_budget_plan_step_4_title: 'Approve or print',
     manual_cash_budget_plan_step_4_body:
-      'Approve permanently removes excluded lines and locks edits with no accounting journal. Bank and treasury cash (excluding custody and uncollected IPCs) is then allocated by each account’s balance weight, with a totals table per cost center. Reopen to edit.',
+      'Approve permanently removes excluded lines and locks edits with no accounting journal. Obligations are then paid from banks 12101 only — cash/custody 12102 and uncollected IPCs are not allocated. If banks cover the payables, each line is paid in full; otherwise the available amount is split by account weight. A totals table per project is shown. Reopen to edit.',
   }
 };
 

@@ -356,15 +356,14 @@ export function isNamedCustodyAccount(name: string | null | undefined, nameEn?: 
   return /عهد/.test(blob) || /custod/i.test(blob);
 }
 
+/** Every 12102 leaf is a cash/custody fund — never bank cash for supplier settlement. */
 export function isCustodyFundAccount(acc: {
   accountCode: string;
   minBalance?: unknown;
   accountName?: string | null;
   accountNameEn?: string | null;
 }): boolean {
-  if (!isCustodyCashLeafCode(acc.accountCode)) return false;
-  if (roundMoney(Number(acc.minBalance) || 0) > 0) return true;
-  return isNamedCustodyAccount(acc.accountName, acc.accountNameEn);
+  return isCustodyCashLeafCode(acc.accountCode);
 }
 
 export function classifyCustodyAccountCodes(
@@ -383,7 +382,7 @@ export function classifyCustodyAccountCodes(
   return codes;
 }
 
-/** Banks 12101 + treasury cash 12102, excluding custody funds and uncollected IPCs. */
+/** Banks 12101 only. 12102 cash/custody and 12201 IPCs are never in the settlement pool. */
 export function distributableBankAndCashPool(
   lines: Array<{
     category?: string | null;
@@ -391,22 +390,17 @@ export function distributableBankAndCashPool(
     excluded?: boolean | null;
     originId?: string | null;
   }>,
-  custodyCodes: Set<string>,
+  _custodyCodes?: Set<string>,
 ): number {
   let pool = 0;
   for (const line of lines) {
     if (line.excluded) continue;
     const cat = String(line.category ?? '');
     const amt = roundMoney(line.amount);
-    if (cat === 'opening_bank') {
-      pool = roundMoney(pool + amt);
-      continue;
-    }
-    if (cat === 'opening_custody') continue;
-    if (cat !== 'opening_cash') continue;
     const code = glLeafOriginCode(line.originId);
-    if (code && custodyCodes.has(code)) continue;
-    pool = roundMoney(pool + amt);
+    if (code && (isCustodyCashLeafCode(code) || isClientReceivableLeafCode(code))) continue;
+    if (cat === 'opening_cash' || cat === 'opening_custody' || cat === 'collection') continue;
+    if (cat === 'opening_bank') pool = roundMoney(pool + amt);
   }
   return pool;
 }
@@ -439,9 +433,18 @@ export type AllocatableCashBudgetLine = {
   description?: string | null;
 };
 
+/** Cash to allocate after approve: never more than what is owed. */
+export function settlementCashPool(availableBankAndCash: number, obligationTotal: number): number {
+  return roundMoney(Math.min(
+    Math.max(0, roundMoney(availableBankAndCash)),
+    Math.max(0, roundMoney(obligationTotal)),
+  ));
+}
+
 /**
- * After approve: split banks + treasury cash across obligation *accounts* by balance weight,
- * then split each account share across its cost-center rows.
+ * After approve: pay obligations from banks + treasury cash.
+ * If cash ≥ obligations, each line gets its full amount (surplus stays in the gap).
+ * If cash is short, split the available cash by account weight, then by cost-center rows.
  * Skips custody replenish lines.
  */
 export function distributePoolByAccountWeight(
@@ -449,7 +452,6 @@ export function distributePoolByAccountWeight(
   pool: number,
 ): Map<string, number> {
   const out = new Map<string, number>();
-  const pooled = roundMoney(Math.max(0, pool));
   const eligible = lines.filter((line) => {
     if (line.excluded) return false;
     if (line.side && line.side !== 'obligation') return false;
@@ -458,7 +460,7 @@ export function distributePoolByAccountWeight(
   });
 
   for (const line of lines) out.set(line.id, 0);
-  if (eligible.length === 0 || pooled <= 0) return out;
+  if (eligible.length === 0) return out;
 
   const groups = new Map<string, AllocatableCashBudgetLine[]>();
   for (const line of eligible) {
@@ -478,7 +480,8 @@ export function distributePoolByAccountWeight(
     .sort((a, b) => a.key.localeCompare(b.key));
 
   const totalWeight = roundMoney(groupList.reduce((sum, group) => roundMoney(sum + group.weight), 0));
-  if (totalWeight <= 0) return out;
+  const pooled = settlementCashPool(pool, totalWeight);
+  if (totalWeight <= 0 || pooled <= 0) return out;
 
   let allocatedGroups = 0;
   groupList.forEach((group, groupIndex) => {

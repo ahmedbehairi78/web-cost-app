@@ -160,7 +160,9 @@ async function presentPeriod<T extends {
     ...line,
     allocatedCash: line.side === 'obligation' ? (allocated.get(String(line.id ?? '')) ?? 0) : null,
   }));
-  return { ...withSummary({ ...row, lines }), distributablePool: pool };
+  let settled = 0;
+  for (const amt of allocated.values()) settled = roundMoney(settled + amt);
+  return { ...withSummary({ ...row, lines }), distributablePool: settled };
 }
 
 function assertDraft(status: string): string | null {

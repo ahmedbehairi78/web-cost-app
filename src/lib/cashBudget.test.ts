@@ -9,6 +9,7 @@ import {
   isBankLeafCode,
   isClientReceivableLeafCode,
   isCustodyCashLeafCode,
+  isCustodyFundAccount,
   isDateInRange,
   isSalariesPayableLeafCode,
   isSubcontractorLeafCode,
@@ -160,6 +161,8 @@ describe('GL leaf classification', () => {
   it('classifies 8-digit cash, payable, and receivable leaves', () => {
     expect(isBankLeafCode('12101001')).toBe(true);
     expect(isCustodyCashLeafCode('12102001')).toBe(true);
+    expect(isCustodyFundAccount({ accountCode: '12102001', accountName: 'صندوق الشركة' })).toBe(true);
+    expect(isCustodyFundAccount({ accountCode: '12101001', accountName: 'بنك' })).toBe(false);
     expect(isSupplierLeafCode('21101002')).toBe(true);
     expect(isSubcontractorLeafCode('21102001')).toBe(true);
     expect(isClientReceivableLeafCode('12201001')).toBe(true);
@@ -195,7 +198,7 @@ describe('allocatePayableByCostCenter', () => {
 });
 
 describe('distributableBankAndCashPool', () => {
-  it('uses banks + treasury cash and skips custody and uncollected IPCs', () => {
+  it('uses banks only and skips all 12102 cash/custody and uncollected IPCs', () => {
     const pool = distributableBankAndCashPool(
       [
         { category: 'opening_bank', amount: 70_000 },
@@ -206,7 +209,7 @@ describe('distributableBankAndCashPool', () => {
       ],
       new Set(['12102002']),
     );
-    expect(pool).toBe(80_000);
+    expect(pool).toBe(70_000);
   });
 });
 
@@ -223,6 +226,20 @@ describe('distributePoolByAccountWeight', () => {
     expect(map.get('a')).toBe(20_000);
     expect(map.get('b')).toBe(28_000);
     expect(map.get('c')).toBe(32_000);
+  });
+
+  it('pays each obligation in full when cash exceeds what is owed', () => {
+    const map = distributePoolByAccountWeight(
+      [
+        { id: 'a', originType: 'gl_leaf', originId: '21101010::c1', description: 'ماي فارم', amount: 50_000, side: 'obligation', category: 'supplier' },
+        { id: 'b', originType: 'gl_leaf', originId: '21101010::c2', description: 'ماي فارم', amount: 70_000, side: 'obligation', category: 'supplier' },
+        { id: 'c', originType: 'gl_leaf', originId: '21101011::_', description: 'مورد آخر', amount: 80_000, side: 'obligation', category: 'supplier' },
+      ],
+      344_379.96,
+    );
+    expect(map.get('a')).toBe(50_000);
+    expect(map.get('b')).toBe(70_000);
+    expect(map.get('c')).toBe(80_000);
   });
 
   it('skips custody replenish lines', () => {

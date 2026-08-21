@@ -225,6 +225,7 @@ function obligationCategory(code: string): 'supplier' | 'subcontractor' | 'payro
 /**
  * Snapshot as of period end (no GL posting):
  * sources (KPI only) = banks 12101 + cash/treasury 12102 + uncollected IPCs 12201
+ * settlement pool after approve = banks 12101 only (never 12102 custody/cash)
  * obligations = supplier/subcontractor/payroll payables split by cost center
  *   + custody replenish when 12102 < min
  */

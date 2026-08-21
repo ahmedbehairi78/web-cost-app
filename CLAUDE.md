@@ -216,7 +216,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `Banks.tsx` | `bank_*` + GL (Firestore) | **local:** `banksApi` + `bankPersistence` — **3 tabs:** `accounts` (statement split-view) · **`transactions`** (movements+cheques split-view) · `statements`; GL via `accountingService`/`glApi`; **no top stat cards** on `accounts`/`transactions` |
 | `Inventory.tsx` | cloud: Firestore | **local:** projects/contracts/COA + مخازن/صرف/إرجاع/تحويلات عبر API — **لا Firestore** |
 | `PurchaseRequests.tsx` | — | **local:** Postgres `purchase_requests` — طلب توريد (مكود/غير مكود) · BOQ كود+وصف فقط · حالات بدون فاتورة/GL · إشعار + واتساب لمسؤولي المشتريات |
-| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** من أرصدة اليومية حتى نهاية الفترة: التزامات (21101/21102/21501 + تعويض 12102 إن قلّ عن الحد) مقابل بنوك 12101 + خزينة 12102 + مستخلصات 12201 · جدول الالتزامات = اسم الحساب الفرعي فقط + المشروع + نسبة التوزيع بعد الاعتماد · جدول إجمالي لكل مشروع · **بدون قيد GL** · `min_balance` على 12102… |
+| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** من أرصدة اليومية حتى نهاية الفترة: التزامات (21101/21102/21501 + تعويض 12102 إن قلّ عن الحد) مقابل بنوك 12101 + خزينة 12102 + مستخلصات 12201 · بعد الاعتماد: سداد من **بنوك 12101 فقط** (لا صناديق/عهد 12102) وبحد الالتزامات · جدول إجمالي لكل مشروع · **بدون قيد GL** · `min_balance` على 12102… |
 | `OverheadAllocation.tsx` | — | **local:** Postgres — دورات OHA + **قفل فترات محاسبية** (`PeriodLockPanel`) + قائمة دخل (placeholder) |
 | ~~`SubcontractorExtracts.tsx`~~ | — | **Hidden** — functionality covered by ActualCosts IPC tab; file on disk but removed from Sidebar + `modules.ts` |
 
@@ -996,7 +996,7 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 `gap = (بنوك 12101 + خزينة/عهد 12102 + مستخلصات تحت التحصيل 12201) − الالتزامات`
 
-الالتزامات = أرصدة **دائنة** على أوراق الموردين `21101…` ومقاولي الباطن `21102…` + رواتب مستحقة `21501…` + تعويض عهدة `12102…` إن قلّ الرصيد عن `min_balance`. الجدول يعرض **اسم الحساب الفرعي فقط** + **المشروع** من مركز التكلفة أو `transactions.projectId`. إن بقي القيد بلا مشروع يظهر «—» (رصيد حقيقي غير منسوب). **بعد الاعتماد:** تُحذف البنود المستبعدة · يُوزَّع رصيد البنوك `12101` + الصناديق حسب وزن الحساب · عمود **نسبة التوزيع** · جدول إجمالي لكل مشروع. لا قيد يومية.
+الالتزامات = أرصدة **دائنة** على أوراق الموردين `21101…` ومقاولي الباطن `21102…` + رواتب مستحقة `21501…` + تعويض عهدة `12102…` إن قلّ الرصيد عن `min_balance`. الجدول يعرض **اسم الحساب الفرعي فقط** + **المشروع** من مركز التكلفة أو `transactions.projectId`. إن بقي القيد بلا مشروع يظهر «—» (رصيد حقيقي غير منسوب). **بعد الاعتماد:** تُحذف البنود المستبعدة · يُوزَّع رصيد البنوك `12101` فقط (لا صناديق/عهد `12102`) وبحد إجمالي الالتزامات · عمود **نسبة التوزيع** · جدول إجمالي لكل مشروع. لا قيد يومية.
 
 ### تحقق
 

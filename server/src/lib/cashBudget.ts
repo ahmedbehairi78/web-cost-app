@@ -266,9 +266,7 @@ export function isCustodyFundAccount(acc: {
   accountName?: string | null;
   accountNameEn?: string | null;
 }): boolean {
-  if (!isCustodyCashLeafCode(acc.accountCode)) return false;
-  if (roundMoney(Number(acc.minBalance) || 0) > 0) return true;
-  return isNamedCustodyAccount(acc.accountName, acc.accountNameEn);
+  return isCustodyCashLeafCode(acc.accountCode);
 }
 
 export function classifyCustodyAccountCodes(
@@ -294,22 +292,17 @@ export function distributableBankAndCashPool(
     excluded?: boolean | null;
     originId?: string | null;
   }>,
-  custodyCodes: Set<string>,
+  _custodyCodes?: Set<string>,
 ): number {
   let pool = 0;
   for (const line of lines) {
     if (line.excluded) continue;
     const cat = String(line.category ?? '');
     const amt = roundMoney(line.amount);
-    if (cat === 'opening_bank') {
-      pool = roundMoney(pool + amt);
-      continue;
-    }
-    if (cat === 'opening_custody') continue;
-    if (cat !== 'opening_cash') continue;
     const code = glLeafOriginCode(line.originId);
-    if (code && custodyCodes.has(code)) continue;
-    pool = roundMoney(pool + amt);
+    if (code && (isCustodyCashLeafCode(code) || isClientReceivableLeafCode(code))) continue;
+    if (cat === 'opening_cash' || cat === 'opening_custody' || cat === 'collection') continue;
+    if (cat === 'opening_bank') pool = roundMoney(pool + amt);
   }
   return pool;
 }
@@ -342,12 +335,18 @@ export type AllocatableCashBudgetLine = {
   description?: string | null;
 };
 
+export function settlementCashPool(availableBankAndCash: number, obligationTotal: number): number {
+  return roundMoney(Math.min(
+    Math.max(0, roundMoney(availableBankAndCash)),
+    Math.max(0, roundMoney(obligationTotal)),
+  ));
+}
+
 export function distributePoolByAccountWeight(
   lines: AllocatableCashBudgetLine[],
   pool: number,
 ): Map<string, number> {
   const out = new Map<string, number>();
-  const pooled = roundMoney(Math.max(0, pool));
   const eligible = lines.filter((line) => {
     if (line.excluded) return false;
     if (line.side && line.side !== 'obligation') return false;
@@ -356,7 +355,7 @@ export function distributePoolByAccountWeight(
   });
 
   for (const line of lines) out.set(line.id, 0);
-  if (eligible.length === 0 || pooled <= 0) return out;
+  if (eligible.length === 0) return out;
 
   const groups = new Map<string, AllocatableCashBudgetLine[]>();
   for (const line of eligible) {
@@ -376,7 +375,8 @@ export function distributePoolByAccountWeight(
     .sort((a, b) => a.key.localeCompare(b.key));
 
   const totalWeight = roundMoney(groupList.reduce((sum, group) => roundMoney(sum + group.weight), 0));
-  if (totalWeight <= 0) return out;
+  const pooled = settlementCashPool(pool, totalWeight);
+  if (totalWeight <= 0 || pooled <= 0) return out;
 
   let allocatedGroups = 0;
   groupList.forEach((group, groupIndex) => {
