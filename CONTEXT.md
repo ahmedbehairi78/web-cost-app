@@ -211,7 +211,7 @@ web-cost-app/
 | `defaultTheme` | Postgres `user_prefs:{uid}` أو Firestore `users/{uid}` | عبر `saveUserPreferences()` — **لا** `auth.currentUser` فقط |
 | `defaultLanguage` | نفس المسار | تبديل اللغة من الشريط → `persistLanguagePreference()` |
 | `defaultModule` | نفس المسار | **`none`** = سطح مكتب فارغ — `resolveSavedDefaultModulePreference()`؛ لا `?? DEFAULT_MODULE` |
-| طباعة الشركة | `company_info` | **`PrintSettingsPanel`** (إعدادات العرض، admin): اسم/عنوان/ضريبة/شعار/نص تذييل فقط — **تصميم الصفحة من شريط التنسيق**؛ **تنسيق النص المحدد** من الشريط العائم في المعاينة (هيدر/جسم/فوتر + تراجع؛ الطباعة/PDF من HTML المعاينة) |
+| طباعة الشركة | `company_info` | **`PrintSettingsPanel`** (إعدادات العرض، admin): اسم/عنوان/ضريبة/شعار/نص تذييل فقط — **تصميم الطباعة من شريط تنسيق التقارير** (+ شريط عائم عند التحديد في المعاينة) |
 | **مستندات التقارير (جديد)** | `src/lib/reportDocument/` | موديول التقارير: معاينة/طباعة/PDF من بيانات منظمة — لا clone للشاشة؛ دخل/ميزانية تحليلية · جدول زمني BOQ · سيولة عبر API · تكاليف BOQ كاملة + totals؛ **تخطيط الصفحة:** هيدر مضغوط + بيانات تملأ الوسط + فوتر 3 أسطر ثابتة أسفل الصفحة (`12mm`)؛ PDF بدون CDN خط ضخم |
 | **ميزانية مقابل فعلي (local)** | `Reports` tab `budget` | الفعلي لكل المستويات من `boq-cost-breakdown` (= `boq_actual_costs`) — نفس مصدر تبويب تكاليف BOQ؛ ليس GL كامل |
 | **لوحة التحكم «غير موزّع»** | `dashboardMetrics` | مصروف بلا مركز عقد − OHA داخل الفلتر؛ إقفال الفترة لا يصفّره · تاريخ OHA = يوم الإغلاق داخل الربع |
