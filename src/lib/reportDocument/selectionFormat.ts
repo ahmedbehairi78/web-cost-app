@@ -600,6 +600,111 @@ function firstNumValCss(cell: HTMLElement): string {
   return compactCss(el.style.cssText);
 }
 
+function subtreeHasFormatMarkup(el: HTMLElement): boolean {
+  return !!el.querySelector('[data-sel-fmt], font, b, strong, i, em, u');
+}
+
+/** Inline + execCommand wrappers (font/b/i/u) collapsed onto the slot element. */
+function collectFormatCss(el: HTMLElement): string {
+  const parts: string[] = [];
+  const own = compactCss(el.style.cssText);
+  if (own) parts.push(own);
+  el.querySelectorAll('[data-sel-fmt], span[style], font, b, strong, i, em, u').forEach((node) => {
+    const n = node as HTMLElement;
+    const tag = n.tagName;
+    if (tag === 'B' || tag === 'STRONG') parts.push('font-weight: 700');
+    if (tag === 'I' || tag === 'EM') parts.push('font-style: italic');
+    if (tag === 'U') parts.push('text-decoration: underline');
+    if (tag === 'FONT') {
+      const face = n.getAttribute('face');
+      const color = n.getAttribute('color');
+      if (face) parts.push(`font-family: ${face}`);
+      if (color) parts.push(`color: ${color}`);
+    }
+    const css = compactCss(n.style.cssText);
+    if (css) parts.push(css);
+  });
+  return compactCss(parts.join('; '));
+}
+
+/** Skip generator defaults (h1 accent color, brand flex) so save only stores mini-bar edits. */
+function isGeneratorOnlyCss(el: HTMLElement, css: string): boolean {
+  if (subtreeHasFormatMarkup(el)) return false;
+  const compact = css.replace(/\s+/g, '').toLowerCase();
+  if (!compact) return true;
+  if (/^color:[^;]+;?$/.test(compact)) return true;
+  if (/justify-content/.test(compact) && !/font-|background|text-decoration|border:/.test(compact)) {
+    return true;
+  }
+  return false;
+}
+
+function pushSlotPatch(
+  raw: PrintSelectionStylePatch[],
+  sheetIndex: number,
+  slot: string,
+  el: HTMLElement | null,
+  index?: number,
+): void {
+  if (!el) return;
+  const s = collectFormatCss(el);
+  if (!s || isGeneratorOnlyCss(el, s)) return;
+  const patch: PrintSelectionStylePatch = { k: 'e', i: sheetIndex, slot, s };
+  if (index != null) patch.r = index;
+  raw.push(patch);
+}
+
+function extractHeaderFooterSlots(sheet: Element, sheetIndex: number, raw: PrintSelectionStylePatch[]): void {
+  pushSlotPatch(raw, sheetIndex, 'co', sheet.querySelector('p.co'));
+  sheet.querySelectorAll('p.meta').forEach((el, idx) => {
+    pushSlotPatch(raw, sheetIndex, 'meta', el as HTMLElement, idx);
+  });
+  pushSlotPatch(raw, sheetIndex, 'h1', sheet.querySelector('h1'));
+  pushSlotPatch(raw, sheetIndex, 'scope', sheet.querySelector('p.scope'));
+  pushSlotPatch(raw, sheetIndex, 'hdr-extra', sheet.querySelector('p.hdr-extra'));
+  sheet.querySelectorAll('p.cover-title-line').forEach((el, idx) => {
+    pushSlotPatch(raw, sheetIndex, 'cover-title', el as HTMLElement, idx);
+  });
+  pushSlotPatch(raw, sheetIndex, 'ftr-company', sheet.querySelector('.ftr-company'));
+  pushSlotPatch(raw, sheetIndex, 'ftr-center', sheet.querySelector('.ftr-center'));
+  pushSlotPatch(raw, sheetIndex, 'ftr-page', sheet.querySelector('.ftr-page'));
+}
+
+function resolveSheetRoots(root: Element): Element[] {
+  const sheets = Array.from(root.querySelectorAll('section.sheet'));
+  return sheets.length > 0 ? sheets : [root];
+}
+
+function slotElement(sheet: Element, slot: string, index?: number): HTMLElement | null {
+  if (slot === 'co') return sheet.querySelector('p.co');
+  if (slot === 'meta') {
+    const list = sheet.querySelectorAll('p.meta');
+    return (list.item(index ?? 0) as HTMLElement | null) ?? null;
+  }
+  if (slot === 'h1') return sheet.querySelector('h1');
+  if (slot === 'scope') return sheet.querySelector('p.scope');
+  if (slot === 'hdr-extra') return sheet.querySelector('p.hdr-extra');
+  if (slot === 'cover-title') {
+    const list = sheet.querySelectorAll('p.cover-title-line');
+    return (list.item(index ?? 0) as HTMLElement | null) ?? null;
+  }
+  if (slot === 'ftr-company') return sheet.querySelector('.ftr-company');
+  if (slot === 'ftr-center') return sheet.querySelector('.ftr-center');
+  if (slot === 'ftr-page') return sheet.querySelector('.ftr-page');
+  return null;
+}
+
+function applyCssTextMerge(el: HTMLElement, cssText: string): void {
+  const css = compactCss(cssText);
+  if (!css) return;
+  const dummy = el.ownerDocument.createElement('span');
+  dummy.style.cssText = css;
+  for (let i = 0; i < dummy.style.length; i++) {
+    const prop = dummy.style.item(i);
+    el.style.setProperty(prop, dummy.style.getPropertyValue(prop));
+  }
+}
+
 /**
  * Capture mini-bar inline styles by table/sheet index so they can be saved
  * with the company print design and reapplied on the next live document.
@@ -609,17 +714,21 @@ export function extractSelectionStylePatches(doc: Document): PrintSelectionStyle
   const root = doc.body ?? doc.documentElement;
   if (!root) return [];
 
+  resolveSheetRoots(root).forEach((sheet, sheetIndex) => {
+    extractHeaderFooterSlots(sheet, sheetIndex, raw);
+  });
+
   root.querySelectorAll('header.hdr').forEach((el, i) => {
     const s = compactCss((el as HTMLElement).style.cssText);
-    if (s) raw.push({ k: 'h', i, s });
+    if (s && !isGeneratorOnlyCss(el as HTMLElement, s)) raw.push({ k: 'h', i, s });
   });
   root.querySelectorAll('footer.ftr').forEach((el, i) => {
     const s = compactCss((el as HTMLElement).style.cssText);
-    if (s) raw.push({ k: 'f', i, s });
+    if (s && !isGeneratorOnlyCss(el as HTMLElement, s)) raw.push({ k: 'f', i, s });
   });
   root.querySelectorAll('h1').forEach((el, i) => {
-    const s = compactCss((el as HTMLElement).style.cssText);
-    if (s) raw.push({ k: 'ti', i, s });
+    const s = collectFormatCss(el as HTMLElement);
+    if (s && !isGeneratorOnlyCss(el as HTMLElement, s)) raw.push({ k: 'ti', i, s });
   });
 
   root.querySelectorAll('table').forEach((tableEl, tableIndex) => {
@@ -651,27 +760,35 @@ export function applySelectionStylePatches(doc: Document, patches: PrintSelectio
   const footers = root.querySelectorAll('footer.ftr');
   const titles = root.querySelectorAll('h1');
   const tables = root.querySelectorAll('table');
+  const sheets = resolveSheetRoots(root);
 
   for (const patch of list) {
+    if (patch.k === 'e' && patch.slot) {
+      const sheet = sheets[patch.i];
+      if (!sheet) continue;
+      const el = slotElement(sheet, patch.slot, patch.r);
+      if (el && patch.s) applyCssTextMerge(el, patch.s);
+      continue;
+    }
     if (patch.k === 'h') {
       const el = headers.item(patch.i) as HTMLElement | null;
-      if (el && patch.s) el.style.cssText = patch.s;
+      if (el && patch.s) applyCssTextMerge(el, patch.s);
       continue;
     }
     if (patch.k === 'f') {
       const el = footers.item(patch.i) as HTMLElement | null;
-      if (el && patch.s) el.style.cssText = patch.s;
+      if (el && patch.s) applyCssTextMerge(el, patch.s);
       continue;
     }
     if (patch.k === 'ti') {
       const el = titles.item(patch.i) as HTMLElement | null;
-      if (el && patch.s) el.style.cssText = patch.s;
+      if (el && patch.s) applyCssTextMerge(el, patch.s);
       continue;
     }
     const table = tables.item(patch.i) as HTMLTableElement | null;
     if (!table) continue;
     if (patch.k === 't') {
-      if (patch.s) table.style.cssText = patch.s;
+      if (patch.s) applyCssTextMerge(table, patch.s);
       continue;
     }
     const rowIndex = patch.r ?? -1;
@@ -679,10 +796,10 @@ export function applySelectionStylePatches(doc: Document, patches: PrintSelectio
     const row = table.rows.item(rowIndex);
     const cell = row?.cells.item(cellIndex) as HTMLElement | undefined;
     if (!cell) continue;
-    if (patch.s) cell.style.cssText = patch.s;
+    if (patch.s) applyCssTextMerge(cell, patch.s);
     if (patch.n) {
       cell.querySelectorAll('.num-val').forEach((el) => {
-        (el as HTMLElement).style.cssText = patch.n!;
+        applyCssTextMerge(el as HTMLElement, patch.n!);
       });
     }
     if (/font-size/i.test(patch.s) || /font-size/i.test(patch.n || '')) {

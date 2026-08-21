@@ -156,4 +156,37 @@ describe('selectionFormat', () => {
     expect(document.getElementById('b2')!.style.fontSize).toBe('');
     expect(restored.textContent).toBe('New amount 99');
   });
+
+  it('persists floating-bar header slot formatting (company / title)', () => {
+    document.body.innerHTML = `
+      <section class="sheet">
+        <header class="hdr">
+          <div class="brand-text"><p class="co">Concord Plus</p></div>
+          <h1 style="color:#003B71">Cash budget</h1>
+          <p class="scope">Period</p>
+        </header>
+      </section>`;
+    clearSelectionUndo(document);
+    selectAllText('p.co');
+    expect(applySelectionFontSize(document, 14)).toBe(true);
+    selectAllText('h1');
+    expect(applySelectionFontSize(document, 16)).toBe(true);
+
+    const patches = extractSelectionStylePatches(document);
+    expect(patches.some((p) => p.k === 'e' && p.slot === 'co' && /14pt/.test(p.s))).toBe(true);
+    expect(patches.some((p) => (p.k === 'e' && p.slot === 'h1') || p.k === 'ti')).toBe(true);
+
+    document.body.innerHTML = `
+      <section class="sheet">
+        <header class="hdr">
+          <div class="brand-text"><p class="co">Concord Plus</p></div>
+          <h1 style="color:#003B71">Live title</h1>
+          <p class="scope">Period</p>
+        </header>
+      </section>`;
+    applySelectionStylePatches(document, patches);
+    expect(document.querySelector('p.co')!.style.fontSize).toBe('14pt');
+    expect(document.querySelector('h1')!.style.fontSize).toBe('16pt');
+    expect(document.querySelector('h1')!.textContent).toBe('Live title');
+  });
 });

@@ -160,19 +160,32 @@ export interface ReportPrintProfile {
 
 /** Compact patch written by the selection mini-bar and restored on preview open. */
 export type PrintSelectionStylePatch = {
-  /** c = table cell, t = table, h = header, f = footer, ti = title (h1). */
-  k: 'c' | 't' | 'h' | 'f' | 'ti';
-  /** Table index (c/t) or sheet/element index (h/f/ti). */
+  /** c = table cell, t = table, h = header, f = footer, ti = title (h1), e = named header/footer slot. */
+  k: 'c' | 't' | 'h' | 'f' | 'ti' | 'e';
+  /** Table index (c/t) or sheet/element index (h/f/ti/e). */
   i: number;
   r?: number;
   c?: number;
+  /** Named slot when k === 'e' (company line, scope, footer column, …). */
+  slot?: string;
   /** element.style.cssText */
   s: string;
   /** Optional `.num-val` cssText inside the cell. */
   n?: string;
 };
 
-const SELECTION_PATCH_KINDS = new Set<PrintSelectionStylePatch['k']>(['c', 't', 'h', 'f', 'ti']);
+const SELECTION_PATCH_KINDS = new Set<PrintSelectionStylePatch['k']>(['c', 't', 'h', 'f', 'ti', 'e']);
+const SELECTION_SLOT_IDS = new Set([
+  'co',
+  'meta',
+  'h1',
+  'scope',
+  'hdr-extra',
+  'ftr-company',
+  'ftr-center',
+  'ftr-page',
+  'cover-title',
+]);
 const SELECTION_PATCH_MAX = 2000;
 const SELECTION_PATCH_CSS_MAX = 500;
 
@@ -198,6 +211,16 @@ export function sanitizeSelectionStylePatches(raw: unknown): PrintSelectionStyle
       if (!Number.isInteger(c) || c < 0 || c > 999) continue;
       patch.r = r;
       patch.c = c;
+    }
+    if (patch.k === 'e') {
+      const slot = typeof p.slot === 'string' ? p.slot.trim() : '';
+      if (!SELECTION_SLOT_IDS.has(slot)) continue;
+      patch.slot = slot;
+      if (slot === 'meta' || slot === 'cover-title') {
+        const r = Number(p.r);
+        if (!Number.isInteger(r) || r < 0 || r > 99) continue;
+        patch.r = r;
+      }
     }
     if (n) patch.n = n;
     if (!patch.s && !patch.n) continue;

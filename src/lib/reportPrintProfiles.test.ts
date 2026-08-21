@@ -141,6 +141,10 @@ describe('reportPrintProfiles format fields', () => {
     expect(sanitizeProfile(fallback, { selectionPatches: [{ k: 'x', i: 0, s: 'color:red' }] }).selectionPatches).toEqual(
       [],
     );
+    const headerSlot = sanitizeProfile(fallback, {
+      selectionPatches: [{ k: 'e', i: 0, slot: 'co', s: 'font-size: 14pt' }],
+    });
+    expect(headerSlot.selectionPatches).toEqual([{ k: 'e', i: 0, slot: 'co', s: 'font-size: 14pt' }]);
   });
 
   it('resolvePrintTextDir respects auto and overrides', () => {
