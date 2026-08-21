@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyFormatPainterClipboard,
+  applySelectionBorder,
   applySelectionColor,
   applySelectionFontSize,
   applySelectionShade,
@@ -110,5 +111,27 @@ describe('selectionFormat', () => {
     expect(a.style.fontSize).toBe('12pt');
     expect(b.style.fontSize).toBe('12pt');
     expect(a.parentElement?.tagName).toBe('TR');
+  });
+
+  it('shades and borders only the cells that contain the selection', () => {
+    document.body.innerHTML =
+      '<table><tr><td id="a">One</td><td id="b">Two</td><td id="c">Three</td></tr></table>';
+    clearSelectionUndo(document);
+    const a = document.getElementById('a')!;
+    const b = document.getElementById('b')!;
+    const range = document.createRange();
+    range.setStart(a.firstChild!, 0);
+    range.setEnd(b.firstChild!, 3);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+    expect(applySelectionShade(document, '#fef08a')).toBe(true);
+    expect(applySelectionBorder(document, 'strong')).toBe(true);
+    expect(a.style.background || a.style.backgroundColor).toMatch(/#fef08a|rgb\(\s*254/i);
+    expect(b.style.background || b.style.backgroundColor).toMatch(/#fef08a|rgb\(\s*254/i);
+    expect(document.getElementById('c')!.style.background || '').toBe('');
+    expect(a.style.border).toMatch(/1\.5px|0f172a|#/i);
+    expect(document.getElementById('c')!.style.border).toBe('');
+    expect(document.querySelector('span[data-sel-fmt]')).toBeNull();
   });
 });

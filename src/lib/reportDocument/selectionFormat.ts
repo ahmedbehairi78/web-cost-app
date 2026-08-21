@@ -330,17 +330,18 @@ export function applySelectionUnderline(doc: Document, mode: SelectionUnderline)
 export function applySelectionAlign(doc: Document, align: SelectionAlign, dir: 'rtl' | 'ltr'): boolean {
   if (!hasNonEmptySelection(doc)) return false;
   pushSelectionUndo(doc);
-  const sel = getSel(doc);
-  const node = sel?.anchorNode ?? null;
-  const cell = closestCell(node);
   const physical =
     align === 'center' ? 'center' : align === 'start' ? (dir === 'rtl' ? 'right' : 'left') : dir === 'rtl' ? 'left' : 'right';
 
-  if (cell) {
-    cell.style.textAlign = physical;
-    cell.querySelectorAll('.num-val').forEach((el) => {
-      (el as HTMLElement).style.textAlign = physical;
-    });
+  const cells = cellsInSelection(doc);
+  if (cells.length > 0) {
+    for (const cell of cells) {
+      cell.style.textAlign = physical;
+      cell.querySelectorAll('.num-val').forEach((el) => {
+        (el as HTMLElement).style.textAlign = physical;
+      });
+    }
+    return true;
   }
 
   const cmd =
@@ -351,20 +352,21 @@ export function applySelectionAlign(doc: Document, align: SelectionAlign, dir: '
 
 export function applySelectionShade(doc: Document, hexOrEmpty: string): boolean {
   if (!hasNonEmptySelection(doc)) return false;
+  if (hexOrEmpty !== '' && !/^#[0-9a-fA-F]{6}$/.test(hexOrEmpty)) return false;
   pushSelectionUndo(doc);
-  const sel = getSel(doc);
-  const cell = closestCell(sel?.anchorNode ?? null);
+  const cells = cellsInSelection(doc);
 
-  // Inside a table cell: shade the whole cell (not just the selected characters).
-  if (cell) {
-    if (hexOrEmpty === '') {
-      cell.style.background = '';
-      cell.style.backgroundColor = '';
-      return true;
+  // Inside table cells: shade each cell that contains the selection (not the text span).
+  if (cells.length > 0) {
+    for (const cell of cells) {
+      if (hexOrEmpty === '') {
+        cell.style.background = '';
+        cell.style.backgroundColor = '';
+      } else {
+        cell.style.background = hexOrEmpty;
+        cell.style.backgroundColor = hexOrEmpty;
+      }
     }
-    if (!/^#[0-9a-fA-F]{6}$/.test(hexOrEmpty)) return false;
-    cell.style.background = hexOrEmpty;
-    cell.style.backgroundColor = hexOrEmpty;
     return true;
   }
 
@@ -373,7 +375,6 @@ export function applySelectionShade(doc: Document, hexOrEmpty: string): boolean 
     wrapSelection(doc, { backgroundColor: 'transparent' });
     return true;
   }
-  if (!/^#[0-9a-fA-F]{6}$/.test(hexOrEmpty)) return false;
   const ok = runCommand(doc, 'hiliteColor', hexOrEmpty) || runCommand(doc, 'backColor', hexOrEmpty);
   if (!ok) wrapSelection(doc, { backgroundColor: hexOrEmpty });
   return true;
@@ -381,11 +382,12 @@ export function applySelectionShade(doc: Document, hexOrEmpty: string): boolean 
 
 export function applySelectionBorder(doc: Document, border: SelectionTableBorder): boolean {
   if (!hasNonEmptySelection(doc)) return false;
-  const sel = getSel(doc);
-  const cell = closestCell(sel?.anchorNode ?? null);
-  if (!cell) return false;
+  const cells = cellsInSelection(doc);
+  if (cells.length === 0) return false;
   pushSelectionUndo(doc);
-  cell.style.border = BORDER_CSS[border];
+  for (const cell of cells) {
+    cell.style.border = BORDER_CSS[border];
+  }
   return true;
 }
 
@@ -498,19 +500,45 @@ export function applyFormatPainterClipboard(
     styles.textDecorationStyle = 'solid';
   }
 
-  const sel = getSel(doc);
-  const cell = closestCell(sel?.anchorNode ?? null);
-
-  // Text highlight only outside cells; cells get full-cell shade below.
-  if (!cell && clip.shade && /^#[0-9a-fA-F]{6}$/.test(clip.shade)) {
-    styles.backgroundColor = clip.shade;
-  }
-
   const cells = cellsInSelection(doc);
   if (cells.length > 0) {
     applyStylesToTableCells(cells, styles);
-  } else {
-    wrapSelection(doc, styles);
+    if (clip.align) {
+      const physical =
+        clip.align === 'center'
+          ? 'center'
+          : clip.align === 'start'
+            ? dir === 'rtl'
+              ? 'right'
+              : 'left'
+            : dir === 'rtl'
+              ? 'left'
+              : 'right';
+      for (const target of cells) {
+        target.style.textAlign = physical;
+        target.querySelectorAll('.num-val').forEach((el) => {
+          (el as HTMLElement).style.textAlign = physical;
+        });
+      }
+    }
+    if (clip.shade && /^#[0-9a-fA-F]{6}$/.test(clip.shade)) {
+      for (const target of cells) {
+        target.style.background = clip.shade;
+        target.style.backgroundColor = clip.shade;
+      }
+    }
+    if (clip.cellBorder) {
+      for (const target of cells) {
+        target.style.border = BORDER_CSS[clip.cellBorder];
+      }
+    }
+    return true;
+  }
+
+  wrapSelection(doc, styles);
+
+  if (clip.shade && /^#[0-9a-fA-F]{6}$/.test(clip.shade)) {
+    wrapSelection(doc, { backgroundColor: clip.shade });
   }
 
   if (clip.align) {
@@ -524,25 +552,9 @@ export function applyFormatPainterClipboard(
           : dir === 'rtl'
             ? 'left'
             : 'right';
-    if (cell) {
-      cell.style.textAlign = physical;
-      cell.querySelectorAll('.num-val').forEach((el) => {
-        (el as HTMLElement).style.textAlign = physical;
-      });
-    }
     const cmd =
       physical === 'center' ? 'justifyCenter' : physical === 'left' ? 'justifyLeft' : 'justifyRight';
     runCommand(doc, cmd);
-  }
-
-  if (cell) {
-    if (clip.shade && /^#[0-9a-fA-F]{6}$/.test(clip.shade)) {
-      cell.style.background = clip.shade;
-      cell.style.backgroundColor = clip.shade;
-    }
-    if (clip.cellBorder) {
-      cell.style.border = BORDER_CSS[clip.cellBorder];
-    }
   }
 
   return true;
