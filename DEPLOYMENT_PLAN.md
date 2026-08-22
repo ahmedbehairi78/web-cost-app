@@ -190,7 +190,7 @@
 - [x] `deploy/railway-api.Dockerfile` — **واجهة + API** على خدمة واحدة
 - [x] `railway.toml` + `scripts/start-api-production.mjs` + `scripts/generate-vite-env.mjs`
 - [x] `.dockerignore` — بدون SQLite في production
-- [x] تحقق production في `env.ts` + `RAILWAY_PUBLIC_DOMAIN` لـ CORS
+- [x] تحقق production في `env.ts`: `SESSION_SECRET` + `DATABASE_URL` + Firebase + **`CORS_ORIGIN` أو `RAILWAY_PUBLIC_DOMAIN` إلزامي** (2026-08-22 — لا «السماح لكل الأصول» إن كان CORS فارغاً)
 - [x] `/api/health` + `trust proxy` + `prisma migrate deploy`
 - [x] دليل: `docs/RAILWAY_DEPLOY.md`
 - [x] **تم:** migrate + backfill-gl + verify-postgres على Postgres Railway ✅
@@ -256,6 +256,7 @@
 
 ## 9) حالة التقدّم (يُحدّث كل جلسة)
 
+- **2026-08-22 مساءً:** محلي — تطبيق migrations الموازنة النقدية (`cash_budget_periods` + `min_balance`) · `npm run local:api` يشغّل `prisma migrate deploy` قبل الاستماع. أعد تشغيل API بعد DDL (كتالوج Prisma 7). `EADDRINUSE :3001` = أوقف العملية القديمة.
 - **2026-08-21:** حفظ تصميم الطباعة من شريط التنسيق **والشريط العائم** (`selectionPatches` في `company_info.reportPrintProfiles`).
 - **2026-08-21:** موازنة نقدية — **نسبة سداد المديونية** (0–100٪) تحدد مبلغ التوزيع = الأقل بين بنوك `12101` والالتزامات × النسبة · استعاضة العهدة من رصيد اليومية · لا صناديق/عهد في المجمع. `npx prisma migrate deploy` ثم أعد تشغيل API.
 - **2026-08-21:** موازنة نقدية — اسم الحساب الفرعي فقط · إظهار مركز التكلفة · حذف المستبعد عند الاعتماد · جدول إجمالي التوزيع لكل مركز (شاشة + طباعة). أعد تشغيل API ثم «تحديث الاقتراح».

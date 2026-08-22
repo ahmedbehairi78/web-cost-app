@@ -4,7 +4,11 @@ import { prisma } from '../db.js';
 import { ALL_PERMISSIONS } from '../permissions.js';
 
 const email = process.env.ADMIN_EMAIL || 'admin@local.app';
-const password = process.env.ADMIN_PASSWORD || 'admin12345';
+const password = process.env.ADMIN_PASSWORD?.trim() ?? '';
+if (!password) {
+  console.error('ADMIN_PASSWORD must be set (no default password).');
+  process.exit(1);
+}
 
 const existing = await prisma.user.findUnique({ where: { email } });
 if (existing) {

@@ -48,7 +48,7 @@ npm run prod:set-user-password -- <email> '<password>'    # Railway via PRODUCTI
 npm run local:export-firestore-users   # needs FIREBASE_SERVICE_ACCOUNT_*
 
 # Local backend (web-cost-app/server/)
-npm run local:api  # Express API — :3001 (required for inventory, materials, distributed invoices)
+npm run local:api  # Express API — :3001 (copy COA seed + prisma generate + migrate deploy + tsx)
 npm run dev        # Alias in server/ package; prefer dev:local or local:api from web-cost-app root
 npm run build      # Compile TypeScript → dist/
 npx tsc --noEmit   # Type-check backend only
@@ -159,7 +159,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/spreadsheetGridNav.ts` · `SpreadsheetCellInput` | Explicit grid refs (e.g. Actual Costs IPC) — `data-excel-nav="managed"` so global navigator skips them |
 | `firestore.rules` | Security rules |
 | `firestore.indexes.json` | Composite indexes — 7 indexes covering all `where + orderBy` query patterns |
-| `server/src/app.ts` | Express app — registers all routers; **dev CORS** allows any `localhost` / `127.0.0.1` port (Vite may use 3002+ if 3000 is busy) |
+| `server/src/app.ts` | Express app — routers; **dev CORS** localhost/LAN; **prod** exact `CORS_ORIGIN` / `RAILWAY_PUBLIC_DOMAIN` (`corsOrigin.ts`); JSON **2mb** (backup-import **50mb**) |
 | `server/src/modules/sqliteCore.ts` | Distributed purchase invoices (`status`: draft/confirmed/posted); inventory update on `confirmed` (weighted-average) |
 | `server/src/modules/materials.ts` | CRUD for `material_groups` + `material_categories`; **`POST /import`** bulk Excel rows (transaction, skip duplicate codes) |
 | `src/components/MaterialsTree.tsx` | Materials tree UI — manual add + **Export / Template / Import** (admin / projects_manager); embedded in `Projects.tsx` and `Inventory.tsx` (materials tab) |
@@ -985,6 +985,31 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
 
 ---
+
+## 🔴 HANDOFF — تدقيق أمني عملي ✅ (2026-08-22)
+
+> **جلسة 2026-08-22:** CORS إنتاج صارم · حد JSON 2mb (استيراد نسخة 50mb) · معدل الدخول على `req.ip` · كلمة مرور ≥ 8 عند إنشاء مستخدم · تهريب HTML في شريط معاينة الطباعة · `bootstrapAdmin` بلا كلمة افتراضية.
+
+### سلوك تغيّر عن قصد
+
+| التغيير | قبل | بعد |
+|---------|-----|-----|
+| CORS إنتاج | `corsOrigin` فارغ = أي أصل + credentials | يجب `CORS_ORIGIN` أو `RAILWAY_PUBLIC_DOMAIN`؛ أصل غير مطابق يُرفض |
+| جسم JSON | 50mb لكل المسارات | **2mb** عامة · **50mb** فقط `POST /api/settings/backup-import` |
+| معدل الدخول | أول قيمة في `X-Forwarded-For` | `req.ip` بعد `trust proxy` |
+| `POST /api/auth/users` | أي طول لكلمة المرور | نفس حد PATCH: **8 أحرف** |
+| فحص البريد قبل Google | بدون حد | 20 طلباً / 15 دقيقة لكل IP (`preLoginRateLimit`) — الرد نفسه registered / not_found |
+| رؤوس HTTP | لا | `nosniff` · Referrer-Policy · `X-Frame-Options: SAMEORIGIN` — **بدون CSP** |
+
+```powershell
+npm run test -- server/src/lib/corsOrigin.test.ts server/src/middleware/loginRateLimit.test.ts src/lib/reportDocument/htmlEscape.test.ts
+```
+
+**لا تراجع:** لا تسمح بـ CORS «الكل» عندما `CORS_ORIGIN` فارغ في الإنتاج.
+
+**دخول (2026-08-22 مساءً):** نموذج تسجيل الدخول يظهر فوراً (لا يُخفى أثناء `sessionProbe`) · شعار ثابت عند الإقلاع · مهلة logout الباردة 800ms · إعادة محاولة الشبكة مرتين فقط (400ms).
+
+**موازنة نقدية محلياً (2026-08-22 مساءً):** `cash_budget_periods` / `min_balance` عبر `20260820120000_cash_budget` + `20260821180000_cash_budget_settlement_pct`. `npm run local:api` يشغّل **`prisma migrate deploy`** قبل Express. بعد migrate أعد تشغيل العملية على `:3001` — Prisma 7 يحتفظ بكتالوج قديم إن بقيت العملية من قبل الـ DDL. **`EADDRINUSE :3001`** = عملية API سابقة ما زالت تستمع؛ أوقفها ثم `dev:local` مرة واحدة.
 
 ---
 

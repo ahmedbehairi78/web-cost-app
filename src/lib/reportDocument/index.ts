@@ -35,6 +35,7 @@ export { renderReportDocumentHtml } from './renderHtml';
 export { exportReportDocumentPdf } from './exportPdf';
 export { exportReportDocumentExcel, buildReportDocumentExcelAoA } from './exportExcel';
 export { openReportDocument } from './openDocument';
+export { escapeHtml, isSafeLogoUrl } from './htmlEscape';
 export { REPORT_PRINT_IFRAME_SANDBOX, REPORT_PREVIEW_IFRAME_SANDBOX, printHtmlInHiddenFrame } from './printFrame';
 export {
   serializePreviewDocument,

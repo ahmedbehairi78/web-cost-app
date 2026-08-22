@@ -2,6 +2,7 @@ import { renderReportDocumentHtml } from './renderHtml';
 import { exportReportDocumentPdf } from './exportPdf';
 import { printHtmlInHiddenFrame } from './printFrame';
 import type { ReportDocument, ReportDocumentAction, ReportDocumentLabels } from './types';
+import { escapeHtml } from './htmlEscape';
 
 const PREVIEW_ROOT = 'report-doc-preview-root';
 const PREVIEW_OPEN = 'report-doc-preview-open';
@@ -56,17 +57,17 @@ function openPreview(
   overlay.innerHTML = `
     <div class="rdp-toolbar">
       <div class="rdp-titles">
-        <p class="rdp-title">${labels.title}</p>
-        <p class="rdp-hint">${labels.hint}</p>
+        <p class="rdp-title">${escapeHtml(labels.title)}</p>
+        <p class="rdp-hint">${escapeHtml(labels.hint)}</p>
       </div>
       <div class="rdp-actions">
-        <button type="button" class="rdp-btn rdp-muted" data-act="cancel">${labels.cancel}</button>
-        <button type="button" class="rdp-btn rdp-secondary" data-act="pdf">${labels.pdf}</button>
-        <button type="button" class="rdp-btn rdp-primary" data-act="print">${labels.print}</button>
+        <button type="button" class="rdp-btn rdp-muted" data-act="cancel">${escapeHtml(labels.cancel)}</button>
+        <button type="button" class="rdp-btn rdp-secondary" data-act="pdf">${escapeHtml(labels.pdf)}</button>
+        <button type="button" class="rdp-btn rdp-primary" data-act="print">${escapeHtml(labels.print)}</button>
       </div>
     </div>
     <div class="rdp-viewport">
-      <iframe class="rdp-frame" sandbox="allow-same-origin" title="${doc.title}"></iframe>
+      <iframe class="rdp-frame" sandbox="allow-same-origin" title="${escapeHtml(doc.title)}"></iframe>
     </div>
   `;
 

@@ -40,7 +40,7 @@ import {
 } from './lib/permissions';
 import { authApi } from './services/local/authApi';
 import { setApiAuthIdToken } from './lib/authToken';
-import { ApiError } from './lib/apiClient';
+import { ApiError, NetworkError } from './lib/apiClient';
 import { isLocalBackend } from './lib/dataBackend';
 import { settingsApi } from './services/local/modulesApi';
 import {
@@ -856,14 +856,17 @@ export default function App() {
           resetLocalCoaBootstrap();
           setApiAuthIdToken(null);
           let probe: { authenticated: boolean; user?: AppUser } | null = null;
-          for (let attempt = 0; attempt < 4; attempt++) {
+          for (let attempt = 0; attempt < 2; attempt++) {
             try {
               probe = await authApi.sessionProbe();
               break;
-            } catch {
-              if (attempt < 3) {
-                await new Promise((resolve) => setTimeout(resolve, 2000));
+            } catch (err) {
+              const retryNetwork = err instanceof NetworkError && attempt < 1;
+              if (retryNetwork) {
+                await new Promise((resolve) => setTimeout(resolve, 400));
+                continue;
               }
+              break;
             }
           }
           if (probe?.authenticated && probe.user) {

@@ -47,17 +47,14 @@ import { cashBudgetRouter } from './modules/cashBudget.js';
 import { bootstrapCoaIfEmpty } from './accounting/ensureCoaSeed.js';
 import { errorHandler, notFound } from './middleware/errors.js';
 import { prisma } from './db.js';
+import { isAllowedCorsOrigin } from './lib/corsOrigin.js';
+import { preLoginRateLimit } from './middleware/loginRateLimit.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function isDevAllowedOrigin(origin: string): boolean {
-  if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)) return true;
-  // LAN access when Vite uses --host=0.0.0.0 (private ranges only)
-  if (/^https?:\/\/(192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})(:\d+)?$/i.test(origin)) {
-    return true;
-  }
-  return false;
-}
+/** Default JSON body cap. Backup restore uses BACKUP_JSON_BODY_LIMIT on its route. */
+const JSON_BODY_LIMIT = '2mb';
+const BACKUP_JSON_BODY_LIMIT = '50mb';
 
 export function createApp() {
   // Postgres COA bootstrap is async; run best-effort without blocking app startup.
@@ -76,14 +73,7 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, callback) {
-        // Dev: Vite may use 3000, 3001, 3002… — allow localhost on any port.
-        if (env.nodeEnv !== 'production') {
-          if (!origin || isDevAllowedOrigin(origin)) {
-            callback(null, true);
-            return;
-          }
-        }
-        if (!origin || !env.corsOrigin || origin === env.corsOrigin) {
+        if (isAllowedCorsOrigin(origin, { nodeEnv: env.nodeEnv, corsOrigin: env.corsOrigin })) {
           callback(null, true);
           return;
         }
@@ -92,8 +82,16 @@ export function createApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: '50mb' }));
+  // Parse backup JSON before the global 2mb cap (body-parser skips if already parsed).
+  app.use('/api/settings/backup-import', express.json({ limit: BACKUP_JSON_BODY_LIMIT }));
+  app.use(express.json({ limit: JSON_BODY_LIMIT }));
   app.use(sessionMiddleware);
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    next();
+  });
 
   app.get('/api/health/live', (_req, res) => {
     res.json({ ok: true, live: true, env: env.nodeEnv });
@@ -119,7 +117,7 @@ export function createApp() {
       res.status(503).json({ ok: false, db: 'error' });
     }
   });
-  app.post('/api/auth/pre-login-check', handlePreLoginCheck);
+  app.post('/api/auth/pre-login-check', preLoginRateLimit, handlePreLoginCheck);
   app.use('/api/auth',                authRouter);
   // Reference reads — align with Firestore canReadProjectsRef / canReadContractsRef / canReadBoqRef
   const projectReferenceRead = [

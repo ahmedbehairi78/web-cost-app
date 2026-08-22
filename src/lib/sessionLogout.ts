@@ -168,7 +168,7 @@ export async function performColdStartAuthReset(): Promise<void> {
       await Promise.race([
         authApi.logout(),
         new Promise<void>((resolve) => {
-          setTimeout(resolve, 3000);
+          setTimeout(resolve, 800);
         }),
       ]);
     } catch {

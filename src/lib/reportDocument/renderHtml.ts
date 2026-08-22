@@ -19,14 +19,7 @@ import {
   type ReportDocSection,
   type ReportDocument,
 } from './types';
-
-function esc(s: string): string {
-  return s
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+import { escapeHtml as esc, isSafeLogoUrl } from './htmlEscape';
 
 function companyName(doc: ReportDocument): string {
   if (doc.language === 'en') {
@@ -535,6 +528,9 @@ function buildSectionSheetBodies(
 }
 
 function renderLogoImg(url: string, expanded: boolean): string {
+  if (!isSafeLogoUrl(url)) {
+    return `<div class="logo${expanded ? ' logo-lg' : ''}"></div>`;
+  }
   return `<div class="logo${expanded ? ' logo-lg' : ''}"><img src="${esc(url)}" alt="" /></div>`;
 }
 

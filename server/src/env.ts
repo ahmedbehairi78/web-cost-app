@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'node:url';
 import { resolveFirebaseProjectId } from './firebaseProject.js';
+import { assertProductionCorsOrigin } from './lib/corsOrigin.js';
 
 const isProduction = (process.env.NODE_ENV || 'development') === 'production';
 
@@ -102,4 +103,5 @@ export function assertProductionEnv() {
       'FIREBASE_PROJECT_ID must be set in production (or ship config/firebase-applet.defaults.json).',
     );
   }
+  assertProductionCorsOrigin(env.corsOrigin);
 }

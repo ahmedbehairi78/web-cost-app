@@ -43,6 +43,12 @@ export default defineConfig(({mode}) => {
     test: {
       environment: 'node',
       globals: true,
+      exclude: [
+        '**/node_modules/**',
+        '**/dist/**',
+        '**/dist-server/**',
+        '**/electron/dist/**',
+      ],
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

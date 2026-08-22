@@ -32,6 +32,7 @@ import { handlePreLoginCheck } from './preLoginCheck.js';
 import {
   clearLoginAttempts,
   loginRateLimit,
+  preLoginRateLimit,
   recordFailedLogin,
 } from '../middleware/loginRateLimit.js';
 import { resolveFirebaseProjectId } from '../firebaseProject.js';
@@ -39,7 +40,9 @@ import { env } from '../env.js';
 import { serialize } from '../prisma/serialize.js';
 import {
   hashLoginPassword,
+  isLoginPasswordLongEnough,
   isPasswordLoginConfigured,
+  MIN_LOGIN_PASSWORD_LENGTH,
   unusablePasswordHash,
   verifyLoginPassword,
 } from './passwordHelpers.js';
@@ -117,7 +120,7 @@ async function maybeSyncUserFromFirestoreProfile(
   return updated ?? user;
 }
 
-authRouter.post('/pre-login-check', asyncHandler(handlePreLoginCheck));
+authRouter.post('/pre-login-check', preLoginRateLimit, asyncHandler(handlePreLoginCheck));
 
 authRouter.post(
   '/firebase-session',
@@ -307,8 +310,11 @@ authRouter.patch(
       return;
     }
     const clean = typeof password === 'string' ? password.trim() : '';
-    if (clean.length < 8) {
-      res.status(400).json({ error: 'password_too_short', message: 'Password must be at least 8 characters' });
+    if (!isLoginPasswordLongEnough(clean)) {
+      res.status(400).json({
+        error: 'password_too_short',
+        message: `Password must be at least ${MIN_LOGIN_PASSWORD_LENGTH} characters`,
+      });
       return;
     }
     const existing = await findUserById(userId);
@@ -357,6 +363,13 @@ authRouter.post(
     };
     if (!email || !password) {
       res.status(400).json({ error: 'Email and password are required' });
+      return;
+    }
+    if (!isLoginPasswordLongEnough(password)) {
+      res.status(400).json({
+        error: 'password_too_short',
+        message: `Password must be at least ${MIN_LOGIN_PASSWORD_LENGTH} characters`,
+      });
       return;
     }
     const user = await createUser({

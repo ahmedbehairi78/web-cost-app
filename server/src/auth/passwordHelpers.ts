@@ -3,6 +3,12 @@ import bcrypt from 'bcrypt';
 /** Marker hashed for accounts without admin-assigned password login. */
 export const NO_PASSWORD_LOGIN_MARKER = '__PASSWORD_LOGIN_DISABLED__';
 
+export const MIN_LOGIN_PASSWORD_LENGTH = 8;
+
+export function isLoginPasswordLongEnough(password: string): boolean {
+  return password.trim().length >= MIN_LOGIN_PASSWORD_LENGTH;
+}
+
 let cachedUnusableHash: string | null = null;
 
 export async function unusablePasswordHash(): Promise<string> {

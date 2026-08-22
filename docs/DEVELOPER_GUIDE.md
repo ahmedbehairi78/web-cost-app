@@ -314,10 +314,20 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 4. أضِف غلاف العميل في `src/services/local/modulesApi.ts` (مثل `banksApi`, `inventoryApi`).
 5. في الواجهة اقرأ عبر **`useApiQuery(factory, deps)`** (`src/hooks/useApiQuery.ts`) — النمط الأساسي لقراءة Postgres في الوضع المحلي.
 
+### أمان API (2026-08-22)
+
+- **CORS إنتاج:** يجب `CORS_ORIGIN` أو `RAILWAY_PUBLIC_DOMAIN`. أصل المتصفح غير المطابق يُرفض. التطوير يبقى localhost + LAN.
+- **JSON:** حد **2mb** على كل المسارات؛ استيراد النسخة الاحتياطية `POST /api/settings/backup-import` يبقى **50mb**.
+- **رؤوس:** `X-Content-Type-Options` · `Referrer-Policy` · `X-Frame-Options: SAMEORIGIN` (بدون CSP صارم حتى لا يُكسر Google popup).
+- **فحص البريد قبل Google:** `preLoginRateLimit` — 20 طلباً / 15 دقيقة لكل IP.
+- **إنشاء مستخدم:** كلمة المرور **8 أحرف على الأقل** (`POST /api/auth/users` مثل PATCH).
+- **`npm run local:bootstrap-admin`:** يتطلب `ADMIN_PASSWORD` في البيئة — لا كلمة افتراضية.
+
 ### Migration جديدة
 
 - **لا تعدّل migration قديمة أبدًا** — أنشئ واحدة جديدة: `npx prisma migrate dev --name <desc>`.
-- على Railway تُطبَّق تلقائيًا عبر `prisma migrate deploy` عند الإقلاع.
+- محلياً: **`npm run local:api`** / **`dev:local`** يشغّلان `prisma migrate deploy` قبل Express. على Railway تُطبَّق تلقائيًا عند الإقلاع (`start:api:prod`).
+- بعد migrate على قاعدة يستخدمها API قيد التشغيل: **أعد تشغيل** عملية `:3001` — وإلا Prisma 7 قد يُبلغ أن الجدول/العمود غير موجود.
 - **BOQ rates (2026-06-29):** migration `20260628120000_boq_item_rate_breakdown` — بعد `migrate deploy` على بيئة فيها بنود بدون تفاصيل rates: `npm run local:backfill-boq-rates -- path/to/backup.json` أو `npm run local:backfill-boq-rates -- --live` (يتطلب `FIREBASE_SERVICE_ACCOUNT_*` للوضع المباشر).
 
 ### مزامنة Firestore ↔ SQLite/Postgres (الوضع المحلي)

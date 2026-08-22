@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-21 (حفظ تصميم الطباعة = شريط أساسي + شريط عائم · تصدير Excel من المعاينة · طباعة/PDF `allow-modals`)
+**آخر تحديث:** 2026-08-22 (تدقيق أمني + `local:api` يشغّل `prisma migrate deploy` · جداول الموازنة النقدية محلياً)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -24,6 +24,8 @@
 **Shell:** موديول واحد (`shellWindowPolicy.ts`)؛ الآلة الحاسبة استثناء. ERP = `TopNavBar` + `ErpWorkspace`.
 
 **جلسة:** لا toast للموقع الجغرافي عند الدخول (`useActivitySession`). الخمول بعد **3 دقائق** على مستوى **الجهاز** (Electron `powerMonitor`) → شاشة دخول باسم المستخدم **مع كلمة المرور** (التطبيق لا يُغلق؛ النوافذ تبقى تحت القفل). المتصفح/قشرة قديمة: نشاط النافذة فقط. يُيقاف أثناء الانقطاع أو مسودة/طابور (`idleGate`). `mousemove`/`scroll`/`wheel` في وضع النافذة مُقيَّدة بـ **1 ثانية**.
+
+**API (2026-08-22):** إنتاج يرفض CORS إن لم يُضبط `CORS_ORIGIN` / `RAILWAY_PUBLIC_DOMAIN`. جسم JSON الافتراضي 2mb (استيراد النسخة 50mb). معدل محاولات الدخول يعتمد على `req.ip` وليس ترويسة `X-Forwarded-For`.
 
 **تحديث Railway (Electron):** حوار أصلي في القشرة **الآن أو لاحقاً** (لاحقاً = الافتراضي). إعادة تحميل SPA **ليست** cold start — تبقى كوكيز الجلسة (`keepSessionOnLoad` + `DESKTOP_WINDOW_SESSION_KEY`). 401 أثناء النشر → إعادة تحقق ثم قفل كلمة مرور (لا إغلاق التطبيق). إغلاق **معاينة الطباعة** لا يُعيد تحميل النافذة كبداية باردة (Blob iframe + حراسة `about:blank` في القشرة). قشرة **≥ 1.0.9** عبر `electron:publish`.
 
@@ -331,7 +333,7 @@ PRODUCTION_DATABASE_URL=...     # اختياري — Push to production (Railway
 cd "G:\cost web app\web-cost-app"
 
 npm run local:bootstrap-admin   # مرة واحدة
-npm run local:api               # terminal 1 — :3001
+npm run local:api               # terminal 1 — :3001 (يتضمن prisma migrate deploy)
 npm run dev                     # terminal 2 — :3000 أو التالي
 ```
 

@@ -193,8 +193,9 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
     }
   };
 
-  const splashMode = bootstrapping || enteringApp;
-  const showLogoPulse = splashMode || loading;
+  /** Post-login only — do not hide the sign-in form while session probe runs. */
+  const splashMode = enteringApp;
+  const showLogoPulse = bootstrapping || enteringApp || loading;
 
   const inputCls = cn(
     'w-full rounded-xl border py-2.5 px-4 text-sm outline-none shell-transition',
@@ -214,16 +215,16 @@ export function Login({ onPasswordLogin, bootstrapping = false, enteringApp = fa
       dir={language === 'ar' ? 'rtl' : 'ltr'}
     >
       <motion.div
-        initial={{ opacity: bootstrapping ? 1 : 0, y: bootstrapping ? 0 : 12 }}
+        initial={{ opacity: 1, y: 0 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: bootstrapping ? 0 : 0.35, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0 }}
         className="relative z-10 max-w-md w-full rounded-2xl p-8 shadow-2xl shell-transition bg-white border border-[var(--erp-border)] shadow-[var(--erp-primary)]/10 erp-animate-rise-in"
       >
         <div className="flex flex-col items-center text-center space-y-6">
           <ConcordPlusLogoBuild
             showTagline
             pulsing={showLogoPulse}
-            skipBuild={enteringApp || loading}
+            skipBuild={bootstrapping || enteringApp || loading}
           />
 
           <div>
