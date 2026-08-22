@@ -36,6 +36,11 @@ vi.mock('../firebase', () => ({
   auth: { currentUser: { uid: 'test-user-uid' } },
 }));
 
+vi.mock('../lib/dataBackend', () => ({
+  isLocalBackend: false,
+  DATA_BACKEND: 'firebase',
+}));
+
 import { accountingService, AccountCodes, invalidateCoaCache } from './accountingService';
 
 beforeEach(() => {

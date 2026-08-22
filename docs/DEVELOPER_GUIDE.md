@@ -52,7 +52,7 @@ npm run dev:local         # Vite :3000 + Express API :3001 معًا (الوضع 
 
 ```bash
 npm run lint        # فحص الأنواع فقط (tsc --noEmit)
-npm run test        # كل اختبارات Vitest
+npm run test        # Vitest — يشمل happy-dom لملفات DOM (تنسيق طباعة · جسر خمول)
 npm run build        # بناء إنتاج
 ```
 
