@@ -6,6 +6,7 @@ import { env } from './env.js';
 import { sessionMiddleware } from './auth/session.js';
 import { authRouter } from './auth/routes.js';
 import { handlePreLoginCheck } from './auth/preLoginCheck.js';
+import { suppliersOpeningRouter } from './modules/suppliersOpening.js';
 import { createCrudRouter } from './modules/crud.js';
 import { enrichBoqItemsFromFirestore } from './modules/boqItemsEnrich.js';
 import { glRouter } from './modules/gl.js';
@@ -169,6 +170,7 @@ export function createApp() {
       'cash_budget',
     ], { writePermission: ['ledger', 'costs'] }),
   );
+  app.use('/api/suppliers', suppliersOpeningRouter);
   app.use(
     '/api/suppliers',
     createCrudRouter(null, 'supplier', ['suppliers', 'costs'], { writePermission: ['suppliers', 'costs'] }),

@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-22 (تدقيق أمني + `local:api` يشغّل `prisma migrate deploy` · جداول الموازنة النقدية محلياً)
+**آخر تحديث:** 2026-08-24 (استيراد موردين/مقاولي باطن + رصيد افتتاحي Excel) · 2026-08-22 (تدقيق أمني + `local:api` يشغّل `prisma migrate deploy` · جداول الموازنة النقدية محلياً)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >
@@ -88,11 +88,13 @@ web-cost-app/
 │   │   ├── boqMaterials.ts
 │   │   ├── consumptionOrders.ts
 │   │   ├── inventory.ts              # + `/inventory/project-transfers` · `POST …/opening-import`
+│   │   ├── suppliersOpening.ts       # `POST /suppliers/opening-import` موردين/باطن + قيد AP-OPEN
 │   │   ├── projectInventoryTransfers.ts
 │   │   ├── inventoryTransfers.ts     # legacy عقود
 │   │   ├── ensureLocalProject.ts     # مرآة مشروع Firestore → SQLite
 │   │   ├── accounting/projectWarehouseGl.ts
 │   │   ├── accounting/openingInventoryJournal.ts  # قيد أرصدة افتتاحية Dr 127 / Cr 31401001
+│   │   ├── accounting/openingCreditorsJournal.ts  # قيد دائنين افتتاحي Dr 31401001 / Cr 21101…|21102…
 │   │   ├── accounting/returnInventoryJournal.ts   # قيد مرتجع متعدد: Dr 127 / Cr مصروف (مجموعات)
 │   │   ├── sqliteCore.ts
 │   │   ├── purchaseTransactions.ts   # purchase_transactions + items؛ IPC `POST /:id/approve`

@@ -32,7 +32,7 @@ import { SearchableSelect } from './ui/SearchableSelect';
 import { chartLeafAccountOptions } from '../lib/chartOfAccountsPicker';
 import { GLCustodySettlement } from './gl/GLCustodySettlement';
 import { PurchaseTransactionDetail } from './actualCosts/PurchaseTransactionDetail';
-import { InventorySnapshotBanner } from './actualCosts/InventorySnapshotBanner';
+import { OpeningCreditorsImportPanel } from './settings/OpeningCreditorsImportPanel';
 import {
   CostsPurchaseSidebar,
   type CostsPurchaseStatusFilter,
@@ -2805,6 +2805,10 @@ export function ActualCosts() {
           ))}
         </div>
       </div>
+      )}
+
+      {isLocalBackend && (activeTab === 'invoice' || activeTab === 'ipc') && (
+        <OpeningCreditorsImportPanel onImported={() => setDataRefreshKey((k) => k + 1)} />
       )}
 
       {/* H2: بطاقة رصيد المخزون بعد حفظ فاتورة موزعة */}

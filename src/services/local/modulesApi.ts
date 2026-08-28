@@ -45,7 +45,32 @@ export const boqApi = {
       summary: `Delete BOQ ${id}`,
     }),
 };
-export const suppliersApi = createCrudApi<Supplier>('/suppliers');
+export const suppliersApi = {
+  ...createCrudApi<Supplier>('/suppliers'),
+  importOpening: (body: {
+    date: string;
+    rows: Array<{
+      type: 'supplier' | 'subcontractor';
+      name: string;
+      nameEn?: string;
+      taxNumber?: string;
+      phone?: string;
+      address?: string;
+      accountCode?: string;
+      openingBalance: number;
+    }>;
+  }) =>
+    apiClient.post<{
+      created: number;
+      skipped: number;
+      openingPosted: number;
+      openingSkipped: number;
+      errors: string[];
+      transactionId?: string;
+      reference?: string;
+      totalAmount?: number;
+    }>('/suppliers/opening-import', body),
+};
 export const chartOfAccountsApi = {
   ...createCrudApi('/chart-of-accounts'),
   ensureMissing: (data: {

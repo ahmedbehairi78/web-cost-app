@@ -1271,6 +1271,7 @@ export const MANUAL_TOPICS: ManualTopic[] = [
       { titleKey: 'manual_settings_coa_tree_step_2_title', bodyKey: 'manual_settings_coa_tree_step_2_body' },
       { titleKey: 'manual_settings_coa_tree_step_3_title', bodyKey: 'manual_settings_coa_tree_step_3_body' },
       { titleKey: 'manual_settings_coa_tree_step_4_title', bodyKey: 'manual_settings_coa_tree_step_4_body' },
+      { titleKey: 'manual_settings_coa_tree_step_5_title', bodyKey: 'manual_settings_coa_tree_step_5_body' },
     ],
     relatedModule: { moduleId: 'ledger', viewId: 'journal' },
     tags: ['settings', 'coa', 'ledger', '127', 'isGroup', 'leaf'],

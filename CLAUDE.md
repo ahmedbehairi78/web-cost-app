@@ -1229,6 +1229,24 @@ npm run test -- src/lib/materialsTreeExcel.test.ts src/lib/operationsManual.test
 
 ---
 
+## 🔴 HANDOFF — قالب موردين ومقاولي باطن + رصيد افتتاحي ✅ (2026-08-24)
+
+> **جلسة 2026-08-24:** استيراد Excel لموردين ومقاولي باطن مع الرصيد الافتتاحي (دائن = مستحق عليهم؛ سالب = دفعة مقدمة). قيد واحد: مدين جاري الشركاء `31401001` / دائن أوراق `21101…` / `21102…`. لا تستخدم `21101001` / `21102001`.
+
+| المجال | ملخص |
+|--------|------|
+| **Excel** | `creditorsOpeningExcel.ts` — النوع · الاسم · الرصيد الافتتاحي · كود اختياري |
+| **API** | `POST /api/suppliers/opening-import` قبل CRUD الموردين |
+| **GL** | `openingCreditorsJournal.ts` — `AP-OPEN-…` · ليس `fiscal_opening` |
+| **UI** | إعدادات → شجرة الحسابات + التكاليف الفعلية (فاتورة/مستخلص باطن) — Postgres فقط |
+
+```powershell
+npx vitest run src/lib/creditorsOpeningExcel.test.ts server/src/accounting/openingCreditorsJournal.test.ts src/lib/operationsManual.test.ts
+# إعدادات → شجرة الحسابات → قالب → تعبئة → استيراد
+```
+
+---
+
 ## 🔴 HANDOFF — استيراد أرصدة افتتاحية لكل مشروع ✅ (2026-08-13)
 
 > **جلسة 2026-08-13:** عمود `الرصيد` في شجرة الأصناف **لا** يُستورد. المسار الصحيح: مخزون → رصيد المخزن → مشروع → **استيراد أرصدة افتتاحية**. الزر كان معطّلاً لأن ربط حساب **127…** كان مخفياً والشاشة فارغة.

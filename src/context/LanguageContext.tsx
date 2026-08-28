@@ -1089,6 +1089,17 @@ const translations: Record<Language, Record<string, string>> = {
     inventory_opening_none: 'لم يُستورد أي صف (الكل متخطّى أو به أخطاء)',
     inventory_opening_hint: 'لكل مشروع على حدة · نزّل القالب (كود الصنف · الكمية · متوسط التكلفة) · لا تستخدم ملف شجرة الأصناف · قيد مدين 127… / دائن جاري الشركاء 31401001',
     inventory_opening_wrong_file: 'هذا ملف شجرة الأصناف. الرصيد لا يُستورد منه. نزّل «قالب أرصدة افتتاحية» من نفس الشاشة.',
+    creditors_opening_template: 'قالب موردين ومقاولي باطن',
+    creditors_opening_import: 'استيراد الموردين والرصيد الافتتاحي',
+    creditors_opening_date: 'تاريخ الرصيد الافتتاحي',
+    creditors_opening_hint: 'نزّل القالب (النوع · الاسم · الرصيد الافتتاحي) · مورد = 21101… · مقاول باطن = 21102… · لا تستخدم 21101001 / 21102001 · القيد مدين جاري الشركاء 31401001 / دائن حساب الجهة',
+    creditors_opening_empty_file: 'الملف فارغ أو بلا نوع واسم. استخدم قالب الموردين ومقاولي الباطن.',
+    creditors_opening_result: 'أُنشئ: {created} · متخطّى: {skipped} · قيود رصيد: {posted}',
+    creditors_opening_gl_ref: 'قيد اليومية: {reference}',
+    creditors_opening_success: 'تم استيراد الموردين/المقاولين',
+    creditors_opening_none: 'لم يُستورد صف جديد (الكل متخطّى أو بلا رصيد)',
+    creditors_opening_errors: 'أخطاء: {count}',
+    creditors_opening_failed: 'فشل استيراد الموردين',
     inventory_screen_materials_subtitle: 'شجرة مجموعات وأصناف المواد — تصدير واستيراد Excel',
     inventory_screen_balance_subtitle: 'رصيد مخزن المشروع — حساب 127… وصرف خامات للموقع',
     inventory_screen_receipts_subtitle: 'استلام من أمين المخزن — كمية فورية ثم اعتماد تكلفة من المشتريات',
@@ -2483,7 +2494,7 @@ const translations: Record<Language, Record<string, string>> = {
     manual_settings_coa_tree_before:
       'ledger.view. Local: Postgres COA. Cloud: Firestore chart_of_accounts. لا تُحرر COA من GL — من هنا فقط.',
     manual_settings_coa_tree_mistakes:
-      'قيد على حساب مجموعة · تعطيل 127 م linked project · كود عشوائي · hard-delete.',
+      'قيد على حساب مجموعة · تعطيل 127 م linked project · كود عشوائي · hard-delete · استخدام 21101001/21102001 كحساب مورد أو مقاول.',
     manual_settings_coa_tree_step_1_title: 'افتح القسم',
     manual_settings_coa_tree_step_1_body:
       'الإعدادات → تهيئة شجرة الحسابات (يظهر مع ledger.view).',
@@ -2496,6 +2507,9 @@ const translations: Record<Language, Record<string, string>> = {
     manual_settings_coa_tree_step_4_title: 'إكمال ناقص',
     manual_settings_coa_tree_step_4_body:
       'زر إكمال من seed عند نقص أوراق standard (مثل 21402001). ensure-missing على أول post.',
+    manual_settings_coa_tree_step_5_title: 'استيراد موردين ومقاولين',
+    manual_settings_coa_tree_step_5_body:
+      'Postgres فقط: نزّل قالب Excel (النوع · الاسم · الرصيد الافتتاحي) ثم استورد. يُنشأ حساب 8 أرقام تحت 21101/21102 والقيد مدين 31401001 / دائن الجهة. إعادة الاستيراد تتخطى الاسم المكرر ولا تكرر القيد إن وُجدت حركة.',
     manual_settings_cost_centers_title: 'مراكز التكلفة غير المباشرة',
     manual_settings_cost_centers_summary:
       'CRUD مراكز HO-xxx (indirect) — تُستخدم في مصروف غير مباشر، OHA، وتوزيع رواتب.',
@@ -3636,6 +3650,17 @@ const translations: Record<Language, Record<string, string>> = {
     inventory_opening_none: 'No rows imported (all skipped or had errors)',
     inventory_opening_hint: 'Per project · download the template (Category Code · Quantity · Avg Unit Cost) · do not use the materials-tree file · Dr 127… / Cr partners current 31401001',
     inventory_opening_wrong_file: 'This is the materials-tree file. Balances are not imported from it. Download «Opening balances template» on this screen.',
+    creditors_opening_template: 'Suppliers & subcontractors template',
+    creditors_opening_import: 'Import parties and opening balances',
+    creditors_opening_date: 'Opening balance date',
+    creditors_opening_hint: 'Download the template (Type · Name · Opening Balance) · supplier = 21101… · subcontractor = 21102… · do not use 21101001 / 21102001 · journal Dr partners current 31401001 / Cr the party leaf',
+    creditors_opening_empty_file: 'File is empty or missing type and name. Use the suppliers/subcontractors template.',
+    creditors_opening_result: 'Created: {created} · Skipped: {skipped} · Opening posted: {posted}',
+    creditors_opening_gl_ref: 'Journal: {reference}',
+    creditors_opening_success: 'Suppliers/subcontractors imported',
+    creditors_opening_none: 'No new rows imported (all skipped or zero balance)',
+    creditors_opening_errors: 'Errors: {count}',
+    creditors_opening_failed: 'Failed to import suppliers',
     inventory_screen_materials_subtitle: 'Material groups and categories — Excel export and import',
     inventory_screen_balance_subtitle: 'Project warehouse balance — 127… account and site issues',
     inventory_screen_receipts_subtitle: 'Storekeeper receipt — qty now, purchasing cost approval later',
@@ -5032,7 +5057,7 @@ const translations: Record<Language, Record<string, string>> = {
     manual_settings_coa_tree_before:
       'ledger.view. Local: Postgres COA. Cloud: Firestore. Do not edit COA from GL — only here.',
     manual_settings_coa_tree_mistakes:
-      'Posting to group account · Disabling linked 127 · Random codes · Hard delete.',
+      'Posting to group account · Disabling linked 127 · Random codes · Hard delete · Using 21101001/21102001 as a named supplier or subcontractor.',
     manual_settings_coa_tree_step_1_title: 'Open section',
     manual_settings_coa_tree_step_1_body:
       'Settings → Chart of accounts setup (visible with ledger.view).',
@@ -5045,6 +5070,9 @@ const translations: Record<Language, Record<string, string>> = {
     manual_settings_coa_tree_step_4_title: 'Seed missing',
     manual_settings_coa_tree_step_4_body:
       'Complete from seed button for missing standard leaves (e.g. 21402001). ensure-missing on first post.',
+    manual_settings_coa_tree_step_5_title: 'Import suppliers and subcontractors',
+    manual_settings_coa_tree_step_5_body:
+      'Postgres only: download the Excel template (type · name · opening balance) then import. Creates an 8-digit leaf under 21101/21102 and posts Dr 31401001 / Cr the party. Re-import skips duplicate names and skips opening if the leaf already has GL activity.',
     manual_settings_cost_centers_title: 'Indirect cost centers',
     manual_settings_cost_centers_summary:
       'CRUD HO-xxx indirect centers — used in indirect expense, OHA, payroll cost split.',

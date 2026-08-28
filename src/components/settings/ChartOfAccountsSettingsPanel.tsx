@@ -11,6 +11,7 @@ import { isLocalBackend } from '../../lib/dataBackend';
 import { chartOfAccountsApi } from '../../services/local/modulesApi';
 import { Account } from '../../services/accountingService';
 import { GLChartOfAccounts } from '../gl/GLChartOfAccounts';
+import { OpeningCreditorsImportPanel } from './OpeningCreditorsImportPanel';
 import { ManualHelpButton } from '../help/ManualHelpButton';
 import { ApiError } from '../../lib/apiClient';
 import { cn } from '../../lib/utils';
@@ -88,6 +89,9 @@ export function ChartOfAccountsSettingsPanel({ theme }: Props) {
           </p>
         </div>
       </div>
+      {isLocalBackend && (
+        <OpeningCreditorsImportPanel onImported={() => setCoaRefreshKey((k) => k + 1)} />
+      )}
       <GLChartOfAccounts
         accounts={accounts}
         loading={loading}
