@@ -83,6 +83,8 @@ type ServiceTx = {
   vatPct?: number;
   whtPct?: number;
   execGuaranteePct?: number;
+  labourInsurancePct?: number;
+  manpowerLevyPct?: number;
 };
 
 function makeLine(): ServiceIpcLine & { id: string } {
@@ -100,8 +102,23 @@ function makeLine(): ServiceIpcLine & { id: string } {
   };
 }
 
-function posted(tx: ServiceTx): boolean {
+function posted(tx: Pick<ServiceTx, 'status' | 'transactionId'>): boolean {
   return Boolean(tx.transactionId) || tx.status === 'approved';
+}
+
+/** Prefer stored % (incl. 0); else derive from amounts; never revive billing defaults for zeros. */
+function resolveStoredPct(
+  storedPct: unknown,
+  amount: unknown,
+  base: unknown,
+): number {
+  if (storedPct != null && storedPct !== '' && Number.isFinite(Number(storedPct))) {
+    return Number(storedPct);
+  }
+  const part = Number(amount) || 0;
+  const whole = Number(base) || 0;
+  if (whole > 0) return Math.round((part / whole) * 10000) / 100;
+  return 0;
 }
 
 function workflowStatusLabel(tx: Pick<ServiceTx, 'status' | 'transactionId'>, isAr: boolean): string {
@@ -345,17 +362,18 @@ export function ServiceIpcPanel({
     setEditingId(tx.id);
     setSaveMode(mode);
     previewConfirmed.current = false;
+    const base = Number(tx.amount) || 0;
     setHeader({
       supplierAccountId: tx.supplierAccountId || '',
       serviceKind: isServiceIpcKind(tx.serviceKind) ? tx.serviceKind : 'labour',
       date: tx.date || businessTodayYmd(),
       referenceNumber: tx.referenceNumber || '',
       description: tx.description || '',
-      vatPct: Number(tx.vatPct) || BILLING_DEFAULTS.VAT_PCT,
-      execGuaranteePct: Number(tx.execGuaranteePct) || BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
-      whtPct: Number(tx.whtPct) || BILLING_DEFAULTS.WHT_PCT,
-      labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
-      manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+      vatPct: resolveStoredPct(tx.vatPct, tx.vatAmount, base),
+      execGuaranteePct: resolveStoredPct(tx.execGuaranteePct, tx.execGuaranteeAmount, base),
+      whtPct: resolveStoredPct(tx.whtPct, tx.whtAmount, base),
+      labourInsurancePct: resolveStoredPct(tx.labourInsurancePct, tx.labourInsuranceAmount, base),
+      manpowerLevyPct: resolveStoredPct(tx.manpowerLevyPct, tx.manpowerLevyAmount, base),
       advancePaymentRecovery: Number(tx.advancePaymentRecovery) || 0,
     });
     const mapped = (tx.items ?? []).map((l, i) => ({
@@ -498,6 +516,8 @@ export function ServiceIpcPanel({
         vatPct: header.vatPct,
         execGuaranteePct: header.execGuaranteePct,
         whtPct: header.whtPct,
+        labourInsurancePct: header.labourInsurancePct,
+        manpowerLevyPct: header.manpowerLevyPct,
         items: lines.map((l) => ({
           contractId: l.contractId,
           projectId: l.projectId || undefined,

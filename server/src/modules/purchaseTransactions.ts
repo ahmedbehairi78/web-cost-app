@@ -117,8 +117,11 @@ async function applyWarehouseReceiptPricingFromInvoice(
 
 type IpcPayloadMeta = {
   items?: unknown[];
+  vatPct?: number;
   whtPct?: number;
   execGuaranteePct?: number;
+  labourInsurancePct?: number;
+  manpowerLevyPct?: number;
   expenseAccountId?: string;
   serviceKind?: string;
 };
@@ -134,14 +137,23 @@ function pickFields(body: Record<string, unknown>, exclude: string[]): Record<st
   return data;
 }
 
+function optionalPct(value: unknown): number | undefined {
+  if (value == null || value === '') return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function parseLinePayload(raw: unknown): IpcPayloadMeta {
   if (!raw || typeof raw !== 'object') return {};
   const obj = raw as Record<string, unknown>;
   if (Array.isArray(obj.items)) {
     return {
       items: obj.items,
-      whtPct: obj.whtPct != null ? Number(obj.whtPct) : undefined,
-      execGuaranteePct: obj.execGuaranteePct != null ? Number(obj.execGuaranteePct) : undefined,
+      vatPct: optionalPct(obj.vatPct),
+      whtPct: optionalPct(obj.whtPct),
+      execGuaranteePct: optionalPct(obj.execGuaranteePct),
+      labourInsurancePct: optionalPct(obj.labourInsurancePct),
+      manpowerLevyPct: optionalPct(obj.manpowerLevyPct),
       expenseAccountId: obj.expenseAccountId != null ? String(obj.expenseAccountId) : undefined,
       serviceKind: obj.serviceKind != null ? String(obj.serviceKind) : undefined,
     };
@@ -163,9 +175,12 @@ function serializePurchaseRow(row: {
     ...base,
     items: txType === 'ipc' || txType === SERVICE_IPC_TYPE ? lines : [],
     ...(txType === 'invoice' ? { invoiceLines: lines } : {}),
+    vatPct: parsed.vatPct,
     whtPct: parsed.whtPct,
     execGuaranteePct: parsed.execGuaranteePct,
-    expenseAccountId: parsed.expenseAccountId,
+    labourInsurancePct: parsed.labourInsurancePct,
+    manpowerLevyPct: parsed.manpowerLevyPct,
+    expenseAccountId: parsed.expenseAccountId ?? base.expenseAccountId,
     ...(parsed.serviceKind ? { serviceKind: parsed.serviceKind } : {}),
   };
 }
@@ -193,8 +208,11 @@ async function upsertLinePayload(
 
   const payload: IpcPayloadMeta = {
     items: lineSource,
+    ...(body.vatPct != null ? { vatPct: Number(body.vatPct) } : {}),
     ...(body.whtPct != null ? { whtPct: Number(body.whtPct) } : {}),
     ...(body.execGuaranteePct != null ? { execGuaranteePct: Number(body.execGuaranteePct) } : {}),
+    ...(body.labourInsurancePct != null ? { labourInsurancePct: Number(body.labourInsurancePct) } : {}),
+    ...(body.manpowerLevyPct != null ? { manpowerLevyPct: Number(body.manpowerLevyPct) } : {}),
     ...(body.expenseAccountId != null ? { expenseAccountId: String(body.expenseAccountId) } : {}),
     ...(body.serviceKind != null ? { serviceKind: String(body.serviceKind) } : {}),
   };
@@ -487,7 +505,18 @@ purchaseTransactionsRouter.post(
   '/',
   asyncHandler(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const data = pickFields(body, ['createdAt', 'updatedAt', 'items', 'invoiceLines', 'distributedLines', 'whtPct', 'execGuaranteePct']);
+    const data = pickFields(body, [
+      'createdAt',
+      'updatedAt',
+      'items',
+      'invoiceLines',
+      'distributedLines',
+      'vatPct',
+      'whtPct',
+      'execGuaranteePct',
+      'labourInsurancePct',
+      'manpowerLevyPct',
+    ]);
     data.id = String(body.id || randomUUID());
     const created = await prisma.purchaseTransaction.create({ data: data as never });
     await upsertLinePayload(String(created.id), body);
@@ -534,7 +563,19 @@ purchaseTransactionsRouter.put(
   '/:id',
   asyncHandler(async (req, res) => {
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const data = pickFields(body, ['id', 'createdAt', 'updatedAt', 'items', 'invoiceLines', 'distributedLines', 'whtPct', 'execGuaranteePct']);
+    const data = pickFields(body, [
+      'id',
+      'createdAt',
+      'updatedAt',
+      'items',
+      'invoiceLines',
+      'distributedLines',
+      'vatPct',
+      'whtPct',
+      'execGuaranteePct',
+      'labourInsurancePct',
+      'manpowerLevyPct',
+    ]);
     const updated = await prisma.purchaseTransaction.update({
       where: { id: req.params.id },
       data: data as never,

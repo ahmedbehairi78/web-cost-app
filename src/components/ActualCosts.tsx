@@ -139,8 +139,11 @@ interface PurchaseTransaction {
   description: string;
   status: 'pending' | 'approved' | 'paid' | 'draft' | 'submitted';
   items?: BillingItem[];
+  vatPct?: number;
   whtPct?: number;
   execGuaranteePct?: number;
+  labourInsurancePct?: number;
+  manpowerLevyPct?: number;
   expenseAccountId?: string;
   createdAt?: { toDate(): Date } | Date | string | null;
   transactionId?: string;
@@ -167,8 +170,14 @@ function resolveIpcWorkflowStatus(tx: PurchaseTransaction): PurchaseTransaction[
   return tx.status;
 }
 
-function safePctFromAmount(part: number, whole: number, fallback: number): number {
+function safePctFromAmount(part: number, whole: number, fallback = 0): number {
   return whole > 0 ? Math.round((part / whole) * 10000) / 100 : fallback;
+}
+
+/** Prefer explicit stored % (including 0) over amount-derived fallback. */
+function resolveIpcPct(storedPct: number | undefined | null, part: number, whole: number): number {
+  if (storedPct != null && Number.isFinite(Number(storedPct))) return Number(storedPct);
+  return safePctFromAmount(part, whole, 0);
 }
 
 interface BillingItem {
@@ -1090,8 +1099,10 @@ export function ActualCosts() {
     && editingIpcStatus === 'submitted';
 
   const populatePurchaseForm = useCallback((tx: PurchaseTransaction) => {
-    const whtPct = safePctFromAmount(Number(tx.whtAmount ?? 0), Number(tx.amount), BILLING_DEFAULTS.WHT_PCT);
-    const invoiceVatPct = safePctFromAmount(Number(tx.vatAmount ?? 0), Number(tx.amount), BILLING_DEFAULTS.VAT_PCT);
+    const base = Number(tx.amount) || 0;
+    const whtPct = resolveIpcPct(tx.whtPct, Number(tx.whtAmount ?? 0), base);
+    const vatPct = resolveIpcPct(tx.vatPct, Number(tx.vatAmount ?? 0), base);
+    const invoiceVatPct = resolveIpcPct(tx.vatPct, Number(tx.vatAmount ?? 0), base);
 
     if (tx.type === 'ipc') {
       const lineItems = Array.isArray(tx.items) && tx.items.length > 0 ? tx.items : [];
@@ -1118,11 +1129,23 @@ export function ActualCosts() {
         amount: Number(tx.amount) || 0,
         invoiceLines: [createInvoiceLineDraft()],
         invoiceVatPct: BILLING_DEFAULTS.VAT_PCT,
-        vatPct: BILLING_DEFAULTS.VAT_PCT,
-        whtPct: tx.whtPct ?? whtPct,
-        execGuaranteePct: tx.execGuaranteePct ?? safePctFromAmount(Number(tx.execGuaranteeAmount ?? 0), Number(tx.amount), 5),
-        labourInsurancePct: safePctFromAmount(Number(tx.labourInsuranceAmount ?? 0), Number(tx.amount), 0),
-        manpowerLevyPct: safePctFromAmount(Number(tx.manpowerLevyAmount ?? 0), Number(tx.amount), 0),
+        vatPct,
+        whtPct,
+        execGuaranteePct: resolveIpcPct(
+          tx.execGuaranteePct,
+          Number(tx.execGuaranteeAmount ?? 0),
+          base,
+        ),
+        labourInsurancePct: resolveIpcPct(
+          tx.labourInsurancePct,
+          Number(tx.labourInsuranceAmount ?? 0),
+          base,
+        ),
+        manpowerLevyPct: resolveIpcPct(
+          tx.manpowerLevyPct,
+          Number(tx.manpowerLevyAmount ?? 0),
+          base,
+        ),
         advancePaymentRecovery: Number(tx.advancePaymentRecovery ?? 0),
         description: tx.description || '',
         items: lineItems,
@@ -2236,8 +2259,11 @@ export function ActualCosts() {
         distributedLines: null,
         status: ipcStatusForSave,
         transactionId: activeTab === 'ipc' ? (shouldPostIpcGl ? transactionId : '') : transactionId,
+        vatPct: activeTab === 'ipc' ? formData.vatPct : undefined,
         whtPct: activeTab === 'ipc' ? formData.whtPct : undefined,
         execGuaranteePct: activeTab === 'ipc' ? formData.execGuaranteePct : undefined,
+        labourInsurancePct: activeTab === 'ipc' ? formData.labourInsurancePct : undefined,
+        manpowerLevyPct: activeTab === 'ipc' ? formData.manpowerLevyPct : undefined,
         isDeleted: false,
       };
       let purchaseId: string;
@@ -2272,7 +2298,10 @@ export function ActualCosts() {
               ? normalizedInvoiceLines.map(mapInvoiceLineForPersistence)
               : undefined,
           whtPct: formData.whtPct,
+          vatPct: activeTab === 'ipc' ? formData.vatPct : undefined,
           execGuaranteePct: activeTab === 'ipc' ? formData.execGuaranteePct : undefined,
+          labourInsurancePct: activeTab === 'ipc' ? formData.labourInsurancePct : undefined,
+          manpowerLevyPct: activeTab === 'ipc' ? formData.manpowerLevyPct : undefined,
         };
         if (activeTab === 'ipc' && ipcSaveMode === 'approve' && editingPurchaseId) {
           purchaseId = editingPurchaseId;
@@ -2292,15 +2321,21 @@ export function ActualCosts() {
       } else if (editingPurchaseId && activeTab === 'ipc') {
         await updateDoc(doc(db, 'purchase_transactions', editingPurchaseId), {
           ...purchasePayload,
+          vatPct: formData.vatPct,
           whtPct: formData.whtPct,
           execGuaranteePct: formData.execGuaranteePct,
+          labourInsurancePct: formData.labourInsurancePct,
+          manpowerLevyPct: formData.manpowerLevyPct,
         });
         purchaseId = editingPurchaseId;
       } else {
         const purchaseDocRef = await addDoc(collection(db, 'purchase_transactions'), {
           ...purchasePayload,
+          vatPct: activeTab === 'ipc' ? formData.vatPct : undefined,
           whtPct: activeTab === 'ipc' ? formData.whtPct : undefined,
           execGuaranteePct: activeTab === 'ipc' ? formData.execGuaranteePct : undefined,
+          labourInsurancePct: activeTab === 'ipc' ? formData.labourInsurancePct : undefined,
+          manpowerLevyPct: activeTab === 'ipc' ? formData.manpowerLevyPct : undefined,
           createdAt: serverTimestamp(),
         });
         purchaseId = purchaseDocRef.id;
@@ -3411,6 +3446,20 @@ export function ActualCosts() {
                 )}
 
                 <div className="grid grid-cols-2 gap-6">
+                  {activeTab === 'ipc' && (
+                    <div className="space-y-2">
+                      <label className="text-xs font-bold text-gray-400 uppercase">{t('vat')}</label>
+                      <select
+                        aria-label={t('vat')}
+                        className={inputCls}
+                        value={formData.vatPct}
+                        onChange={(e) => setFormData((p) => ({ ...p, vatPct: Number(e.target.value) }))}
+                      >
+                        <option value="0">0%</option>
+                        <option value={BILLING_DEFAULTS.VAT_PCT}>{BILLING_DEFAULTS.VAT_PCT}%</option>
+                      </select>
+                    </div>
+                  )}
                   <div className="space-y-2">
                     <label className="text-xs font-bold text-gray-400 uppercase">{t('wht_pct')}</label>
                     <select aria-label={t('wht_pct')} className={inputCls} value={formData.whtPct} onChange={e => setFormData(p => ({ ...p, whtPct: Number(e.target.value) }))}>
@@ -3460,7 +3509,7 @@ export function ActualCosts() {
                     return (
                       <>
                         <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'قيمة الأعمال' : 'Works Value'}</span><span className="font-mono">{formatNumber(worksValue)}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-500">{t('vat')} (14%)</span><span className="font-mono text-blue-400">{formatNumber(vat)}</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-gray-500">{t('vat')} ({formData.vatPct}%)</span><span className="font-mono text-blue-400">{formatNumber(vat)}</span></div>
                         <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'حجز ضمان' : 'Retention'} ({formData.execGuaranteePct}%)</span><span className="font-mono text-orange-400">-{formatNumber(exec)}</span></div>
                         <div className="flex justify-between text-sm"><span className="text-gray-500">{t('wht_amount')} ({formData.whtPct}%)</span><span className="font-mono text-red-400">-{formatNumber(wht)}</span></div>
                         <div className="flex justify-between pt-2 border-t border-gray-800 font-bold"><span>{language === 'ar' ? 'صافي المستحق' : 'Net Payable'}</span><span className="text-lg text-green-500">{formatNumber(net)}</span></div>
