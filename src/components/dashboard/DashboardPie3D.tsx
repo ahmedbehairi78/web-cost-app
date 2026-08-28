@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { cn, listKey } from '../../lib/utils';
+import { formatNumber } from '../../lib/numberLocale';
 import type { ContractProgressPieSlice } from '../../lib/dashboardMetrics';
 import {
   frontOuterWallPath,
@@ -29,6 +30,10 @@ const RX = 128;
 const RY = 56;
 const DEPTH = 36;
 const EXPLODE = 20;
+
+function formatPct(value: number): string {
+  return formatNumber(value, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
 
 export function DashboardPie3D({
   slices,
@@ -245,11 +250,11 @@ export function DashboardPie3D({
               <p className="text-gray-500 truncate text-[10px]">{tip.slice.projectName}</p>
             )}
             <p className="font-mono mt-0.5">
-              {formatMoney(tip.slice.completedValue)} · {tip.slice.sharePct}%{' '}
+              {formatMoney(tip.slice.completedValue)} · {formatPct(tip.slice.sharePct)}%{' '}
               {t('dashboard_pie_of_total')}
             </p>
             <p className="text-gray-500 mt-0.5">
-              {t('dashboard_col_progress')} {tip.slice.progressPct}%
+              {t('dashboard_col_progress')} {formatPct(tip.slice.progressPct)}%
             </p>
           </div>
         )}
@@ -289,7 +294,7 @@ export function DashboardPie3D({
                     style={{ backgroundColor: s.color }}
                   />
                   <span className="truncate flex-1 font-medium">{s.name}</span>
-                  <span className="font-mono text-gray-500 shrink-0">{s.sharePct}%</span>
+                  <span className="font-mono text-gray-500 shrink-0">{formatPct(s.sharePct)}%</span>
                 </button>
               </li>
             );

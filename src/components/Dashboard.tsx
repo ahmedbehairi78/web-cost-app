@@ -624,6 +624,16 @@ export function Dashboard() {
     fontSize: '12px',
   };
 
+  const chartTooltipFormatter = useCallback(
+    (value: number | string | null | undefined, name: string) => {
+      if (value == null || value === '') return ['—', name];
+      const n = Number(value);
+      if (!Number.isFinite(n)) return ['—', name];
+      return [formatMoney(n), name];
+    },
+    [formatMoney],
+  );
+
   const statCards = [
     {
       id: 'budget' as const,
@@ -849,7 +859,7 @@ export function Dashboard() {
                       tickFormatter={(value) => `${value / 1000}k`}
                       orientation={language === 'ar' ? 'right' : 'left'}
                     />
-                    <Tooltip contentStyle={tooltipStyle} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={chartTooltipFormatter} />
                     <Legend verticalAlign="top" height={28} iconType="circle" />
                     <Bar
                       name={t('chart_costs')}
@@ -929,7 +939,7 @@ export function Dashboard() {
                       tickFormatter={(value) => `${value / 1000}k`}
                       orientation={language === 'ar' ? 'right' : 'left'}
                     />
-                    <Tooltip contentStyle={tooltipStyle} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={chartTooltipFormatter} />
                     <Legend verticalAlign="top" height={28} iconType="circle" />
                     <Area
                       type="natural"
