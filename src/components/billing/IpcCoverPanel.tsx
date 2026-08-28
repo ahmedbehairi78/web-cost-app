@@ -181,6 +181,7 @@ export function IpcCoverPanel({
 
   const sheet = buildIpcCoverSheetModel({
     grossBasic: cover.basic.toDateValue,
+    optionalWorks: cover.optional.toDateValue,
     approvedVoWorks: cover.additional.toDateValue,
     provisionalWorks: 0,
     materialsOnSite,
@@ -197,6 +198,7 @@ export function IpcCoverPanel({
 
   const sums = contractSums ?? {
     originalContractSum: 0,
+    optionalScopeSum: 0,
     provisionalSums: 0,
     approvedVoAdditions: 0,
     approvedVoOmissions: 0,
@@ -221,8 +223,13 @@ export function IpcCoverPanel({
       <div className={cn('grid grid-cols-1 md:grid-cols-2 md:divide-x border-b', border, colSplit)}>
         <div>
           <StackRow
-            label={isAr ? 'قيمة العقد الأصلية' : 'Original Contract Sum'}
+            label={isAr ? 'قيمة العقد الأصلية (نطاق أساسي)' : 'Original Contract Sum (Basic Scope)'}
             value={moneyCell(formatMoney, sums.originalContractSum, language)}
+            theme={theme}
+          />
+          <StackRow
+            label={isAr ? 'قيمة النطاق الاختياري' : 'Optional Scope Sum'}
+            value={moneyCell(formatMoney, sums.optionalScopeSum, language)}
             theme={theme}
           />
           <StackRow
@@ -293,10 +300,19 @@ export function IpcCoverPanel({
         <StackRow
           label={
             isAr
-              ? 'إجمالي قيمة الأعمال المنفذة حتى نهاية فترة المستخلص'
-              : 'Gross Value of Works Executed To End of Invoice Period'
+              ? 'إجمالي قيمة الأعمال المنفذة (نطاق أساسي) حتى نهاية فترة المستخلص'
+              : 'Gross Value of Basic-Scope Works Executed To End of Invoice Period'
           }
           value={moneyCell(formatMoney, sheet.grossBasic, language)}
+          theme={theme}
+        />
+        <StackRow
+          label={
+            isAr
+              ? 'قيمة أعمال النطاق الاختياري حتى نهاية الفترة'
+              : 'Value of Optional-Scope Works Executed To End of Invoice Period'
+          }
+          value={moneyCell(formatMoney, sheet.optionalWorks, language)}
           theme={theme}
         />
         <StackRow

@@ -252,6 +252,8 @@ export async function importFirestoreBackupToPostgres(
       continue;
     }
     const rates = boqRateFieldsFromSource(doc);
+    const scopeRaw = str(doc.scopeType ?? doc.scope_type ?? 'basic').toLowerCase();
+    const scopeType = scopeRaw === 'optional' || scopeRaw.includes('اختيار') ? 'optional' : 'basic';
     await db.boqItem.upsert({
       where: { id },
       create: {
@@ -277,6 +279,7 @@ export async function importFirestoreBackupToPostgres(
         tenderAmount: dec(doc.tenderAmount),
         expectedDuration: doc.expectedDuration != null ? Number(doc.expectedDuration) : null,
         startDate: nullIfEmpty(doc.startDate),
+        scopeType,
         isDeleted: bool(doc.isDeleted),
       },
       update: {
@@ -289,6 +292,7 @@ export async function importFirestoreBackupToPostgres(
         rateDirect: dec(rates.rateDirect),
         rateOverheadPct: dec(rates.rateOverheadPct),
         rateProfitPct: dec(rates.rateProfitPct),
+        scopeType,
       },
     });
     bump('boq_items');

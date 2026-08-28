@@ -7,6 +7,7 @@ import { Plus, Download, Calculator, X, Loader2, Printer, ChevronDown, ChevronUp
 import { cn, roundMoney2 } from '../../lib/utils';
 import { IPC_KIND, type IpcKind } from '../../constants/billingDefaults';
 import { buildIpcCoverWorksSplit, ipcLineToDateAmount } from '../../lib/ipcCoverFromQtyList';
+import { buildBoqScopeByItemId, sumBoqContractScopeTotals } from '../../lib/boqScopeType';
 import { computeIpcBillingAmounts } from '../../lib/ipcBillingAmounts';
 import { buildIpcCoverSchedule } from '../../lib/ipcCoverSchedule';
 import { buildIpcCoverContractSums } from '../../lib/ipcCoverContractSums';
@@ -24,6 +25,7 @@ const ipcSchema = z.object({
 
 interface BOQItem {
   id: string;
+  contractId?: string;
   chapterCode: string;
   chapterName: string;
   workTypeCode: string;
@@ -34,6 +36,7 @@ interface BOQItem {
   unit: string;
   tenderQty: number;
   unitRateTotal: number;
+  scopeType?: string;
 }
 
 interface BillingItem {
@@ -126,6 +129,8 @@ interface Props {
   voCreatedBoqItemIds?: ReadonlySet<string>;
   /** Approved VOs for Cover-JLL contract sums. */
   approvedVariationOrders?: VariationOrder[];
+  /** Contract BOQ rows — scope type for cover split. */
+  boqItems?: BOQItem[];
   /** Approved MOS total claimed (materials on site). */
   materialsOnSiteTotal?: number;
   /** Σ netPayable of prior approved/paid IPCs for cover. */
@@ -148,6 +153,7 @@ export function IPCFormModal({
   boqExceedCount = 0,
   voCreatedBoqItemIds,
   approvedVariationOrders = [],
+  boqItems = [],
   materialsOnSiteTotal = 0,
   previousPayments = 0,
   priorAdvanceRecoveryToDate = 0,
@@ -155,10 +161,11 @@ export function IPCFormModal({
 }: Props) {
   const { t, formatMoney } = useLanguage();
   const voIds = voCreatedBoqItemIds ?? EMPTY_VO_IDS;
+  const boqScopeByItemId = useMemo(() => buildBoqScopeByItemId(boqItems), [boqItems]);
   const [showQtyItems, setShowQtyItems] = useState(false);
   const coverWorks = useMemo(
-    () => buildIpcCoverWorksSplit(formData.items, voIds),
-    [formData.items, voIds],
+    () => buildIpcCoverWorksSplit(formData.items, voIds, boqScopeByItemId),
+    [formData.items, voIds, boqScopeByItemId],
   );
   const selectedContract = contracts.find((c) => c.id === selectedContractId);
   const coverSchedule = useMemo(
@@ -170,14 +177,21 @@ export function IPCFormModal({
       }),
     [selectedContract?.startDate, selectedContract?.endDate, language],
   );
-  const coverContractSums = useMemo(
-    () =>
-      buildIpcCoverContractSums({
-        originalContractSum: selectedContract?.contractValue,
-        approvedVos: approvedVariationOrders,
-      }),
-    [selectedContract?.contractValue, approvedVariationOrders],
-  );
+  const coverContractSums = useMemo(() => {
+    const rows = boqItems.filter((b) => b.contractId === selectedContractId);
+    const totals = sumBoqContractScopeTotals(rows, voIds);
+    return buildIpcCoverContractSums({
+      originalContractSum: totals.basicSum || selectedContract?.contractValue,
+      optionalScopeSum: totals.optionalSum,
+      approvedVos: approvedVariationOrders,
+    });
+  }, [
+    boqItems,
+    selectedContractId,
+    selectedContract?.contractValue,
+    approvedVariationOrders,
+    voIds,
+  ]);
   const { formState: { errors }, trigger, setValue, reset } = useForm({
     resolver: zodResolver(ipcSchema),
     defaultValues: { billingNumber: formData.billingNumber, date: formData.date },
@@ -201,6 +215,7 @@ export function IPCFormModal({
       computeIpcBillingAmounts({
         items: formData.items,
         voCreatedBoqItemIds: voIds,
+        boqScopeByItemId,
         materialsOnSite: materialsOnSiteTotal,
         rates: {
           vatPct: formData.vatPct,
@@ -231,6 +246,7 @@ export function IPCFormModal({
       formData.advancePaymentRecovery,
       formData.backChargeAmount,
       voIds,
+      boqScopeByItemId,
       materialsOnSiteTotal,
       previousPayments,
       priorAdvanceRecoveryToDate,
@@ -583,6 +599,9 @@ export function IPCFormModal({
                               const rateNum = Number(item.rate);
                               const costLinked = boqItemIdsWithCost?.has(item.boqItemId);
                               const isVoAdditional = voIds.has(item.boqItemId);
+                              const isOptionalScope =
+                                !isVoAdditional &&
+                                boqScopeByItemId.get(item.boqItemId) === 'optional';
                               return (
                                 <tr
                                   key={`ipc-row-${chapterIdx}-${rowIdx}-${item.boqItemId || item.itemCode || 'x'}`}
@@ -606,6 +625,16 @@ export function IPCFormModal({
                                           title={language === 'ar' ? 'بند أمر تغيير' : 'Variation order item'}
                                         >
                                           {language === 'ar' ? 'إضافي' : 'VO'}
+                                        </span>
+                                      ) : isOptionalScope ? (
+                                        <span
+                                          className={cn(
+                                            'shrink-0 rounded px-1 py-px text-[7px] font-bold uppercase',
+                                            theme === 'dark' ? 'bg-amber-600/40 text-amber-200' : 'bg-amber-100 text-amber-800',
+                                          )}
+                                          title={language === 'ar' ? 'نطاق اختياري' : 'Optional scope'}
+                                        >
+                                          {language === 'ar' ? 'اختياري' : 'Opt'}
                                         </span>
                                       ) : null}
                                       {costLinked ? (

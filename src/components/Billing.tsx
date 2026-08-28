@@ -50,6 +50,7 @@ import {
   collectVoCreatedBoqItemIds,
   ipcLineToDateAmount,
 } from '../lib/ipcCoverFromQtyList';
+import { buildBoqScopeByItemId, sumBoqContractScopeTotals } from '../lib/boqScopeType';
 import type { VariationOrder } from '../types';
 import { useIpcPrintPreview } from '../hooks/useIpcPrintPreview';
 import { useMosPrintPreview } from '../hooks/useMosPrintPreview';
@@ -624,6 +625,21 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     [boqItemsRaw],
   );
 
+  const boqScopeByItemId = useMemo(() => buildBoqScopeByItemId(boqItems), [boqItems]);
+
+  const resolveCoverContractSums = useCallback(
+    (contractId: string, contractValue?: number | null) => {
+      const rows = boqItems.filter((b) => b.contractId === contractId);
+      const totals = sumBoqContractScopeTotals(rows, voCreatedBoqItemIds);
+      return buildIpcCoverContractSums({
+        originalContractSum: totals.basicSum || contractValue,
+        optionalScopeSum: totals.optionalSum,
+        approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
+      });
+    },
+    [boqItems, voCreatedBoqItemIds, apiApprovedVos],
+  );
+
   const hasBlockingFinalIpc = useMemo(
     () => billings.some((b) => b.ipcKind === IPC_KIND.FINAL && !b.isDeleted),
     [billings],
@@ -802,6 +818,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     const amounts = computeIpcBillingAmounts({
       items: formData.items,
       voCreatedBoqItemIds,
+      boqScopeByItemId,
       materialsOnSite: materialsOnSiteTotal,
       rates: {
         vatPct: formData.vatPct,
@@ -847,6 +864,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     formData.advancePaymentRecovery,
     materialsOnSiteTotal,
     voCreatedBoqItemIds,
+    boqScopeByItemId,
     previousPaymentsTotal,
     priorCoverToDate,
   ]);
@@ -1415,16 +1433,13 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const handlePrintIPC = (ipc: BillingIPC) => {
     const project = projects?.find((p) => p.id === ipc.projectId);
     const contract = contracts.find((c) => c.id === ipc.contractId);
-    const coverWorks = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds);
+    const coverWorks = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds, boqScopeByItemId);
     const coverSchedule = buildIpcCoverSchedule({
       startDate: contract?.startDate,
       endDate: contract?.endDate,
       language,
     });
-    const coverContractSums = buildIpcCoverContractSums({
-      originalContractSum: contract?.contractValue,
-      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
-    });
+    const coverContractSums = resolveCoverContractSums(ipc.contractId, contract?.contractValue);
     const materialsOnSite = mosCertificates
       .filter((m) => m.status === 'approved' && m.contractId === ipc.contractId)
       .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
@@ -1482,16 +1497,13 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const handlePrintIPCCover = (ipc: BillingIPC) => {
     const project = projects?.find((p) => p.id === ipc.projectId);
     const contract = contracts.find((c) => c.id === ipc.contractId);
-    const coverWorks = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds);
+    const coverWorks = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds, boqScopeByItemId);
     const coverSchedule = buildIpcCoverSchedule({
       startDate: contract?.startDate,
       endDate: contract?.endDate,
       language,
     });
-    const coverContractSums = buildIpcCoverContractSums({
-      originalContractSum: contract?.contractValue,
-      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
-    });
+    const coverContractSums = resolveCoverContractSums(ipc.contractId, contract?.contractValue);
     const materialsOnSite = mosCertificates
       .filter((m) => m.status === 'approved' && m.contractId === ipc.contractId)
       .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
@@ -1553,16 +1565,13 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     const contract = contracts.find((c) => c.id === selectedContractId);
     const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
       calculateDeductions;
-    const coverWorks = buildIpcCoverWorksSplit(formData.items, voCreatedBoqItemIds);
+    const coverWorks = buildIpcCoverWorksSplit(formData.items, voCreatedBoqItemIds, boqScopeByItemId);
     const coverSchedule = buildIpcCoverSchedule({
       startDate: contract?.startDate,
       endDate: contract?.endDate,
       language,
     });
-    const coverContractSums = buildIpcCoverContractSums({
-      originalContractSum: contract?.contractValue,
-      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
-    });
+    const coverContractSums = resolveCoverContractSums(ipc.contractId, contract?.contractValue);
     const data = buildBillingIpcPrintData({
       ipcKind: formData.ipcKind,
       billingNumber: formData.billingNumber || editingIPC.billingNumber,
@@ -1615,16 +1624,13 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     const contract = contracts.find((c) => c.id === selectedContractId);
     const { vat, exec, wht, insurance, levy, performanceSecurity, syndicateStamp, backCharge, advance, net } =
       calculateDeductions;
-    const coverWorks = buildIpcCoverWorksSplit(formData.items, voCreatedBoqItemIds);
+    const coverWorks = buildIpcCoverWorksSplit(formData.items, voCreatedBoqItemIds, boqScopeByItemId);
     const coverSchedule = buildIpcCoverSchedule({
       startDate: contract?.startDate,
       endDate: contract?.endDate,
       language,
     });
-    const coverContractSums = buildIpcCoverContractSums({
-      originalContractSum: contract?.contractValue,
-      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
-    });
+    const coverContractSums = resolveCoverContractSums(ipc.contractId, contract?.contractValue);
     const data = buildBillingIpcPrintData({
       ipcKind: formData.ipcKind,
       billingNumber: formData.billingNumber || editingIPC.billingNumber,
@@ -1851,7 +1857,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
   const renderIpcDetail = (ipc: BillingIPC) => {
     const printItems = mapToIpcPrintItems(ipc.items || []);
     const chapters = groupIpcItemsByChapter(printItems, language as 'ar' | 'en');
-    const coverSplit = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds);
+    const coverSplit = buildIpcCoverWorksSplit(ipc.items || [], voCreatedBoqItemIds, boqScopeByItemId);
     const contract = contracts.find((c) => c.id === ipc.contractId);
     const coverSchedule = buildIpcCoverSchedule({
       startDate: contract?.startDate,
@@ -1861,10 +1867,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     const previousPayments = billings
       .filter((b) => (b.status === 'approved' || b.status === 'paid') && b.id !== ipc.id)
       .reduce((sum, b) => sum + Number(b.netPayable || 0), 0);
-    const coverContractSums = buildIpcCoverContractSums({
-      originalContractSum: contract?.contractValue,
-      approvedVos: isLocalBackend ? (apiApprovedVos ?? []) : [],
-    });
+    const coverContractSums = resolveCoverContractSums(ipc.contractId, contract?.contractValue);
     const materialsOnSite = mosCertificates
       .filter((m) => m.status === 'approved' && m.contractId === ipc.contractId)
       .reduce((s, m) => s + Number(m.totalClaimed || 0), 0);
@@ -2415,6 +2418,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
           boqExceedCount={ipcBoqExceedRows.length}
           voCreatedBoqItemIds={voCreatedBoqItemIds}
           approvedVariationOrders={isLocalBackend ? (apiApprovedVos ?? []) : []}
+          boqItems={boqItems}
           materialsOnSiteTotal={materialsOnSiteTotal}
           previousPayments={previousPaymentsTotal}
           priorAdvanceRecoveryToDate={priorCoverToDate.priorAdvance}

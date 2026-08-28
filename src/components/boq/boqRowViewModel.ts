@@ -1,4 +1,5 @@
 import { normalizeDate } from '../../lib/utils';
+import { type BoqScopeType, boqScopeTypeLabel, normalizeBoqScopeType } from '../../lib/boqScopeType';
 
 export type BoqWorkStatus = 'done' | 'not_started' | 'late' | 'running' | 'none';
 
@@ -27,6 +28,8 @@ export type BoqRowViewModel = {
   rateProfitPct: number;
   unitRateTotal: number;
   tenderAmount: number;
+  scopeType: BoqScopeType;
+  scopeLabel: string;
   projectId: string;
   contractId: string;
   actualConsumed: number;
@@ -55,6 +58,7 @@ type BoqRowSource = {
   tenderAmount?: number;
   startDate?: string;
   expectedDuration?: number;
+  scopeType?: unknown;
 };
 
 export function buildBoqRowViewModel(
@@ -62,6 +66,7 @@ export function buildBoqRowViewModel(
   index: number,
   progressQty: number,
   locale: string,
+  language: string,
   now: Date,
   actualConsumed: number,
   inventoryBalance: number | null,
@@ -92,6 +97,8 @@ export function buildBoqRowViewModel(
     else status = 'running';
   }
 
+  const scopeType = normalizeBoqScopeType(item.scopeType);
+
   return {
     id: item.id,
     index,
@@ -117,6 +124,8 @@ export function buildBoqRowViewModel(
     rateProfitPct: Number(item.rateProfitPct ?? 0),
     unitRateTotal: Number(item.unitRateTotal ?? 0),
     tenderAmount: Number(item.tenderAmount ?? 0),
+    scopeType,
+    scopeLabel: boqScopeTypeLabel(scopeType, language),
     projectId: item.projectId || '',
     contractId: item.contractId || '',
     actualConsumed,

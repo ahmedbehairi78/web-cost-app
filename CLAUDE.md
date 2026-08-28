@@ -675,6 +675,14 @@ Shared helpers at top of file: `INVENTORY127_AGG_CODE` (= `PROJECT_WAREHOUSE_PAR
 
 **Dev:** Tab sets **`needTx = false`** (no GL listener). **`404`** on this route after adding server code usually means **stale API on :3001** (`EADDRINUSE` during `dev:local`) — kill the old process and restart `npm run local:api`.
 
+## BOQ — Scope type (basic / optional) — 2026-08-29
+
+- **`boq_items.scope_type`** (`scopeType` on API): **`basic`** (default) | **`optional`**. Migration **`20260829120000_boq_item_scope_type`**.
+- **UI:** `BOQItemFormModal` dropdown · table column **`boq_scope_type`** · header/footer splits (**`sumBoqContractScopeTotals`** in `src/lib/boqScopeType.ts`).
+- **Excel:** column **`نوع النطاق`** on export/import (`parseBoqScopeTypeFromImport` — أساسي/اختياري or basic/optional).
+- **IPC Cover-JLL:** works split into **basic · optional · VO additional** (`buildIpcCoverWorksSplit`); contract sums include **`optionalScopeSum`** (`buildIpcCoverContractSums`). VO-created ids always **additional** regardless of scope.
+- **Tests:** `npm run test -- src/lib/boqScopeType.test.ts src/lib/ipcCoverFromQtyList.test.ts src/lib/ipcCoverContractSums.test.ts`
+
 ## BOQ — Rate breakdown persistence (Postgres) — 2026-06-28
 
 - **`boq_items`** stores **`rateMaterials` · `rateLabour` · `rateEquipment` · `rateDirect` · `rateOverheadPct` · `rateProfitPct`** (migration `20260628120000_boq_item_rate_breakdown`).

@@ -124,6 +124,18 @@ function BoqItemRowInner({
           {row.description}
         </div>
       </td>
+      <td className="p-4 text-[10px]">
+        <span
+          className={cn(
+            'inline-flex rounded-full px-2 py-0.5 font-bold',
+            row.scopeType === 'optional'
+              ? 'bg-amber-500/15 text-amber-600'
+              : 'bg-emerald-500/10 text-emerald-600',
+          )}
+        >
+          {row.scopeLabel}
+        </span>
+      </td>
       <td className="p-4 text-xs text-gray-400">{row.unit}</td>
       <td className="p-4 text-xs font-bold">{formatNumber(row.tenderQty)}</td>
       <td className="p-4 text-[10px] font-mono text-gray-400">{row.startDateKey || '-'}</td>

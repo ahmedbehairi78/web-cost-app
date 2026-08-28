@@ -199,6 +199,7 @@ model BoqItem {
   rateProfitPct    Decimal  @default(12) @map("rate_profit_pct") @db.Decimal(8, 2)
   unitRateTotal    Decimal  @default(0) @map("unit_rate_total") @db.Decimal(18, 3)
   tenderAmount     Decimal  @default(0) @map("tender_amount") @db.Decimal(18, 3)
+  scopeType        String   @default("basic") @map("scope_type")
   expectedDuration Int?     @map("expected_duration")
   startDate        String?  @map("start_date")
   isDeleted        Boolean  @default(false) @map("is_deleted")

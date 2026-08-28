@@ -15,10 +15,12 @@ import {
   type IpcCoverSheetRates,
 } from './ipcCoverSheet';
 import { roundMoney } from './money';
+import type { BoqScopeType } from './boqScopeType';
 
 export type IpcBillingAmountsInput = {
   items: IpcCoverQtyLine[];
   voCreatedBoqItemIds?: ReadonlySet<string>;
+  boqScopeByItemId?: ReadonlyMap<string, BoqScopeType>;
   materialsOnSite?: number;
   priceAdjustment?: number;
   rates: Partial<IpcCoverSheetRates>;
@@ -76,12 +78,13 @@ export function computeIpcBillingAmounts(input: IpcBillingAmountsInput): IpcBill
   const backChargeToDate = roundMoney(Number(input.backChargeAmount || 0));
   const previousPayments = roundMoney(Number(input.previousPayments || 0));
 
-  const split = buildIpcCoverWorksSplit(input.items, voIds);
+  const split = buildIpcCoverWorksSplit(input.items, voIds, input.boqScopeByItemId);
   const periodWorksInclVat = split.periodWorksTotal;
   const toDateWorksInclVat = split.toDateWorksTotal;
 
   const cover = buildIpcCoverSheetModel({
     grossBasic: split.basic.toDateValue,
+    optionalWorks: split.optional.toDateValue,
     approvedVoWorks: split.additional.toDateValue,
     provisionalWorks: 0,
     materialsOnSite: mos,

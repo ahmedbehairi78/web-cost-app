@@ -6,6 +6,8 @@ import type { VariationOrder } from '../types';
 
 export type IpcCoverContractSums = {
   originalContractSum: number;
+  /** Optional-scope BOQ total (non-VO). */
+  optionalScopeSum: number;
   provisionalSums: number;
   approvedVoAdditions: number;
   approvedVoOmissions: number;
@@ -39,15 +41,18 @@ export function sumApprovedVoAdditionsOmissions(
 
 export function buildIpcCoverContractSums(input: {
   originalContractSum?: number | null;
+  optionalScopeSum?: number | null;
   provisionalSums?: number | null;
   approvedVos?: Array<Pick<VariationOrder, 'status' | 'totalValue' | 'lines'>>;
 }): IpcCoverContractSums {
   const original = roundMoney(Number(input.originalContractSum || 0));
+  const optionalScope = roundMoney(Number(input.optionalScopeSum || 0));
   const provisional = roundMoney(Number(input.provisionalSums || 0));
   const { additions, omissions } = sumApprovedVoAdditionsOmissions(input.approvedVos ?? []);
-  const adjusted = roundMoney(original + provisional + additions - omissions);
+  const adjusted = roundMoney(original + optionalScope + provisional + additions - omissions);
   return {
     originalContractSum: original,
+    optionalScopeSum: optionalScope,
     provisionalSums: provisional,
     approvedVoAdditions: additions,
     approvedVoOmissions: omissions,

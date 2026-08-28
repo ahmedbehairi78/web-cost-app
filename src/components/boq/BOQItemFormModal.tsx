@@ -8,6 +8,7 @@ import { useOfflineUserId } from '../../hooks/useOfflineUserId';
 import { useFormDraftAutosave } from '../../hooks/useFormDraftAutosave';
 import { FORM_DRAFT_KEYS } from '../../lib/offline/formDraftKeys';
 import { FormDraftRestoreBanner } from '../offline/FormDraftRestoreBanner';
+import { type BoqScopeType, BOQ_SCOPE_BASIC, BOQ_SCOPE_OPTIONAL } from '../../lib/boqScopeType';
 
 interface ExistingItem {
   chapterCode: string;
@@ -35,6 +36,7 @@ export interface BoqItemFormData {
   rateProfitPct: number;
   startDate: string;
   expectedDuration: number;
+  scopeType: BoqScopeType;
 }
 
 export const EMPTY_BOQ_FORM: BoqItemFormData = {
@@ -54,6 +56,7 @@ export const EMPTY_BOQ_FORM: BoqItemFormData = {
   rateProfitPct: 12,
   startDate: '',
   expectedDuration: 0,
+  scopeType: BOQ_SCOPE_BASIC,
 };
 
 interface Props {
@@ -622,6 +625,19 @@ export function BOQItemFormModal({
                           ))}
                         </datalist>
                         {errors.unit && <p className="text-[10px] text-red-500">{errors.unit}</p>}
+                      </div>
+                      <div className="space-y-1">
+                        <label className={labelCls}>
+                          {isAr ? 'نوع النطاق' : 'Scope type'}
+                        </label>
+                        <select
+                          className={inputCls}
+                          value={formData.scopeType}
+                          onChange={(e) => set('scopeType', e.target.value as BoqScopeType)}
+                        >
+                          <option value={BOQ_SCOPE_BASIC}>{isAr ? 'أساسي' : 'Basic'}</option>
+                          <option value={BOQ_SCOPE_OPTIONAL}>{isAr ? 'اختياري' : 'Optional'}</option>
+                        </select>
                       </div>
                     </div>
                     <div className="space-y-1">

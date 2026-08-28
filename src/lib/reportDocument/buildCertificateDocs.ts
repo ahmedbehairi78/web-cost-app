@@ -91,8 +91,12 @@ export function buildIpcCertificateDocument(
 
   const contractSumItems: ReportDocKeyValueItem[] = [
     {
-      label: isAr ? 'قيمة العقد الأصلية' : 'Original Contract Sum',
+      label: isAr ? 'قيمة العقد الأصلية (نطاق أساسي)' : 'Original Contract Sum (Basic Scope)',
       value: formatMoney(sums?.originalContractSum ?? 0),
+    },
+    {
+      label: isAr ? 'قيمة النطاق الاختياري' : 'Optional Scope Sum',
+      value: formatMoney(sums?.optionalScopeSum ?? 0),
     },
     {
       label: isAr
@@ -149,6 +153,7 @@ export function buildIpcCertificateDocument(
   });
   const sheet = buildIpcCoverSheetModel({
     grossBasic: cover?.basic.toDateValue ?? 0,
+    optionalWorks: cover?.optional.toDateValue ?? 0,
     provisionalWorks: 0,
     approvedVoWorks: cover?.additional.toDateValue ?? 0,
     materialsOnSite: mos,
@@ -161,6 +166,7 @@ export function buildIpcCertificateDocument(
   });
   const {
     grossBasic,
+    optionalWorks,
     provisionalWorks,
     approvedVoWorks,
     materialsOnSite: mosLine,
@@ -173,9 +179,15 @@ export function buildIpcCertificateDocument(
   const coverWorksItems: ReportDocKeyValueItem[] = [
     {
       label: isAr
-        ? 'إجمالي قيمة الأعمال المنفذة حتى نهاية فترة المستخلص'
-        : 'Gross Value of Works Executed To End of Invoice Period',
+        ? 'إجمالي قيمة الأعمال المنفذة (نطاق أساسي) حتى نهاية فترة المستخلص'
+        : 'Gross Value of Basic-Scope Works Executed To End of Invoice Period',
       value: formatMoney(grossBasic),
+    },
+    {
+      label: isAr
+        ? 'قيمة أعمال النطاق الاختياري حتى نهاية الفترة'
+        : 'Value of Optional-Scope Works Executed To End of Invoice Period',
+      value: formatMoney(optionalWorks),
     },
     {
       label: isAr

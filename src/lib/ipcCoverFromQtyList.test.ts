@@ -39,6 +39,17 @@ describe('classifyIpcQtyLineKind', () => {
     expect(classifyIpcQtyLineKind('vo-a', set)).toBe('additional');
     expect(classifyIpcQtyLineKind('orig-1', set)).toBe('basic');
   });
+
+  it('marks optional-scope BOQ lines as optional (not VO)', () => {
+    const scope = new Map<string, 'basic' | 'optional'>([['opt-1', 'optional']]);
+    expect(classifyIpcQtyLineKind('opt-1', new Set(), scope)).toBe('optional');
+    expect(classifyIpcQtyLineKind('orig-1', new Set(), scope)).toBe('basic');
+  });
+
+  it('VO-created id wins over optional scope', () => {
+    const scope = new Map<string, 'basic' | 'optional'>([['vo-a', 'optional']]);
+    expect(classifyIpcQtyLineKind('vo-a', new Set(['vo-a']), scope)).toBe('additional');
+  });
 });
 
 describe('buildIpcCoverWorksSplit', () => {
@@ -57,6 +68,11 @@ describe('buildIpcCoverWorksSplit', () => {
       currentValue: 200,
       toDateValue: 1200,
     });
+    expect(split.optional).toEqual({
+      previousValue: 0,
+      currentValue: 0,
+      toDateValue: 0,
+    });
     expect(split.additional).toEqual({
       previousValue: 200,
       currentValue: 50,
@@ -64,6 +80,24 @@ describe('buildIpcCoverWorksSplit', () => {
     });
     expect(split.periodWorksTotal).toBe(250);
     expect(split.toDateWorksTotal).toBe(1450);
+  });
+
+  it('splits optional-scope lines separately from basic', () => {
+    const scope = new Map<string, 'basic' | 'optional'>([
+      ['opt', 'optional'],
+      ['base', 'basic'],
+    ]);
+    const split = buildIpcCoverWorksSplit(
+      [
+        { boqItemId: 'base', rate: 10, previousQty: 1, currentQty: 1, amount: 20 },
+        { boqItemId: 'opt', rate: 5, previousQty: 2, currentQty: 1, amount: 15 },
+      ],
+      new Set(),
+      scope,
+    );
+    expect(split.basic).toEqual({ previousValue: 10, currentValue: 10, toDateValue: 20 });
+    expect(split.optional).toEqual({ previousValue: 10, currentValue: 5, toDateValue: 15 });
+    expect(split.additional).toEqual({ previousValue: 0, currentValue: 0, toDateValue: 0 });
   });
 
   it('uses currentQty × rate even when amount wrongly stores totalQty × rate', () => {

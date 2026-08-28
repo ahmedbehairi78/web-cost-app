@@ -21,8 +21,10 @@ export type IpcCoverSheetRates = {
 };
 
 export type IpcCoverSheetInput = {
-  /** To-date basic works (qty×rate, VAT-inclusive). */
+  /** To-date basic-scope works (qty×rate, VAT-inclusive). */
   grossBasic: number;
+  /** To-date optional-scope works (non-VO). */
+  optionalWorks?: number;
   approvedVoWorks?: number;
   provisionalWorks?: number;
   materialsOnSite?: number;
@@ -52,6 +54,7 @@ export type IpcCoverSheetDeduction = {
 export type IpcCoverSheetModel = {
   vatPct: number;
   grossBasic: number;
+  optionalWorks: number;
   provisionalWorks: number;
   approvedVoWorks: number;
   materialsOnSite: number;
@@ -91,13 +94,14 @@ export function buildIpcCoverSheetModel(input: IpcCoverSheetInput): IpcCoverShee
   const rates = input.rates;
   const workDone = buildIpcCoverWorkDoneBlock({
     grossBasic: input.grossBasic,
+    optionalWorks: input.optionalWorks,
     provisionalWorks: input.provisionalWorks,
     approvedVoWorks: input.approvedVoWorks,
     materialsOnSite: input.materialsOnSite,
     priceAdjustment: input.priceAdjustment,
     vatPct: rates.vatPct,
   });
-  const { subTotal, materialsOnSite: mos } = workDone;
+  const { subTotal, materialsOnSite: mos, optionalWorks } = workDone;
   const whtBase = coverWhtBaseExVat(subTotal, mos, rates.vatPct);
   const whtAmount = coverWhtAmount(subTotal, mos, rates.vatPct, rates.whtPct);
 
@@ -180,6 +184,7 @@ export function buildIpcCoverSheetModel(input: IpcCoverSheetInput): IpcCoverShee
   return {
     vatPct: workDone.vatPct,
     grossBasic: workDone.grossBasic,
+    optionalWorks,
     provisionalWorks: workDone.provisionalWorks,
     approvedVoWorks: workDone.approvedVoWorks,
     materialsOnSite: workDone.materialsOnSite,

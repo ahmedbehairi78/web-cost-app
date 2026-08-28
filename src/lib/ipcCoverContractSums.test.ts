@@ -24,9 +24,10 @@ describe('sumApprovedVoAdditionsOmissions', () => {
 });
 
 describe('buildIpcCoverContractSums', () => {
-  it('computes adjusted = original + provisional + additions − omissions', () => {
+  it('computes adjusted = original + optional + provisional + additions − omissions', () => {
     const sums = buildIpcCoverContractSums({
       originalContractSum: 1000,
+      optionalScopeSum: 150,
       provisionalSums: 100,
       approvedVos: [
         {
@@ -36,7 +37,8 @@ describe('buildIpcCoverContractSums', () => {
         },
       ],
     });
-    expect(sums.adjustedContractSum).toBe(1150);
+    expect(sums.optionalScopeSum).toBe(150);
+    expect(sums.adjustedContractSum).toBe(1300);
     expect(sums.totalCaiValues).toBe(100);
   });
 });

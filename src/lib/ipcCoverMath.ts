@@ -2,8 +2,10 @@ import { BILLING_DEFAULTS } from '../constants/billingDefaults';
 import { roundMoney } from './money';
 
 export type IpcCoverWorkDoneInput = {
-  /** To-date basic works — BOQ rates are VAT-inclusive (do not uplift again). */
+  /** To-date basic-scope works — BOQ rates are VAT-inclusive (do not uplift again). */
   grossBasic: number;
+  /** To-date optional-scope works (non-VO). */
+  optionalWorks?: number;
   provisionalWorks?: number;
   approvedVoWorks?: number;
   materialsOnSite?: number;
@@ -20,6 +22,7 @@ export type IpcCoverWorkDoneInput = {
 export function buildIpcCoverWorkDoneBlock(input: IpcCoverWorkDoneInput): {
   vatPct: number;
   grossBasic: number;
+  optionalWorks: number;
   provisionalWorks: number;
   approvedVoWorks: number;
   materialsOnSite: number;
@@ -28,16 +31,23 @@ export function buildIpcCoverWorkDoneBlock(input: IpcCoverWorkDoneInput): {
 } {
   const vatPct = Number(input.vatPct ?? BILLING_DEFAULTS.VAT_PCT);
   const grossBasic = roundMoney(Number(input.grossBasic || 0));
+  const optionalWorks = roundMoney(Number(input.optionalWorks || 0));
   const provisionalWorks = roundMoney(Number(input.provisionalWorks || 0));
   const approvedVoWorks = roundMoney(Number(input.approvedVoWorks || 0));
   const priceAdjustment = roundMoney(Number(input.priceAdjustment || 0));
   const materialsOnSite = roundMoney(Number(input.materialsOnSite || 0));
   const subTotal = roundMoney(
-    grossBasic + provisionalWorks + approvedVoWorks + materialsOnSite + priceAdjustment,
+    grossBasic +
+      optionalWorks +
+      provisionalWorks +
+      approvedVoWorks +
+      materialsOnSite +
+      priceAdjustment,
   );
   return {
     vatPct,
     grossBasic,
+    optionalWorks,
     provisionalWorks,
     approvedVoWorks,
     materialsOnSite,

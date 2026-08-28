@@ -1,10 +1,12 @@
 /**
  * IPC cover aggregates from a single quantities list (same rows as the IPC form).
- * Basic = original contract BOQ lines; Additional = VO-created BOQ lines.
+ * Basic = original contract BOQ lines (primary scope); Optional = optional-scope lines;
+ * Additional = VO-created BOQ lines.
  */
 import { roundMoney } from './money';
+import { type BoqScopeType, BOQ_SCOPE_OPTIONAL, normalizeBoqScopeType } from './boqScopeType';
 
-export type IpcQtyLineKind = 'basic' | 'additional';
+export type IpcQtyLineKind = 'basic' | 'optional' | 'additional';
 
 export type IpcCoverQtyLine = {
   boqItemId: string;
@@ -23,6 +25,7 @@ export type IpcCoverWorkBucket = {
 
 export type IpcCoverWorksSplit = {
   basic: IpcCoverWorkBucket;
+  optional: IpcCoverWorkBucket;
   additional: IpcCoverWorkBucket;
   /** previous + current for all lines (should match worksValueExVat when amount = current only). */
   periodWorksTotal: number;
@@ -51,9 +54,14 @@ export function collectVoCreatedBoqItemIds(
 export function classifyIpcQtyLineKind(
   boqItemId: string,
   voCreatedBoqItemIds: ReadonlySet<string>,
+  boqScopeByItemId?: ReadonlyMap<string, BoqScopeType>,
 ): IpcQtyLineKind {
   const id = String(boqItemId || '').trim();
   if (id && voCreatedBoqItemIds.has(id)) return 'additional';
+  const scope = boqScopeByItemId?.get(id);
+  if (scope === BOQ_SCOPE_OPTIONAL || normalizeBoqScopeType(scope) === BOQ_SCOPE_OPTIONAL) {
+    return 'optional';
+  }
   return 'basic';
 }
 
@@ -91,23 +99,24 @@ function emptyBucket(): IpcCoverWorkBucket {
 }
 
 /**
- * Sum previous / current / to-date work values split by basic vs VO-additional lines.
+ * Sum previous / current / to-date work values split by basic / optional / VO-additional lines.
  * Cover sheet reads these totals only — quantities stay on the single list.
  */
 export function buildIpcCoverWorksSplit(
   lines: IpcCoverQtyLine[],
   voCreatedBoqItemIds: ReadonlySet<string>,
+  boqScopeByItemId?: ReadonlyMap<string, BoqScopeType>,
 ): IpcCoverWorksSplit {
   const basic = emptyBucket();
+  const optional = emptyBucket();
   const additional = emptyBucket();
 
   for (const line of lines) {
     const prev = linePreviousValue(line);
     const curr = lineCurrentValue(line);
+    const kind = classifyIpcQtyLineKind(line.boqItemId, voCreatedBoqItemIds, boqScopeByItemId);
     const bucket =
-      classifyIpcQtyLineKind(line.boqItemId, voCreatedBoqItemIds) === 'additional'
-        ? additional
-        : basic;
+      kind === 'additional' ? additional : kind === 'optional' ? optional : basic;
     bucket.previousValue = roundMoney(bucket.previousValue + prev);
     bucket.currentValue = roundMoney(bucket.currentValue + curr);
     bucket.toDateValue = roundMoney(bucket.previousValue + bucket.currentValue);
@@ -115,8 +124,13 @@ export function buildIpcCoverWorksSplit(
 
   return {
     basic,
+    optional,
     additional,
-    periodWorksTotal: roundMoney(basic.currentValue + additional.currentValue),
-    toDateWorksTotal: roundMoney(basic.toDateValue + additional.toDateValue),
+    periodWorksTotal: roundMoney(
+      basic.currentValue + optional.currentValue + additional.currentValue,
+    ),
+    toDateWorksTotal: roundMoney(
+      basic.toDateValue + optional.toDateValue + additional.toDateValue,
+    ),
   };
 }

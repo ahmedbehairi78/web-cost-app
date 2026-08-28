@@ -27,6 +27,14 @@ import { cn, listKey } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { formatNumber } from '../lib/numberLocale';
+import {
+  type BoqScopeType,
+  boqScopeTypeExportLabel,
+  boqScopeTypeLabel,
+  normalizeBoqScopeType,
+  parseBoqScopeTypeFromImport,
+  sumBoqContractScopeTotals,
+} from '../lib/boqScopeType';
 import { usePermissions } from '../context/PermissionsContext';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
@@ -76,6 +84,7 @@ interface BOQItem {
   rateProfitPct: number;
   unitRateTotal: number;
   tenderAmount: number;
+  scopeType?: BoqScopeType;
   startDate?: string;
   expectedDuration?: number;
   createdAt?: { toDate(): Date } | Date | string;
@@ -99,6 +108,7 @@ function buildBoqFormFromItem(item: BOQItem): BoqItemFormData {
     rateProfitPct: item.rateProfitPct,
     startDate: item.startDate || '',
     expectedDuration: item.expectedDuration || 0,
+    scopeType: normalizeBoqScopeType(item.scopeType),
   };
 }
 
@@ -138,6 +148,7 @@ function normalizeBoqItem(row: Record<string, unknown>, index = 0): BOQItem {
     rateProfitPct: Number(row.rateProfitPct ?? 12),
     unitRateTotal,
     tenderAmount: Number(row.tenderAmount ?? 0),
+    scopeType: normalizeBoqScopeType(row.scopeType),
     startDate: row.startDate ? String(row.startDate) : undefined,
     expectedDuration: row.expectedDuration != null ? Number(row.expectedDuration) : undefined,
     createdAt: row.createdAt as BOQItem['createdAt'],
@@ -162,6 +173,7 @@ function buildBoqApiPayload(
     rateProfitPct: number;
     startDate: string;
     expectedDuration: number;
+    scopeType?: BoqScopeType;
   },
   projectId: string,
   contractId: string,
@@ -191,6 +203,7 @@ function buildBoqApiPayload(
     rateProfitPct: data.rateProfitPct,
     unitRateTotal: total,
     tenderAmount: total * data.tenderQty,
+    scopeType: normalizeBoqScopeType(data.scopeType),
     expectedDuration: data.expectedDuration || null,
     startDate: data.startDate || null,
     isDeleted: false,
@@ -798,13 +811,17 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
     }),
     [baseItems, boqActuals.consumedByBoqId],
   );
+  const baseScopeTotals = useMemo(
+    () => sumBoqContractScopeTotals(baseItems),
+    [baseItems],
+  );
   /** Live contract BOQ (incl. approved VOs) + net of draft/submitted VOs. */
   const grandBoqTotal = useMemo(
     () => liveBoqTotal + pendingVoNet,
     [liveBoqTotal, pendingVoNet],
   );
   const totalBOQAmount = grandBoqTotal;
-  const boqTableColSpan = isLocalBackend ? 22 : 20;
+  const boqTableColSpan = isLocalBackend ? 23 : 21;
 
   const boqRowLabels = useMemo(
     () => ({
@@ -829,12 +846,13 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
         idx,
         progressMap[item.id] || 0,
         locale,
+        language,
         now,
         boqActuals.consumedByBoqId[String(item.id)] ?? 0,
         boqActuals.inventoryByDesc[invKey] ?? null,
       );
     });
-  }, [baseItems, progressMap, locale, boqActuals]);
+  }, [baseItems, progressMap, locale, language, boqActuals]);
 
   const handleRowEdit = useCallback(
     (id: string) => {
@@ -898,6 +916,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
       'تكلفة المعدات': item.rateEquipment || 0,
       'نسبة المصاريف العمومية %': item.rateOverheadPct,
       'نسبة الربح %': item.rateProfitPct,
+      'نوع النطاق': boqScopeTypeExportLabel(normalizeBoqScopeType(item.scopeType)),
       'تاريخ بدء العمل': item.startDate || '',
       'مدة التنفيذ المتوقعة': item.expectedDuration || 0
     })) : [{
@@ -915,6 +934,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
       'تكلفة المعدات': 20,
       'نسبة المصاريف العمومية %': 10,
       'نسبة الربح %': 12,
+      'نوع النطاق': 'أساسي',
       'تاريخ بدء العمل': '2024-01-01',
       'مدة التنفيذ المتوقعة': 30
     }];
@@ -939,6 +959,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
       { wch: 15 }, // Equip
       { wch: 15 }, // Overhead
       { wch: 15 }, // Profit
+      { wch: 14 }, // Scope type
       { wch: 20 }, // Start Date
       { wch: 20 }, // Duration
     ];
@@ -1003,6 +1024,9 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
               ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]
               : String(rawDate);
           const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
+          const scopeType = parseBoqScopeTypeFromImport(
+            getVal(row, 'نوع النطاق', getVal(row, 'Scope Type', 'أساسي')),
+          );
 
           if (!itemCode || !description) continue;
 
@@ -1026,6 +1050,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                   rateProfitPct,
                   startDate,
                   expectedDuration,
+                  scopeType,
                 },
                 selectedProjectId,
                 selectedContractId,
@@ -1053,6 +1078,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
               rateEquipment,
               rateOverheadPct,
               rateProfitPct,
+              scopeType,
               startDate,
               expectedDuration,
               projectId: selectedProjectId,
@@ -1101,7 +1127,21 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
             )}
           </div>
         )}
-        <div className="flex gap-4">
+        <div className="flex gap-4 flex-wrap items-end justify-end">
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-gray-500 font-bold uppercase">{t('boq_basic_scope_total')}</span>
+            <span className="text-sm font-bold text-emerald-600">
+              {formatNumber(baseScopeTotals.basicSum)}{' '}
+              <span className="text-[10px] font-normal text-gray-500">{t('currency')}</span>
+            </span>
+          </div>
+          <div className="flex flex-col items-end">
+            <span className="text-[10px] text-gray-500 font-bold uppercase">{t('boq_optional_scope_total')}</span>
+            <span className="text-sm font-bold text-amber-600">
+              {formatNumber(baseScopeTotals.optionalSum)}{' '}
+              <span className="text-[10px] font-normal text-gray-500">{t('currency')}</span>
+            </span>
+          </div>
           <div className="flex flex-col items-end">
             <span className="text-[10px] text-gray-500 font-bold uppercase">
               {showVoInline && voOrders.length > 0 ? t('boq_grand_total') : t('total_project_value')}
@@ -1270,6 +1310,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
               <th className="p-4 w-20">{t('type')}</th>
               <th className="p-4 w-20">{t('code')}</th>
               <th className="p-4">{t('description')}</th>
+              <th className="p-4 w-20 whitespace-nowrap">{t('boq_scope_type')}</th>
               <th className="p-4 w-16">{t('unit')}</th>
               <th className="p-4 w-20">{t('qty')}</th>
               <th className="p-4 w-24 whitespace-nowrap">{t('start_date')}</th>
@@ -1325,6 +1366,58 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
             <tbody>
               <tr
                 className={cn(
+                  'border-t font-bold text-[10px]',
+                  theme === 'dark' ? 'bg-emerald-950/30 border-emerald-900/50 text-emerald-100' :
+                  theme === 'soft' ? 'bg-emerald-50/80 border-emerald-200 text-emerald-900' :
+                  'bg-emerald-50/80 border-emerald-200 text-emerald-900',
+                )}
+              >
+                <td
+                  className={cn(
+                    'p-4 sticky right-0 z-10 border-l shadow-[inset_1px_0_0_rgba(0,0,0,0.06)]',
+                    theme === 'dark' ? 'bg-emerald-950/50 border-emerald-900/50' : theme === 'soft' ? 'bg-emerald-50 border-emerald-200' : 'bg-emerald-50 border-emerald-200',
+                  )}
+                />
+                <td colSpan={13} className="p-4 text-xs uppercase tracking-wide">
+                  {t('boq_basic_scope_total')}
+                </td>
+                <td colSpan={6} />
+                <td className="p-4 text-xs text-emerald-600">{formatNumber(baseScopeTotals.basicSum)}</td>
+                {isLocalBackend ? (
+                  <>
+                    <td className="p-4" />
+                    <td className="p-4" />
+                  </>
+                ) : null}
+              </tr>
+              <tr
+                className={cn(
+                  'border-t font-bold text-[10px]',
+                  theme === 'dark' ? 'bg-amber-950/30 border-amber-900/50 text-amber-100' :
+                  theme === 'soft' ? 'bg-amber-50/80 border-amber-200 text-amber-900' :
+                  'bg-amber-50/80 border-amber-200 text-amber-900',
+                )}
+              >
+                <td
+                  className={cn(
+                    'p-4 sticky right-0 z-10 border-l shadow-[inset_1px_0_0_rgba(0,0,0,0.06)]',
+                    theme === 'dark' ? 'bg-amber-950/50 border-amber-900/50' : theme === 'soft' ? 'bg-amber-50 border-amber-200' : 'bg-amber-50 border-amber-200',
+                  )}
+                />
+                <td colSpan={13} className="p-4 text-xs uppercase tracking-wide">
+                  {t('boq_optional_scope_total')}
+                </td>
+                <td colSpan={6} />
+                <td className="p-4 text-xs text-amber-600">{formatNumber(baseScopeTotals.optionalSum)}</td>
+                {isLocalBackend ? (
+                  <>
+                    <td className="p-4" />
+                    <td className="p-4" />
+                  </>
+                ) : null}
+              </tr>
+              <tr
+                className={cn(
                   'border-t-2 font-bold text-[10px]',
                   theme === 'dark' ? 'bg-gray-900/70 border-gray-700 text-gray-200' :
                   theme === 'soft' ? 'bg-[#eceff1] border-[#cfd8dc] text-[#37474f]' :
@@ -1337,7 +1430,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                     theme === 'dark' ? 'bg-gray-900/95 border-gray-700' : theme === 'soft' ? 'bg-[#eceff1] border-[#cfd8dc]' : 'bg-gray-100 border-gray-200',
                   )}
                 />
-                <td colSpan={12} className="p-4 text-xs uppercase tracking-wide">
+                <td colSpan={13} className="p-4 text-xs uppercase tracking-wide">
                   {showVoInline ? t('boq_original_total') : t('total')}
                 </td>
                 <td className="p-4 font-mono text-gray-500">{formatNumber(boqColumnSums.materials)}</td>
@@ -1398,7 +1491,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                     theme === 'dark' ? 'bg-blue-950/70 border-blue-800' : theme === 'soft' ? 'bg-blue-50 border-blue-200' : 'bg-blue-50 border-blue-200',
                   )}
                 />
-                <td colSpan={12} className="p-4 text-xs uppercase tracking-wide">
+                <td colSpan={13} className="p-4 text-xs uppercase tracking-wide">
                   {t('boq_grand_total')}
                 </td>
                 <td className="p-4" />
