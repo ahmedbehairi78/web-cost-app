@@ -36,6 +36,7 @@ import {
   sumBoqContractScopeTotals,
 } from '../lib/boqScopeType';
 import { usePermissions } from '../context/PermissionsContext';
+import { useOperationProgressRunner } from '../context/OperationProgressContext';
 import toast from 'react-hot-toast';
 import * as XLSX from 'xlsx';
 import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
@@ -212,6 +213,7 @@ function buildBoqApiPayload(
 
 export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const { t, language, theme, dir, locale, formatMoney } = useLanguage();
+  const runWithProgress = useOperationProgressRunner();
   const { isAdmin, can } = usePermissions();
   const canWriteVo = isLocalBackend && (can('boq').create || can('boq').edit);
   const canApproveVo = isLocalBackend && can('boq').edit;
@@ -988,8 +990,8 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
       const workbook = XLSX.read(data, { type: 'array', cellDates: true });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      const jsonData = XLSX.utils.sheet_to_json(worksheet);
-      
+      const jsonData = XLSX.utils.sheet_to_json(worksheet) as Record<string, unknown>[];
+
       setIsSubmitting(true);
       try {
         const getVal = (row: Record<string, unknown>, key: string, fallback: unknown = 0): unknown => {
@@ -1001,39 +1003,79 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           return fallback;
         };
 
-        let imported = 0;
-        for (const row of jsonData as Record<string, unknown>[]) {
-          const chapterCode = String(getVal(row, 'كود الفصل', ''));
-          const chapterName = String(getVal(row, 'اسم الفصل', ''));
-          const workTypeCode = String(getVal(row, 'كود نوع العمل', ''));
-          const sectionCode = String(getVal(row, 'كود القسم', ''));
-          const sectionName = String(getVal(row, 'اسم القسم', ''));
+        const importableRows = jsonData.filter((row) => {
           const itemCode = String(getVal(row, 'كود البند', ''));
           const description = String(getVal(row, 'وصف البند', ''));
-          const unit = String(getVal(row, 'الوحدة', ''));
-          const tenderQty = Number(getVal(row, 'الكمية', 0));
-          const rateMaterials = Number(getVal(row, 'تكلفة المواد', 0));
-          const rateLabour = Number(getVal(row, 'تكلفة العمالة', 0));
-          const rateEquipment = Number(getVal(row, 'تكلفة المعدات', 0));
-          const rateOverheadPct = Number(getVal(row, 'نسبة المصاريف العمومية %', 10));
-          const rateProfitPct = Number(getVal(row, 'نسبة الربح %', 12));
-          const rawDate = getVal(row, 'تاريخ بدء العمل', '');
-          const startDate = rawDate instanceof Date
-            ? rawDate.toISOString().split('T')[0]
-            : typeof rawDate === 'number'
-              ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]
-              : String(rawDate);
-          const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
-          const scopeType = parseBoqScopeTypeFromImport(
-            getVal(row, 'نوع النطاق', getVal(row, 'Scope Type', 'أساسي')),
-          );
+          return itemCode && description;
+        });
 
-          if (!itemCode || !description) continue;
+        await runWithProgress(
+          {
+            label: language === 'ar' ? 'استيراد قائمة الكميات…' : 'Importing BOQ…',
+            total: importableRows.length,
+          },
+          async (update) => {
+            let imported = 0;
+            for (const row of importableRows) {
+              const chapterCode = String(getVal(row, 'كود الفصل', ''));
+              const chapterName = String(getVal(row, 'اسم الفصل', ''));
+              const workTypeCode = String(getVal(row, 'كود نوع العمل', ''));
+              const sectionCode = String(getVal(row, 'كود القسم', ''));
+              const sectionName = String(getVal(row, 'اسم القسم', ''));
+              const itemCode = String(getVal(row, 'كود البند', ''));
+              const description = String(getVal(row, 'وصف البند', ''));
+              const unit = String(getVal(row, 'الوحدة', ''));
+              const tenderQty = Number(getVal(row, 'الكمية', 0));
+              const rateMaterials = Number(getVal(row, 'تكلفة المواد', 0));
+              const rateLabour = Number(getVal(row, 'تكلفة العمالة', 0));
+              const rateEquipment = Number(getVal(row, 'تكلفة المعدات', 0));
+              const rateOverheadPct = Number(getVal(row, 'نسبة المصاريف العمومية %', 10));
+              const rateProfitPct = Number(getVal(row, 'نسبة الربح %', 12));
+              const rawDate = getVal(row, 'تاريخ بدء العمل', '');
+              const startDate = rawDate instanceof Date
+                ? rawDate.toISOString().split('T')[0]
+                : typeof rawDate === 'number'
+                  ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]
+                  : String(rawDate);
+              const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
+              const scopeType = parseBoqScopeTypeFromImport(
+                getVal(row, 'نوع النطاق', getVal(row, 'Scope Type', 'أساسي')),
+              );
 
-          if (isLocalBackend) {
-            await boqApi.create(
-              buildBoqApiPayload(
-                {
+              if (isLocalBackend) {
+                await boqApi.create(
+                  buildBoqApiPayload(
+                    {
+                      chapterCode,
+                      chapterName,
+                      workTypeCode,
+                      sectionCode,
+                      sectionName,
+                      itemCode,
+                      description,
+                      unit,
+                      tenderQty,
+                      rateMaterials,
+                      rateLabour,
+                      rateEquipment,
+                      rateOverheadPct,
+                      rateProfitPct,
+                      startDate,
+                      expectedDuration,
+                      scopeType,
+                    },
+                    selectedProjectId,
+                    selectedContractId,
+                  ),
+                );
+              } else {
+                const direct = rateMaterials + rateLabour + rateEquipment;
+                const overheadAmt = direct * (rateOverheadPct / 100);
+                const subtotal = direct + overheadAmt;
+                const profitAmt = subtotal * (rateProfitPct / 100);
+                const total = subtotal + profitAmt;
+
+                await addDoc(collection(db, 'boq_items'), {
                   chapterCode,
                   chapterName,
                   workTypeCode,
@@ -1048,52 +1090,25 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                   rateEquipment,
                   rateOverheadPct,
                   rateProfitPct,
+                  scopeType,
                   startDate,
                   expectedDuration,
-                  scopeType,
-                },
-                selectedProjectId,
-                selectedContractId,
-              ),
-            );
-          } else {
-            const direct = rateMaterials + rateLabour + rateEquipment;
-            const overheadAmt = direct * (rateOverheadPct / 100);
-            const subtotal = direct + overheadAmt;
-            const profitAmt = subtotal * (rateProfitPct / 100);
-            const total = subtotal + profitAmt;
-
-            await addDoc(collection(db, 'boq_items'), {
-              chapterCode,
-              chapterName,
-              workTypeCode,
-              sectionCode,
-              sectionName,
-              itemCode,
-              description,
-              unit,
-              tenderQty,
-              rateMaterials,
-              rateLabour,
-              rateEquipment,
-              rateOverheadPct,
-              rateProfitPct,
-              scopeType,
-              startDate,
-              expectedDuration,
-              projectId: selectedProjectId,
-              contractId: selectedContractId,
-              rateDirect: direct,
-              unitRateTotal: total,
-              tenderAmount: total * tenderQty,
-              isDeleted: false,
-              createdAt: serverTimestamp(),
-            });
-          }
-          imported += 1;
-        }
-        if (isLocalBackend && imported > 0) setDataRefreshKey((k) => k + 1);
-        toast.success(t('toast_boq_import_success'));
+                  projectId: selectedProjectId,
+                  contractId: selectedContractId,
+                  rateDirect: direct,
+                  unitRateTotal: total,
+                  tenderAmount: total * tenderQty,
+                  isDeleted: false,
+                  createdAt: serverTimestamp(),
+                });
+              }
+              imported += 1;
+              update(imported, itemCode);
+            }
+            if (isLocalBackend && imported > 0) setDataRefreshKey((k) => k + 1);
+            toast.success(t('toast_boq_import_success'));
+          },
+        );
       } catch (error) {
         console.error('Import error:', error);
         toast.error(t('toast_boq_import_error'));

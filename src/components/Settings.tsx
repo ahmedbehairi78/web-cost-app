@@ -89,6 +89,7 @@ import { useApiQuery } from '../hooks/useApiQuery';
 import { crudOff, crudOn, moduleAccess, normalizeUserPermissions } from '../lib/permissions';
 import { PERMISSION_MENU_HINTS } from '../lib/moduleViewPermissions';
 import { usePermissions } from '../context/PermissionsContext';
+import { useOperationProgress } from '../context/OperationProgressContext';
 import { isLocalBackend } from '../lib/dataBackend';
 import { FIRESTORE_BACKUP_COLLECTIONS, POSTGRES_BACKUP_COLLECTIONS } from '../constants/backupCollections';
 import { isAppTheme, isSoftLikeTheme } from '../lib/shellTheme';
@@ -675,6 +676,8 @@ interface BackupModalProps {
 
 function BackupModal({ language, theme, onClose, allowFullReplace = true }: BackupModalProps) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const { beginOperation, updateOperation, endOperation } = useOperationProgress();
+  const operationIdRef = useRef<string | null>(null);
   const [tab, setTab] = useState<'export' | 'import'>('export');
   const [restoreMode, setRestoreMode] = useState<RestoreMode>('merge');
   const [file, setFile] = useState<File | null>(null);
@@ -697,11 +700,30 @@ function BackupModal({ language, theme, onClose, allowFullReplace = true }: Back
     }
   }, [allowFullReplace, restoreMode]);
 
-  const addProgress = (msg: string) => setProgress((p) => [...p, msg]);
+  const addProgress = (msg: string) => {
+    setProgress((p) => [...p, msg]);
+    const opId = operationIdRef.current;
+    if (opId) {
+      updateOperation(opId, { message: msg.replace(/^[✓✗]\s*/, '') });
+    }
+  };
+
+  const startGlobalProgress = (label: string) => {
+    operationIdRef.current = beginOperation({ label });
+  };
+
+  const finishGlobalProgress = () => {
+    const opId = operationIdRef.current;
+    if (opId) {
+      endOperation(opId);
+      operationIdRef.current = null;
+    }
+  };
 
   const handleExport = async () => {
     setRunning(true);
     setProgress([]);
+    startGlobalProgress(language === 'ar' ? 'تصدير النسخة الاحتياطية…' : 'Exporting backup…');
     try {
       if (isLocalBackend) {
         addProgress(language === 'ar' ? 'تصدير PostgreSQL…' : 'Exporting PostgreSQL…');
@@ -722,6 +744,7 @@ function BackupModal({ language, theme, onClose, allowFullReplace = true }: Back
     } catch {
       toast.error(language === 'ar' ? 'خطأ في التصدير' : 'Export error');
     }
+    finishGlobalProgress();
     setRunning(false);
   };
 
@@ -733,6 +756,7 @@ function BackupModal({ language, theme, onClose, allowFullReplace = true }: Back
       setProgress([]);
       setImportSummary(null);
       setPendingReLogin(false);
+      startGlobalProgress(language === 'ar' ? 'استيراد النسخة الاحتياطية…' : 'Importing backup…');
       try {
         if (isLocalBackend) {
           const text = await file.text();
@@ -806,6 +830,7 @@ function BackupModal({ language, theme, onClose, allowFullReplace = true }: Back
         addProgress(`✗ ${msg}`);
         toast.error(language === 'ar' ? `فشل الاستيراد — ${msg}` : `Import failed — ${msg}`);
       }
+      finishGlobalProgress();
       setRunning(false);
     };
 

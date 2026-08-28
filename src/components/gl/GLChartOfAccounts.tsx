@@ -8,6 +8,7 @@ import { accountingService, Account, invalidateCoaCache } from '../../services/a
 import { AccountModal } from './AccountModal';
 import { usePermissions } from '../../context/PermissionsContext';
 import { useConfirm } from '../../context/ConfirmDialogContext';
+import { useOperationProgressRunner } from '../../context/OperationProgressContext';
 import toast from 'react-hot-toast';
 import { AdminSensitiveVerifyModal } from '../AdminSensitiveVerifyModal';
 
@@ -25,6 +26,7 @@ interface Props {
 
 export function GLChartOfAccounts({ accounts, loading, theme, language, dir, allowCreate = true, allowEdit = true, onAccountsChanged }: Props) {
   const { can } = usePermissions();
+  const runWithProgress = useOperationProgressRunner();
   const isAdmin = can('ledger').edit;
   const confirmDlg = useConfirm();
   const [verifyOpen, setVerifyOpen] = useState(false);
@@ -325,20 +327,38 @@ export function GLChartOfAccounts({ accounts, loading, theme, language, dir, all
       const XLSX = await import('xlsx');
       const wb = XLSX.read(evt.target?.result as string, { type: 'binary' });
       const ws = wb.Sheets[wb.SheetNames[0]];
-      const data = XLSX.utils.sheet_to_json(ws);
+      const data = XLSX.utils.sheet_to_json(ws) as Record<string, unknown>[];
+      const importableRows = data.filter((row) => {
+        const accountCode = String(row['Account Code'] || row['كود الحساب'] || '');
+        const accountName = String(row['Account Name'] || row['اسم الحساب'] || '');
+        return accountCode && accountName;
+      });
+
       setIsSubmitting(true);
       try {
-        for (const row of data as Record<string, unknown>[]) {
-          const acc = {
-            accountCode:   String(row['Account Code']    || row['كود الحساب']   || ''),
-            accountName:   String(row['Account Name']    || row['اسم الحساب']   || ''),
-            accountNameEn: String(row['Account Name (EN)'] || row['الاسم الإنجليزي'] || ''),
-            parentCode:    String(row['Parent Code']     || row['الحساب الأب']  || ''),
-            type:          String(row['Type']            || row['النوع']         || 'asset').toLowerCase(),
-            isGroup:       String(row['Is Group']        || row['مجموعة']       || 'No').toLowerCase() === 'yes',
-          };
-          if (acc.accountCode && acc.accountName) await addDoc(collection(db, 'chart_of_accounts'), acc);
-        }
+        await runWithProgress(
+          {
+            label: language === 'ar' ? 'استيراد شجرة الحسابات…' : 'Importing chart of accounts…',
+            total: importableRows.length,
+          },
+          async (update) => {
+            let imported = 0;
+            for (const row of importableRows) {
+              const acc = {
+                accountCode: String(row['Account Code'] || row['كود الحساب'] || ''),
+                accountName: String(row['Account Name'] || row['اسم الحساب'] || ''),
+                accountNameEn: String(row['Account Name (EN)'] || row['الاسم الإنجليزي'] || ''),
+                parentCode: String(row['Parent Code'] || row['الحساب الأب'] || ''),
+                type: String(row['Type'] || row['النوع'] || 'asset').toLowerCase(),
+                isGroup: String(row['Is Group'] || row['مجموعة'] || 'No').toLowerCase() === 'yes',
+              };
+              await addDoc(collection(db, 'chart_of_accounts'), acc);
+              imported += 1;
+              update(imported, acc.accountCode);
+            }
+          },
+        );
+        toast.success(language === 'ar' ? 'تم استيراد شجرة الحسابات' : 'Chart of accounts imported');
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, 'chart_of_accounts');
       } finally {

@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Building2, Plus, Upload, Download, Printer, RefreshCw, ChevronDown, X, Check, AlertTriangle, Edit2, Trash2, Eye } from 'lucide-react';
 import { useLanguage } from '../context/LanguageContext';
+import { useOperationProgressRunner } from '../context/OperationProgressContext';
 import { useApiQuery } from '../hooks/useApiQuery';
 import { useChartOfAccountsRef } from '../hooks/useChartOfAccountsRef';
 import {
@@ -765,6 +766,7 @@ function DepreciationTab({ language, formatMoney }: DepreciationTabProps) {
 
 export function FixedAssets() {
   const { t, language, locale, formatMoney } = useLanguage();
+  const runWithProgress = useOperationProgressRunner();
   const [activeTab, setActiveTab] = useState<Tab>('register');
   const [refreshKey, setRefreshKey] = useState(0);
   const [statusFilter, setStatusFilter] = useState('');
@@ -819,7 +821,16 @@ export function FixedAssets() {
         toast.error(language === 'ar' ? 'الملف فارغ' : 'File is empty');
         return;
       }
-      const result = await fixedAssetsApi.importAssets(rows);
+      const result = await runWithProgress(
+        {
+          label: language === 'ar' ? 'استيراد الأصول الثابتة…' : 'Importing fixed assets…',
+          message: `${rows.length} ${language === 'ar' ? 'صف' : 'rows'}`,
+        },
+        async (update) => {
+          update(0, language === 'ar' ? 'جاري الرفع للخادم…' : 'Uploading to server…');
+          return fixedAssetsApi.importAssets(rows);
+        },
+      );
       if (result.created > 0) {
         toast.success(language === 'ar' ? `تم استيراد ${result.created} أصل` : `${result.created} assets imported`);
         handleRefresh();
@@ -834,7 +845,7 @@ export function FixedAssets() {
       setImporting(false);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
-  }, [language, handleRefresh]);
+  }, [language, handleRefresh, runWithProgress]);
 
   const handleExport = useCallback(async () => {
     try {

@@ -5,6 +5,7 @@ import App from './App.tsx';
 import './index.css';
 import { LanguageProvider } from './context/LanguageContext';
 import { ConfirmDialogProvider } from './context/ConfirmDialogContext';
+import { OperationProgressProvider } from './context/OperationProgressContext';
 import { AppPermissionsRoot } from './context/PermissionsContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemedToaster } from './components/ThemedToaster';
@@ -49,10 +50,12 @@ root.render(
     <ErrorBoundary>
       <LanguageProvider>
         <ConfirmDialogProvider>
-          <AppPermissionsRoot>
-            <RootApp />
-            <ThemedToaster />
-          </AppPermissionsRoot>
+          <OperationProgressProvider>
+            <AppPermissionsRoot>
+              <RootApp />
+              <ThemedToaster />
+            </AppPermissionsRoot>
+          </OperationProgressProvider>
         </ConfirmDialogProvider>
       </LanguageProvider>
     </ErrorBoundary>

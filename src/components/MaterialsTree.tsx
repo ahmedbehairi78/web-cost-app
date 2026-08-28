@@ -3,6 +3,7 @@ import { Plus, Loader2, Package, Download, Upload, FileSpreadsheet, Search } fro
 import type { AppTheme } from '../lib/shellTheme';
 import { cn, listKey } from '../lib/utils';
 import { useLanguage } from '../context/LanguageContext';
+import { useOperationProgressRunner } from '../context/OperationProgressContext';
 import { usePermissions } from '../context/PermissionsContext';
 import { isLocalBackend } from '../lib/dataBackend';
 import { materialsApi, type MaterialCategory, type MaterialGroup } from '../services/local/modulesApi';
@@ -73,6 +74,7 @@ function sidebarBtnCls(theme: AppTheme) {
 
 export function MaterialsTree() {
   const { language, theme, t, dir } = useLanguage();
+  const runWithProgress = useOperationProgressRunner();
   const { can } = usePermissions();
   const canEdit = can('inventory').edit;
   const ar = language === 'ar';
@@ -174,7 +176,16 @@ export function MaterialsTree() {
         toast.error(ar ? 'الملف فارغ أو الأعمدة غير معروفة' : 'File empty or unknown columns');
         return;
       }
-      const result = await materialsApi.importTree(rows);
+      const result = await runWithProgress(
+        {
+          label: ar ? 'استيراد شجرة الأصناف…' : 'Importing materials tree…',
+          message: `${rows.length} ${ar ? 'صف' : 'rows'}`,
+        },
+        async (update) => {
+          update(0, ar ? 'جاري الرفع للخادم…' : 'Uploading to server…');
+          return materialsApi.importTree(rows);
+        },
+      );
       await load();
       const msg = ar
         ? `مجموعات جديدة: ${result.groupsCreated} | محدّثة: ${result.groupsUpdated ?? 0} | أصناف جديدة: ${result.categoriesCreated} | محدّثة: ${result.categoriesUpdated ?? 0}`
