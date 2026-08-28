@@ -384,7 +384,7 @@ describe('buildProjectCompareRows', () => {
       projectIdFilter: 'all',
       contractIdFilter: '',
       materialByProject: new Map([['p1', 25]]),
-      unallocatedLabel: 'Unallocated / G&A',
+      unallocatedLabel: 'Fixed costs',
     });
     const projectRow = rows.find((r) => r.projectId === 'p1');
     const unalloc = rows.find((r) => r.projectId === DASHBOARD_UNALLOCATED_PROJECT_ID);

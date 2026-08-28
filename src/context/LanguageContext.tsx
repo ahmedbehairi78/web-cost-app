@@ -928,9 +928,9 @@ const translations: Record<Language, Record<string, string>> = {
     dashboard_pie_empty: 'لا مستخلصات مكتملة في النطاق',
     dashboard_pie_of_total: 'من الإجمالي',
     dashboard_compare_title: 'مقارنة المشاريع والسيولة',
-    dashboard_unallocated_costs: 'غير موزّع / عمومية وإدارية (لم تُحمَّل على عقود)',
+    dashboard_unallocated_costs: 'تكاليف ثابتة',
     dashboard_unallocated_hint:
-      'مصروف بلا مركز عقد (رواتب/عمومية) بعد خصم قيود OHA داخل نطاق التاريخ. إقفال قائمة الدخل أو قفل الفترة لا يصفّر هذا الصف — فقط توزيع الأعباء (OHA). تأكد أن تاريخ قيد OHA داخل فلتر اللوحة.',
+      'مصروفات عمومية وإدارية غير محمّلة على مشاريع (رواتب إدارية، مصاريف مركزية، …) بعد خصم قيود OHA داخل نطاق التاريخ. إقفال قائمة الدخل أو قفل الفترة لا يصفّر هذا الصف — فقط توزيع الأعباء (OHA).',
     dashboard_compare_hint: 'انقر صفاً لتصفية المشروع',
     dashboard_compare_empty: 'لا توجد مشاريع في النطاق المحدد',
     dashboard_col_project: 'المشروع',
@@ -3526,9 +3526,9 @@ const translations: Record<Language, Record<string, string>> = {
     dashboard_pie_empty: 'No completed billings in range',
     dashboard_pie_of_total: 'of total',
     dashboard_compare_title: 'Project & liquidity comparison',
-    dashboard_unallocated_costs: 'Unallocated / G&A (not loaded to contracts)',
+    dashboard_unallocated_costs: 'Fixed costs',
     dashboard_unallocated_hint:
-      'Opex without a contract center (payroll/G&A) net of OHA credits in the date filter. Income close / period lock do not clear this row — only overhead allocation (OHA). Ensure OHA journal dates fall inside the dashboard filter.',
+      'General & administrative expenses not loaded to projects (HQ payroll, central costs, …) net of OHA credits in the date filter. Income close / period lock do not clear this row — only overhead allocation (OHA).',
     dashboard_compare_hint: 'Click a row to filter by project',
     dashboard_compare_empty: 'No projects in the selected scope',
     dashboard_col_project: 'Project',

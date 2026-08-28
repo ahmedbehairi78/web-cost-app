@@ -1009,7 +1009,7 @@ export function buildProjectCompareRows(input: {
   ) {
     rows.push({
       projectId: DASHBOARD_UNALLOCATED_PROJECT_ID,
-      projectName: unallocatedLabel || 'Unallocated / G&A',
+      projectName: unallocatedLabel || 'Fixed costs',
       budget: 0,
       spent: unallocatedSpent,
       billed: 0,
