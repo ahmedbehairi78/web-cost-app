@@ -1,7 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, beforeEach } from 'vitest';
 import {
+  beginLongRunningOperation,
+  endLongRunningOperation,
   formatOperationProgressCount,
+  formatPartialImportMessage,
+  isLongRunningOperationActive,
   operationProgressPct,
+  resolveImportFailureReason,
 } from './operationProgress';
 
 describe('operationProgressPct', () => {
@@ -21,5 +26,38 @@ describe('formatOperationProgressCount', () => {
   it('formats ar/en counts with percent', () => {
     expect(formatOperationProgressCount(5, 20, 'ar')).toBe('5 / 20 (25٪)');
     expect(formatOperationProgressCount(5, 20, 'en')).toBe('5 / 20 (25%)');
+  });
+});
+
+describe('longRunningOperation', () => {
+  beforeEach(() => {
+    while (isLongRunningOperationActive()) endLongRunningOperation();
+  });
+
+  it('tracks nested long-running operations', () => {
+    expect(isLongRunningOperationActive()).toBe(false);
+    beginLongRunningOperation();
+    expect(isLongRunningOperationActive()).toBe(true);
+    beginLongRunningOperation();
+    endLongRunningOperation();
+    expect(isLongRunningOperationActive()).toBe(true);
+    endLongRunningOperation();
+    expect(isLongRunningOperationActive()).toBe(false);
+  });
+});
+
+describe('formatPartialImportMessage', () => {
+  it('includes done/total, item code, and reason', () => {
+    const msg = formatPartialImportMessage('ar', 12, 40, '01-002', 'انقطاع الشبكة');
+    expect(msg).toContain('12');
+    expect(msg).toContain('40');
+    expect(msg).toContain('01-002');
+    expect(msg).toContain('انقطاع الشبكة');
+  });
+});
+
+describe('resolveImportFailureReason', () => {
+  it('detects offline marker', () => {
+    expect(resolveImportFailureReason(new Error('OFFLINE'), 'en')).toContain('network');
   });
 });

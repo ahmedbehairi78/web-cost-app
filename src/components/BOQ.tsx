@@ -35,7 +35,7 @@ import {
   parseBoqScopeTypeFromImport,
   sumBoqContractScopeTotals,
 } from '../lib/boqScopeType';
-import { yieldToUi } from '../lib/operationProgress';
+import { yieldToUi, formatPartialImportMessage, resolveImportFailureReason } from '../lib/operationProgress';
 import { usePermissions } from '../context/PermissionsContext';
 import { useOperationProgressRunner } from '../context/OperationProgressContext';
 import toast from 'react-hot-toast';
@@ -220,7 +220,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const canApproveVo = isLocalBackend && can('boq').edit;
   const canReadBillingProgress = can('billing').view || can('billing').create || can('billing').edit;
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
-  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [voRefreshKey, setVoRefreshKey] = useState(0);
   const [voModalOpen, setVoModalOpen] = useState(false);
   const [voHighlightId, setVoHighlightId] = useState<string | null>(null);
@@ -1021,45 +1020,80 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           return;
         }
 
-        setImportProgress({ current: 0, total: importableRows.length });
+        let failedAtItemCode = '';
+        let importedCount = 0;
 
-        const imported = await runWithProgress(
-          {
-            label: language === 'ar' ? 'استيراد قائمة الكميات…' : 'Importing BOQ…',
-            total: importableRows.length,
-          },
-          async (update) => {
-            let count = 0;
-            for (const row of importableRows) {
-              const chapterCode = String(getVal(row, 'كود الفصل', ''));
-              const chapterName = String(getVal(row, 'اسم الفصل', ''));
-              const workTypeCode = String(getVal(row, 'كود نوع العمل', ''));
-              const sectionCode = String(getVal(row, 'كود القسم', ''));
-              const sectionName = String(getVal(row, 'اسم القسم', ''));
-              const itemCode = String(getVal(row, 'كود البند', ''));
-              const description = String(getVal(row, 'وصف البند', ''));
-              const unit = String(getVal(row, 'الوحدة', ''));
-              const tenderQty = Number(getVal(row, 'الكمية', 0));
-              const rateMaterials = Number(getVal(row, 'تكلفة المواد', 0));
-              const rateLabour = Number(getVal(row, 'تكلفة العمالة', 0));
-              const rateEquipment = Number(getVal(row, 'تكلفة المعدات', 0));
-              const rateOverheadPct = Number(getVal(row, 'نسبة المصاريف العمومية %', 10));
-              const rateProfitPct = Number(getVal(row, 'نسبة الربح %', 12));
-              const rawDate = getVal(row, 'تاريخ بدء العمل', '');
-              const startDate = rawDate instanceof Date
-                ? rawDate.toISOString().split('T')[0]
-                : typeof rawDate === 'number'
-                  ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]
-                  : String(rawDate);
-              const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
-              const scopeType = parseBoqScopeTypeFromImport(
-                getVal(row, 'نوع النطاق', getVal(row, 'Scope Type', 'أساسي')),
-              );
+        try {
+          await runWithProgress(
+            {
+              label: language === 'ar' ? 'استيراد قائمة الكميات…' : 'Importing BOQ…',
+              total: importableRows.length,
+            },
+            async (update) => {
+              for (const row of importableRows) {
+                const chapterCode = String(getVal(row, 'كود الفصل', ''));
+                const chapterName = String(getVal(row, 'اسم الفصل', ''));
+                const workTypeCode = String(getVal(row, 'كود نوع العمل', ''));
+                const sectionCode = String(getVal(row, 'كود القسم', ''));
+                const sectionName = String(getVal(row, 'اسم القسم', ''));
+                const itemCode = String(getVal(row, 'كود البند', ''));
+                const description = String(getVal(row, 'وصف البند', ''));
+                const unit = String(getVal(row, 'الوحدة', ''));
+                const tenderQty = Number(getVal(row, 'الكمية', 0));
+                const rateMaterials = Number(getVal(row, 'تكلفة المواد', 0));
+                const rateLabour = Number(getVal(row, 'تكلفة العمالة', 0));
+                const rateEquipment = Number(getVal(row, 'تكلفة المعدات', 0));
+                const rateOverheadPct = Number(getVal(row, 'نسبة المصاريف العمومية %', 10));
+                const rateProfitPct = Number(getVal(row, 'نسبة الربح %', 12));
+                const rawDate = getVal(row, 'تاريخ بدء العمل', '');
+                const startDate = rawDate instanceof Date
+                  ? rawDate.toISOString().split('T')[0]
+                  : typeof rawDate === 'number'
+                    ? new Date(Math.round((rawDate - 25569) * 86400 * 1000)).toISOString().split('T')[0]
+                    : String(rawDate);
+                const expectedDuration = Number(getVal(row, 'مدة التنفيذ المتوقعة', 0));
+                const scopeType = parseBoqScopeTypeFromImport(
+                  getVal(row, 'نوع النطاق', getVal(row, 'Scope Type', 'أساسي')),
+                );
 
-              if (isLocalBackend) {
-                await boqApi.create(
-                  buildBoqApiPayload(
-                    {
+                try {
+                  if (isLocalBackend) {
+                    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                      throw new Error('OFFLINE');
+                    }
+                    await boqApi.create(
+                      buildBoqApiPayload(
+                        {
+                          chapterCode,
+                          chapterName,
+                          workTypeCode,
+                          sectionCode,
+                          sectionName,
+                          itemCode,
+                          description,
+                          unit,
+                          tenderQty,
+                          rateMaterials,
+                          rateLabour,
+                          rateEquipment,
+                          rateOverheadPct,
+                          rateProfitPct,
+                          startDate,
+                          expectedDuration,
+                          scopeType,
+                        },
+                        selectedProjectId,
+                        selectedContractId,
+                      ),
+                    );
+                  } else {
+                    const direct = rateMaterials + rateLabour + rateEquipment;
+                    const overheadAmt = direct * (rateOverheadPct / 100);
+                    const subtotal = direct + overheadAmt;
+                    const profitAmt = subtotal * (rateProfitPct / 100);
+                    const total = subtotal + profitAmt;
+
+                    await addDoc(collection(db, 'boq_items'), {
                       chapterCode,
                       chapterName,
                       workTypeCode,
@@ -1074,74 +1108,64 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                       rateEquipment,
                       rateOverheadPct,
                       rateProfitPct,
+                      scopeType,
                       startDate,
                       expectedDuration,
-                      scopeType,
-                    },
-                    selectedProjectId,
-                    selectedContractId,
-                  ),
-                );
-              } else {
-                const direct = rateMaterials + rateLabour + rateEquipment;
-                const overheadAmt = direct * (rateOverheadPct / 100);
-                const subtotal = direct + overheadAmt;
-                const profitAmt = subtotal * (rateProfitPct / 100);
-                const total = subtotal + profitAmt;
-
-                await addDoc(collection(db, 'boq_items'), {
-                  chapterCode,
-                  chapterName,
-                  workTypeCode,
-                  sectionCode,
-                  sectionName,
-                  itemCode,
-                  description,
-                  unit,
-                  tenderQty,
-                  rateMaterials,
-                  rateLabour,
-                  rateEquipment,
-                  rateOverheadPct,
-                  rateProfitPct,
-                  scopeType,
-                  startDate,
-                  expectedDuration,
-                  projectId: selectedProjectId,
-                  contractId: selectedContractId,
-                  rateDirect: direct,
-                  unitRateTotal: total,
-                  tenderAmount: total * tenderQty,
-                  isDeleted: false,
-                  createdAt: serverTimestamp(),
-                });
+                      projectId: selectedProjectId,
+                      contractId: selectedContractId,
+                      rateDirect: direct,
+                      unitRateTotal: total,
+                      tenderAmount: total * tenderQty,
+                      isDeleted: false,
+                      createdAt: serverTimestamp(),
+                    });
+                  }
+                  importedCount += 1;
+                  update(importedCount, itemCode);
+                  await yieldToUi();
+                } catch (rowError) {
+                  failedAtItemCode = itemCode;
+                  throw rowError;
+                }
               }
-              count += 1;
-              update(count, itemCode);
-              setImportProgress({ current: count, total: importableRows.length });
-              await yieldToUi();
-            }
-            return count;
-          },
-        );
+              return importedCount;
+            },
+          );
 
-        if (isLocalBackend) {
-          setDataRefreshKey((k) => k + 1);
-          await refreshBoqItemsAsync();
+          if (isLocalBackend) {
+            setDataRefreshKey((k) => k + 1);
+            await refreshBoqItemsAsync();
+          }
+
+          toast.success(
+            language === 'ar'
+              ? `تم استيراد ${importedCount} بند بنجاح`
+              : `Successfully imported ${importedCount} BOQ item(s)`,
+            { duration: 5000, id: 'boq-import-done' },
+          );
+        } catch (error) {
+          if (importedCount > 0 && isLocalBackend) {
+            setDataRefreshKey((k) => k + 1);
+            await refreshBoqItemsAsync();
+          }
+          const reason = resolveImportFailureReason(error, language);
+          toast.error(
+            formatPartialImportMessage(
+              language,
+              importedCount,
+              importableRows.length,
+              failedAtItemCode,
+              reason,
+            ),
+            { duration: 10000, id: 'boq-import-partial' },
+          );
+          console.error('Import error:', error);
         }
-
-        toast.success(
-          language === 'ar'
-            ? `تم استيراد ${imported} بند بنجاح`
-            : `Successfully imported ${imported} BOQ item(s)`,
-          { duration: 5000, id: 'boq-import-done' },
-        );
       } catch (error) {
-        console.error('Import error:', error);
+        console.error('Import parse error:', error);
         toast.error(t('toast_boq_import_error'));
       } finally {
         setIsSubmitting(false);
-        setImportProgress(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
@@ -1257,39 +1281,6 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
       </header>
-
-      {importProgress ? (
-        <div
-          className={cn(
-            'mb-4 rounded-xl border px-4 py-3 text-sm shadow-md',
-            theme === 'dark'
-              ? 'border-blue-700/50 bg-blue-950/40 text-blue-100'
-              : theme === 'soft'
-                ? 'border-blue-300 bg-blue-50 text-[#37474f]'
-                : 'border-blue-200 bg-blue-50 text-blue-900',
-          )}
-          role="status"
-          aria-live="polite"
-        >
-          <div className="mb-2 flex items-center gap-2 font-medium">
-            <Loader2 size={16} className="animate-spin shrink-0" />
-            <span>
-              {language === 'ar' ? 'جاري استيراد قائمة الكميات…' : 'Importing BOQ…'}
-            </span>
-            <span className="ms-auto font-mono text-xs tabular-nums">
-              {importProgress.current} / {importProgress.total}
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-black/10">
-            <div
-              className="h-full rounded-full bg-blue-600 transition-[width] duration-200"
-              style={{
-                width: `${Math.min(100, Math.round((importProgress.current / importProgress.total) * 100))}%`,
-              }}
-            />
-          </div>
-        </div>
-      ) : null}
 
       {/* Selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">

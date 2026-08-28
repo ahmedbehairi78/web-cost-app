@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from 'react';
 import type { OperationProgressEntry } from '../lib/operationProgress';
-import { yieldToUi } from '../lib/operationProgress';
+import {
+  beginLongRunningOperation,
+  endLongRunningOperation,
+  yieldToUi,
+} from '../lib/operationProgress';
+import { pingIdleActivity } from '../lib/idleActivityBridge';
 
 type BeginOptions = {
   id?: string;
@@ -94,14 +99,20 @@ export function useOperationProgressRunner() {
       opts: BeginOptions,
       run: (update: OperationProgressUpdater) => Promise<T>,
     ): Promise<T> => {
-      const id = beginOperation(opts);
-      await yieldToUi();
+      beginLongRunningOperation();
       try {
-        return await run((current, message) => {
-          updateOperation(id, { current, ...(message !== undefined ? { message } : {}) });
-        });
+        const id = beginOperation(opts);
+        await yieldToUi();
+        try {
+          return await run((current, message) => {
+            pingIdleActivity();
+            updateOperation(id, { current, ...(message !== undefined ? { message } : {}) });
+          });
+        } finally {
+          endOperation(id);
+        }
       } finally {
-        endOperation(id);
+        endLongRunningOperation();
       }
     },
     [beginOperation, updateOperation, endOperation],

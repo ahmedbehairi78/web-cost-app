@@ -1,6 +1,7 @@
 /**
  * Gate for idle logout: pause when offline or pending sync / dirty form drafts.
  */
+import { isLongRunningOperationActive } from '../operationProgress';
 import { isBrowserOnline } from './networkStatus';
 import { countFormDrafts } from './formDraftStore';
 import { listOutbox } from './syncOutbox';
@@ -17,6 +18,7 @@ export function getOfflineDirtyFormCount(): number {
 }
 
 export async function shouldPauseIdleLogout(userId: string | null | undefined): Promise<boolean> {
+  if (isLongRunningOperationActive()) return true;
   if (!isBrowserOnline()) return true;
   if (dirtyFormCount > 0) return true;
   if (!userId) return false;
