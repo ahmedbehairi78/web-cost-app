@@ -12,6 +12,7 @@ export type ManualTopicId =
   | 'costs.invoice.indirect'
   | 'costs.invoice.fixed_asset'
   | 'costs.ipc.subcontractor'
+  | 'costs.ipc.service'
   | 'costs.custody.settlement'
   | 'technical.projects.create'
   | 'technical.projects.contract'
@@ -235,6 +236,36 @@ export const MANUAL_TOPICS: ManualTopic[] = [
     ],
     relatedModule: { moduleId: 'costs', viewId: 'ipc' },
     tags: ['costs', 'ipc', 'subcontractor', 'gl'],
+  },
+  {
+    id: 'costs.ipc.service',
+    moduleId: 'costs',
+    viewId: 'service_ipc',
+    permission: 'costs_ipc',
+    labelKey: 'manual_costs_ipc_service_title',
+    summaryKey: 'manual_costs_ipc_service_summary',
+    beforeYouStartKey: 'manual_costs_ipc_service_before',
+    commonMistakesKey: 'manual_costs_ipc_service_mistakes',
+    steps: [
+      {
+        titleKey: 'manual_costs_ipc_service_step_1_title',
+        bodyKey: 'manual_costs_ipc_service_step_1_body',
+      },
+      {
+        titleKey: 'manual_costs_ipc_service_step_2_title',
+        bodyKey: 'manual_costs_ipc_service_step_2_body',
+      },
+      {
+        titleKey: 'manual_costs_ipc_service_step_3_title',
+        bodyKey: 'manual_costs_ipc_service_step_3_body',
+      },
+      {
+        titleKey: 'manual_costs_ipc_service_step_4_title',
+        bodyKey: 'manual_costs_ipc_service_step_4_body',
+      },
+    ],
+    relatedModule: { moduleId: 'costs', viewId: 'service_ipc' },
+    tags: ['costs', 'ipc', 'service', 'labour', 'equipment'],
   },
   {
     id: 'costs.custody.settlement',

@@ -697,6 +697,7 @@ export function CashBudget() {
                       <option value="other">{t('cb_cat_other')}</option>
                       <option value="supplier">{t('cb_cat_supplier')}</option>
                       <option value="subcontractor">{t('cb_cat_subcontractor')}</option>
+                      <option value="service">{t('cb_cat_service')}</option>
                       <option value="payroll">{t('cb_cat_payroll')}</option>
                     </select>
                     <input className={inputCls} value={manualDesc} onChange={(e) => setManualDesc(e.target.value)} placeholder={t('cb_col_description')} />
@@ -864,6 +865,8 @@ function LineTable({
                   ) : null}
                   {line.category === 'custody_replenish' ? (
                     <div className="text-[10px] text-amber-600">{t('cb_cat_custody_replenish')}</div>
+                  ) : line.category === 'service' ? (
+                    <div className="text-[10px] text-sky-600">{t('cb_cat_service')}</div>
                   ) : null}
                 </td>
                 <td className="px-2 py-1.5">{projectLabel(line, isAr, t)}</td>

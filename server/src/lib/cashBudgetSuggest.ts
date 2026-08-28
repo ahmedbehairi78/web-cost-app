@@ -2,6 +2,7 @@ import { prisma } from '../db.js';
 import { roundMoney } from './money.js';
 import { journalDateQueryUpperBound } from './journalDate.js';
 import { resolveEntryCostCenterId } from './costCenterAttribution.js';
+import { isServiceIpcKind, periodLineAmount, SERVICE_IPC_TYPE } from './serviceContractor.js';
 import {
   allocatePayableByCostCenter,
   computeCashBudgetSummary,
@@ -292,18 +293,48 @@ export async function loadCustodyFloorRows(asOf: string): Promise<CustodyFloorRo
   return computeCustodyFloorRows(accounts, buckets, pendingByCustody);
 }
 
-function obligationCategory(code: string): 'supplier' | 'subcontractor' | 'payroll' | null {
+function obligationCategory(
+  code: string,
+  serviceLeafCodes: Set<string>,
+): 'supplier' | 'subcontractor' | 'service' | 'payroll' | null {
   if (isSupplierLeafCode(code)) return 'supplier';
-  if (isSubcontractorLeafCode(code)) return 'subcontractor';
+  if (isSubcontractorLeafCode(code)) {
+    return serviceLeafCodes.has(code) ? 'service' : 'subcontractor';
+  }
   if (isSalariesPayableLeafCode(code)) return 'payroll';
   return null;
+}
+
+/** 21102 leaves linked to suppliers with a service IPC kind (labour/equipment/…). */
+async function loadServiceContractorLeafCodes(): Promise<Set<string>> {
+  const [accounts, suppliers] = await Promise.all([
+    prisma.chartOfAccount.findMany({
+      where: { isGroup: false, supplierId: { not: null } },
+      select: { accountCode: true, supplierId: true },
+    }),
+    prisma.supplier.findMany({
+      where: { isDeleted: false, serviceKind: { not: null } },
+      select: { id: true, serviceKind: true },
+    }),
+  ]);
+  const serviceSupplierIds = new Set(
+    suppliers.filter((s) => isServiceIpcKind(s.serviceKind)).map((s) => s.id),
+  );
+  const codes = new Set<string>();
+  for (const acc of accounts) {
+    const code = String(acc.accountCode ?? '').trim();
+    if (!isSubcontractorLeafCode(code)) continue;
+    if (acc.supplierId && serviceSupplierIds.has(acc.supplierId)) codes.add(code);
+  }
+  return codes;
 }
 
 /**
  * Snapshot as of period end (no GL posting):
  * sources (KPI only) = banks 12101 + cash/treasury 12102 + uncollected IPCs 12201
  * settlement pool after approve = banks 12101 only (never 12102 custody/cash)
- * obligations = supplier/subcontractor/payroll payables split by cost center
+ * obligations = supplier / subcontractor / service / payroll payables split by cost center
+ *   + submitted (unposted) service IPCs
  *   + custody replenish when 12102 < min
  */
 export async function buildCashBudgetSuggestion(input: {
@@ -314,7 +345,7 @@ export async function buildCashBudgetSuggestion(input: {
   const asOf = input.periodEnd;
   void input.periodType;
   void input.periodStart;
-  const [glLines, settlements, accounts, projectNames] = await Promise.all([
+  const [glLines, settlements, accounts, projectNames, serviceLeafCodes, pendingServiceIpcs] = await Promise.all([
     glLeafLinesThrough(asOf),
     prisma.custodySettlement.findMany({
       where: { isDeleted: false, status: 'submitted' },
@@ -332,6 +363,17 @@ export async function buildCashBudgetSuggestion(input: {
       },
     }),
     loadProjectNameMap(),
+    loadServiceContractorLeafCodes(),
+    prisma.purchaseTransaction.findMany({
+      where: {
+        type: SERVICE_IPC_TYPE,
+        status: 'submitted',
+        transactionId: null,
+        isDeleted: false,
+        date: { lte: journalDateQueryUpperBound(asOf) || asOf },
+      },
+      include: { items: { select: { payload: true } } },
+    }),
   ]);
   const buckets = foldLeafBuckets(glLines, projectNames);
 
@@ -403,7 +445,7 @@ export async function buildCashBudgetSuggestion(input: {
       continue;
     }
 
-    const category = obligationCategory(code);
+    const category = obligationCategory(code, serviceLeafCodes);
     if (!category) continue;
     const parts = allocatePayableByCostCenter(
       [...bucket.byCenter.entries()].map(([key, netDebit]) => ({
@@ -426,6 +468,68 @@ export async function buildCashBudgetSuggestion(input: {
         notes: project?.name ?? null,
       });
     }
+  }
+
+  for (const ipc of pendingServiceIpcs) {
+    const netPayable = roundMoney(num(ipc.totalAmount));
+    if (netPayable <= 0) continue;
+    const label = ipc.referenceNumber?.trim() || ipc.supplierName || ipc.id.slice(0, 8);
+    const payload = ipc.items[0]?.payload;
+    const rawItems =
+      payload && typeof payload === 'object' && Array.isArray((payload as { items?: unknown }).items)
+        ? ((payload as { items: Array<Record<string, unknown>> }).items)
+        : Array.isArray(payload)
+          ? (payload as Array<Record<string, unknown>>)
+          : [];
+    const weights = rawItems.map((item) => ({
+      contractId: String(item.contractId ?? '').trim() || null,
+      projectId: String(item.projectId ?? '').trim() || null,
+      weight: Math.max(0, roundMoney(periodLineAmount({
+        currentQty: Number(item.currentQty) || 0,
+        rate: Number(item.rate) || 0,
+      }))),
+    }));
+    const weightSum = weights.reduce((s, w) => roundMoney(s + w.weight), 0);
+
+    if (weightSum <= 0 || weights.length === 0) {
+      const project = lookupProjectName(projectNames, ipc.projectId ?? ipc.contractId);
+      push({
+        side: 'obligation',
+        category: 'service',
+        description: label,
+        amount: netPayable,
+        dueDate: ymdKey(ipc.date) || asOf,
+        originType: 'service_ipc_pending',
+        originId: ipc.id,
+        projectId: project?.id ?? ipc.projectId ?? null,
+        contractId: ipc.contractId,
+        notes: project?.name ?? null,
+      });
+      continue;
+    }
+
+    let allocated = 0;
+    weights.forEach((w, index) => {
+      const isLast = index === weights.length - 1;
+      const amount = isLast
+        ? roundMoney(netPayable - allocated)
+        : roundMoney((w.weight / weightSum) * netPayable);
+      allocated = roundMoney(allocated + amount);
+      if (amount <= 0) return;
+      const project = lookupProjectName(projectNames, w.projectId || w.contractId);
+      push({
+        side: 'obligation',
+        category: 'service',
+        description: label,
+        amount,
+        dueDate: ymdKey(ipc.date) || asOf,
+        originType: 'service_ipc_pending',
+        originId: `${ipc.id}::${w.contractId || '_'}`,
+        projectId: project?.id ?? w.projectId,
+        contractId: w.contractId,
+        notes: project?.name ?? null,
+      });
+    });
   }
 
   for (const floor of computeCustodyFloorRows(accounts, buckets, pendingByCustody)) {

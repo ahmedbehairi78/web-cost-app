@@ -8,6 +8,7 @@ import {
   setPendingBillingFocus,
   setPendingBoqFocus,
   setPendingCostsIpcId,
+  setPendingCostsServiceIpcId,
   setPendingCustodySettlementId,
   setPendingPurchaseRequestId,
   setPendingShellView,
@@ -81,6 +82,9 @@ export function resolveNotificationNavigation(item: NotificationNavItem): Notifi
   if (item.type === 'purchase_request_pending') {
     return { moduleId: 'purchase_requests', viewId: 'open' };
   }
+  if (item.type === 'service_ipc_pending') {
+    return { moduleId: 'costs', viewId: 'service_ipc' };
+  }
   if (item.type === 'subcontractor_ipc_pending' || item.type === 'subcontract_extract_pending') {
     return { moduleId: 'costs', viewId: 'ipc' };
   }
@@ -136,6 +140,9 @@ export function applyNotificationNavigationPending(
 
   if (item.type === 'subcontractor_ipc_pending' && item.entityId) {
     setPendingCostsIpcId(item.entityId);
+  }
+  if (item.type === 'service_ipc_pending' && item.entityId) {
+    setPendingCostsServiceIpcId(item.entityId);
   }
   if (item.type === 'custody_settlement_pending' && item.entityId) {
     setPendingCustodySettlementId(item.entityId);

@@ -134,6 +134,19 @@ export function consumePendingCostsIpcId(): string | undefined {
   return id;
 }
 
+let pendingCostsServiceIpcId: string | null = null;
+
+/** Open Actual Costs → service IPC tab and load a document by id. */
+export function setPendingCostsServiceIpcId(id: string): void {
+  pendingCostsServiceIpcId = id;
+}
+
+export function consumePendingCostsServiceIpcId(): string | undefined {
+  const id = pendingCostsServiceIpcId ?? undefined;
+  pendingCostsServiceIpcId = null;
+  return id;
+}
+
 let pendingCustodySettlementId: string | null = null;
 
 /** Open Actual Costs → custody tab and load a settlement by id. */

@@ -14,6 +14,7 @@ export type ReportPrintId =
   | 'costs'
   | 'billing_ipc'
   | 'subcontractor_ipc'
+  | 'service_ipc'
   | 'mos'
   | 'variation_order'
   | 'custody_settlement'
@@ -240,6 +241,7 @@ export const REPORT_PRINT_IDS: ReportPrintId[] = [
   'costs',
   'billing_ipc',
   'subcontractor_ipc',
+  'service_ipc',
   'mos',
   'variation_order',
   'custody_settlement',
@@ -263,6 +265,7 @@ export const REPORT_PRINT_LABELS: Record<ReportPrintId, { ar: string; en: string
   costs: { ar: 'تكاليف BOQ', en: 'BOQ Costs' },
   billing_ipc: { ar: 'مستخلص العميل (جاري/نهائي)', en: 'Client IPC (Interim/Final)' },
   subcontractor_ipc: { ar: 'مستخلص مقاول باطن', en: 'Subcontractor IPC' },
+  service_ipc: { ar: 'مستخلص خدمة', en: 'Service IPC' },
   mos: { ar: 'مستخلص تشوينات (MOS)', en: 'Material On-Site (MOS)' },
   variation_order: { ar: 'أمر تغيير', en: 'Variation Order' },
   custody_settlement: { ar: 'تسوية عهدة', en: 'Custody Settlement' },
@@ -357,6 +360,7 @@ export const REPORT_PRINT_DEFAULTS: Record<ReportPrintId, ReportPrintProfile> = 
   costs: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#be123c' },
   billing_ipc: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#1e3a8a', titleAlign: 'end', headerSize: 'sm', footerSize: 'lg' },
   subcontractor_ipc: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#0d9488', titleAlign: 'end', headerSize: 'sm', footerSize: 'lg' },
+  service_ipc: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#0369a1', titleAlign: 'end', headerSize: 'sm', footerSize: 'lg' },
   mos: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#1e3a8a', titleAlign: 'end' },
   variation_order: { ...BASE_PRINT_LAYOUT, orientation: 'landscape', pageSize: 'A4', density: 'compact', accent: '#7c3aed', titleAlign: 'end' },
   custody_settlement: { ...BASE_PRINT_LAYOUT, orientation: 'portrait', pageSize: 'A4', density: 'normal', accent: '#0f766e' },

@@ -43,6 +43,7 @@ import { IpcItemsGrid } from './actualCosts/IpcItemsGrid';
 import { AddExpenseAccountModal, type NewExpenseAccountFields } from './actualCosts/AddExpenseAccountModal';
 import { AddSupplierModal, type NewSupplierFields } from './actualCosts/AddSupplierModal';
 import { ConfirmDeleteModal } from './actualCosts/ConfirmDeleteModal';
+import { ServiceIpcPanel } from './actualCosts/ServiceIpcPanel';
 import { useUserAccessScope } from '../hooks/useUserAccessScope';
 import { usePermissions } from '../context/PermissionsContext';
 import { isLocalBackend } from '../lib/dataBackend';
@@ -92,10 +93,12 @@ import {
 } from '../lib/costCenterPicker';
 import {
   consumePendingCostsIpcId,
+  consumePendingCostsServiceIpcId,
   consumePendingCustodySettlementId,
   consumePendingShellView,
   peekPendingShellView,
 } from '../lib/shellNavigation';
+import { isServiceContractor } from '../lib/serviceContractor';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -218,14 +221,14 @@ type CustodyGlTransaction = {
   createdBy: string;
 };
 
-type ActiveTab = 'invoice' | 'ipc' | 'custody';
+type ActiveTab = 'invoice' | 'ipc' | 'service_ipc' | 'custody';
 
 interface ActualCostsDraft {
   activeTab: ActiveTab;
 }
 
 function isActiveTab(value: string): value is ActiveTab {
-  return value === 'invoice' || value === 'ipc' || value === 'custody';
+  return value === 'invoice' || value === 'ipc' || value === 'service_ipc' || value === 'custody';
 }
 
 type PurchaseStatusFilter = CostsPurchaseStatusFilter;
@@ -451,16 +454,19 @@ export function ActualCosts() {
   const TAB_PERM_KEY: Record<ActiveTab, 'costs_invoice' | 'costs_ipc' | 'costs_custody'> = {
     invoice: 'costs_invoice',
     ipc: 'costs_ipc',
+    service_ipc: 'costs_ipc',
     custody: 'costs_custody',
   };
-  const SCREEN_TITLE_KEY: Record<ActiveTab, 'costs_menu_invoice' | 'costs_menu_ipc' | 'costs_menu_custody'> = {
+  const SCREEN_TITLE_KEY: Record<ActiveTab, 'costs_menu_invoice' | 'costs_menu_ipc' | 'costs_menu_service_ipc' | 'costs_menu_custody'> = {
     invoice: 'costs_menu_invoice',
     ipc: 'costs_menu_ipc',
+    service_ipc: 'costs_menu_service_ipc',
     custody: 'costs_menu_custody',
   };
-  const SCREEN_SUBTITLE_KEY: Record<ActiveTab, 'costs_screen_invoice_subtitle' | 'costs_screen_ipc_subtitle' | 'costs_screen_custody_subtitle'> = {
+  const SCREEN_SUBTITLE_KEY: Record<ActiveTab, 'costs_screen_invoice_subtitle' | 'costs_screen_ipc_subtitle' | 'costs_screen_service_ipc_subtitle' | 'costs_screen_custody_subtitle'> = {
     invoice: 'costs_screen_invoice_subtitle',
     ipc: 'costs_screen_ipc_subtitle',
+    service_ipc: 'costs_screen_service_ipc_subtitle',
     custody: 'costs_screen_custody_subtitle',
   };
   const canViewTab = (tab: ActiveTab) => can(TAB_PERM_KEY[tab]).view;
@@ -484,6 +490,9 @@ export function ActualCosts() {
   const [pendingIpcOpenId, setPendingIpcOpenId] = useState<string | null>(
     () => consumePendingCostsIpcId() ?? null,
   );
+  const [pendingServiceIpcOpenId, setPendingServiceIpcOpenId] = useState<string | null>(
+    () => consumePendingCostsServiceIpcId() ?? null,
+  );
 
   useEffect(() => {
     if (!isErpShell || !erp || draftHydrated.current) return;
@@ -506,12 +515,17 @@ export function ActualCosts() {
       setActiveTab('custody');
       setPendingCustodyOpenId(pendingCustody);
     }
+    const pendingService = consumePendingCostsServiceIpcId();
+    if (pendingService) {
+      setActiveTab('service_ipc');
+      setPendingServiceIpcOpenId(pendingService);
+    }
   }, []);
 
   // If the current tab is not permitted, auto-switch to the first permitted one.
   useEffect(() => {
     if (!canViewTab(activeTab)) {
-      const first = (['invoice', 'ipc', 'custody'] as ActiveTab[]).find((t) => canViewTab(t));
+      const first = (['invoice', 'ipc', 'service_ipc', 'custody'] as ActiveTab[]).find((t) => canViewTab(t));
       if (first) setActiveTab(first);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1305,6 +1319,7 @@ export function ActualCosts() {
           name: data.name || data.nameEn,
           nameEn: data.nameEn,
           type: newSupplierType,
+          ...(newSupplierType === 'subcontractor' ? { serviceKind: data.serviceKind || 'works' } : {}),
           taxNumber: data.taxNumber,
           phone: data.phone,
           address: data.address,
@@ -1326,7 +1341,7 @@ export function ActualCosts() {
       } else {
         const batch = writeBatch(db);
         const supplierRef = doc(collection(db, 'suppliers'));
-        batch.set(supplierRef, { ...data, type: newSupplierType, isDeleted: false, createdAt: serverTimestamp() });
+        batch.set(supplierRef, { ...data, type: newSupplierType, ...(newSupplierType === 'subcontractor' ? { serviceKind: data.serviceKind || 'works' } : {}), isDeleted: false, createdAt: serverTimestamp() });
 
         const accountRef = doc(collection(db, 'chart_of_accounts'));
         batch.set(accountRef, {
@@ -2622,14 +2637,21 @@ export function ActualCosts() {
     }
     const tab = activeTab as 'invoice' | 'ipc';
     return accounts
-      .filter(a => matchesCreditorLedgerForTab(a, tab))
+      .filter((a) => {
+        if (!matchesCreditorLedgerForTab(a, tab)) return false;
+        if (tab !== 'ipc') return true;
+        const sup = a.supplierId
+          ? (suppliers.find((s) => s.id === a.supplierId) as { type?: string; serviceKind?: string } | undefined)
+          : undefined;
+        return !isServiceContractor(sup);
+      })
       .sort((x, y) => String(x.accountCode || '').localeCompare(String(y.accountCode || ''), undefined, { numeric: true }))
       .map(a => ({
         value: a.id as string,
         secondary: a.accountCode as string,
         label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName || ''),
       }));
-  }, [accounts, activeTab, formData.paymentType, language]);
+  }, [accounts, activeTab, formData.paymentType, language, suppliers]);
 
   const expenseAccountSelectOptions = useMemo(
     () =>
@@ -2737,6 +2759,7 @@ export function ActualCosts() {
   const ALL_TABS: { id: ActiveTab; labelAr: string; labelEn: string; icon: React.ReactNode }[] = [
     { id: 'invoice', labelAr: 'فاتورة مشتريات', labelEn: 'Purchase Invoice', icon: <Receipt size={16} /> },
     { id: 'ipc',     labelAr: 'مستخلص مقاول',  labelEn: 'Subcontractor IPC', icon: <FileText size={16} /> },
+    { id: 'service_ipc', labelAr: 'مستخلص خدمة', labelEn: 'Service IPC', icon: <FileText size={16} /> },
     { id: 'custody', labelAr: 'تسوية عهدة',    labelEn: 'Custody Settlement', icon: <ShoppingCart size={16} /> },
   ];
   const TABS = ALL_TABS.filter((t) => canViewTab(t.id));
@@ -2842,6 +2865,30 @@ export function ActualCosts() {
           }}
         />
         </>
+      )}
+
+      {activeTab === 'service_ipc' && (
+        <ServiceIpcPanel
+          accounts={accounts}
+          suppliers={suppliers}
+          projects={scopedProjects}
+          contracts={scopedContracts}
+          boqItems={scopedBoqItems}
+          theme={theme}
+          language={language}
+          dir={dir}
+          canCreate={canCreateInTab('service_ipc')}
+          canApprove={can('costs_ipc').edit}
+          refreshKey={purchaseRefreshKey}
+          initialOpenId={pendingServiceIpcOpenId}
+          onInitialOpenConsumed={() => setPendingServiceIpcOpenId(null)}
+          onRefresh={() => setPurchaseRefreshKey((k) => k + 1)}
+          onCoaChanged={() => {
+            invalidateCoaCache();
+            setCoaRefreshKey((k) => k + 1);
+            refreshReferenceData();
+          }}
+        />
       )}
 
       {/* ── INVOICE / IPC TABS ────────────────────────────────────────────── */}
@@ -3505,6 +3552,7 @@ export function ActualCosts() {
             cancelLabel={t('cancel')}
             isSubmitting={isSubmitting}
             supplierType={newSupplierType}
+            askServiceKind={newSupplierType === 'subcontractor'}
             computedAccountCode={computedSupplierCode}
             onClose={() => setShowSupplierModal(false)}
             onSubmit={handleSaveSupplier}

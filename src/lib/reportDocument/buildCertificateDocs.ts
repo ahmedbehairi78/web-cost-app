@@ -466,6 +466,142 @@ export function buildIpcCertificateDocument(
   });
 }
 
+export type ServiceIpcPrintLine = {
+  contractLabel: string;
+  chapterLabel?: string;
+  description: string;
+  unit: string;
+  rate: number;
+  previousQty: number;
+  currentQty: number;
+  netQty: number;
+  periodAmount: number;
+};
+
+export type ServiceIpcPrintData = {
+  documentNumber: string;
+  dateLabel: string;
+  /** Draft / awaiting approval / approved — shown prominently on the printout. */
+  statusLabel: string;
+  serviceKindLabel: string;
+  contractorName: string;
+  projectName?: string;
+  lines: ServiceIpcPrintLine[];
+  worksValueExVat: number;
+  vatAmount: number;
+  execGuaranteeAmount: number;
+  whtAmount: number;
+  labourInsuranceAmount: number;
+  manpowerLevyAmount: number;
+  advancePaymentRecovery: number;
+  netPayable: number;
+};
+
+/** Sections for service contractor IPC (multi cost-center, optional chapter). */
+export function buildServiceIpcCertificateSections(
+  data: ServiceIpcPrintData,
+  language: 'ar' | 'en',
+  formatMoney: (n: number) => string,
+): ReportDocSection[] {
+  const isAr = language === 'ar';
+  const meta: ReportDocKeyValueItem[] = [
+    { label: isAr ? 'رقم المستخلص' : 'IPC Number', value: data.documentNumber || '—' },
+    { label: isAr ? 'التاريخ' : 'Date', value: data.dateLabel },
+    { label: isAr ? 'الحالة' : 'Status', value: data.statusLabel, emphasize: true },
+    { label: isAr ? 'نوع الخدمة' : 'Service kind', value: data.serviceKindLabel },
+    { label: isAr ? 'مقاول الخدمة' : 'Service contractor', value: data.contractorName },
+  ];
+  if (data.projectName) meta.push({ label: isAr ? 'المشروع' : 'Project', value: data.projectName });
+
+  const columns: ReportDocColumn[] = [
+    { key: 'costCenter', header: isAr ? 'مركز التكلفة' : 'Cost center', width: 16 },
+    { key: 'chapter', header: isAr ? 'الفصل' : 'Chapter', width: 10 },
+    { key: 'description', header: isAr ? 'البيان' : 'Description', width: 22 },
+    { key: 'unit', header: isAr ? 'الوحدة' : 'Unit', width: 6, align: 'center' },
+    { key: 'rate', header: isAr ? 'الفئة' : 'Rate', width: 8, money: true },
+    { key: 'prev', header: isAr ? 'سابق' : 'Prev', width: 7, numeric: true },
+    { key: 'curr', header: isAr ? 'حالي' : 'Curr', width: 7, numeric: true },
+    { key: 'net', header: isAr ? 'صافي' : 'Net', width: 7, numeric: true },
+    { key: 'amount', header: isAr ? 'قيمة الفترة' : 'Period value', width: 10, money: true },
+  ];
+
+  const rows: ReportDocRow[] = data.lines.map((line) => ({
+    costCenter: line.contractLabel || '—',
+    chapter: line.chapterLabel || '—',
+    description: line.description || '—',
+    unit: line.unit || '—',
+    rate: line.rate,
+    prev: formatNumber(line.previousQty),
+    curr: formatNumber(line.currentQty),
+    net: formatNumber(line.netQty),
+    amount: line.periodAmount,
+  }));
+
+  const deductionAmt = (n: number) => (n > 0 ? `(${formatMoney(n)})` : formatMoney(0));
+  const summary: ReportDocKeyValueItem[] = [
+    {
+      label: isAr ? 'قيمة أعمال الفترة (بدون ضريبة)' : 'Period work value (excl. VAT)',
+      value: formatMoney(data.worksValueExVat),
+    },
+    { label: isAr ? 'ضريبة القيمة المضافة' : 'VAT', value: formatMoney(data.vatAmount) },
+  ];
+  if (data.execGuaranteeAmount > 0) {
+    summary.push({
+      label: isAr ? 'حجز ضمان أعمال' : 'Retention',
+      value: deductionAmt(data.execGuaranteeAmount),
+      tone: 'danger',
+    });
+  }
+  if (data.whtAmount > 0) {
+    summary.push({ label: isAr ? 'خصم وإضافة' : 'WHT', value: deductionAmt(data.whtAmount), tone: 'danger' });
+  }
+  if (data.labourInsuranceAmount > 0) {
+    summary.push({
+      label: isAr ? 'تأمينات' : 'Insurance',
+      value: deductionAmt(data.labourInsuranceAmount),
+      tone: 'danger',
+    });
+  }
+  if (data.manpowerLevyAmount > 0) {
+    summary.push({
+      label: isAr ? 'قوى عاملة' : 'Manpower levy',
+      value: deductionAmt(data.manpowerLevyAmount),
+      tone: 'danger',
+    });
+  }
+  if (data.advancePaymentRecovery > 0) {
+    summary.push({
+      label: isAr ? 'استرداد مقدمة' : 'Advance recovery',
+      value: deductionAmt(data.advancePaymentRecovery),
+      tone: 'danger',
+    });
+  }
+  summary.push({
+    label: isAr ? 'صافي المستحق' : 'Net payable',
+    value: formatMoney(data.netPayable),
+    emphasize: true,
+  });
+
+  return [
+    { kind: 'keyValue', items: meta, columnsPerRow: 3 },
+    {
+      kind: 'summary',
+      title: isAr ? 'الملخص المالي' : 'Financial summary',
+      items: summary,
+    },
+    {
+      kind: 'table',
+      title: isAr ? 'بنود مستخلص الخدمة' : 'Service IPC lines',
+      columns,
+      rows,
+      flow: true,
+      totals: { amount: data.worksValueExVat },
+      totalsLabel: isAr ? 'إجمالي أعمال الفترة' : 'Period works total',
+    },
+    signaturesSection(isAr),
+  ];
+}
+
 /** Material On-Site (MOS) certificate. */
 export function buildMosCertificateDocument(
   input: CertificateDocBase & { data: MosPrintData },

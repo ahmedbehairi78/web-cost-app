@@ -246,6 +246,8 @@ model Supplier {
   name      String
   nameEn    String?  @map("name_en")
   type      String
+  /** works | labour | equipment | vehicles | housing — only for type=subcontractor (21102). */
+  serviceKind String? @map("service_kind")
   taxNumber String?  @map("tax_number")
   phone     String?
   address   String?

@@ -9,6 +9,8 @@ export type NewSupplierFields = {
   taxNumber: string;
   phone: string;
   address: string;
+  /** Subcontractor classification — omitted for material suppliers. */
+  serviceKind?: 'works' | 'labour' | 'equipment' | 'vehicles' | 'housing';
 };
 
 type Props = {
@@ -18,6 +20,8 @@ type Props = {
   cancelLabel: string;
   isSubmitting: boolean;
   supplierType: 'supplier' | 'subcontractor';
+  /** When true, show works vs service kinds (21102 still). */
+  askServiceKind?: boolean;
   computedAccountCode: string;
   onClose: () => void;
   onSubmit: (data: NewSupplierFields) => void | Promise<void>;
@@ -29,6 +33,7 @@ const EMPTY: NewSupplierFields = {
   taxNumber: '',
   phone: '',
   address: '',
+  serviceKind: 'works',
 };
 
 function AddSupplierModalInner({
@@ -38,6 +43,7 @@ function AddSupplierModalInner({
   cancelLabel,
   isSubmitting,
   supplierType,
+  askServiceKind,
   computedAccountCode,
   onClose,
   onSubmit,
@@ -99,6 +105,22 @@ function AddSupplierModalInner({
               </button>
             </div>
           </div>
+          {supplierType === 'subcontractor' && askServiceKind && (
+            <div className="space-y-1">
+              <label className="text-xs text-gray-400 uppercase">{isAr ? 'تصنيف المقاول' : 'Contractor class'}</label>
+              <select
+                className={inputCls}
+                value={data.serviceKind || 'works'}
+                onChange={(e) => setData((p) => ({ ...p, serviceKind: e.target.value as NewSupplierFields['serviceKind'] }))}
+              >
+                <option value="works">{isAr ? 'تنفيذ بنود (قوائم كميات)' : 'Works (BOQ items)'}</option>
+                <option value="labour">{isAr ? 'توريد عمال' : 'Labour supply'}</option>
+                <option value="equipment">{isAr ? 'تأجير معدات' : 'Equipment rental'}</option>
+                <option value="vehicles">{isAr ? 'سيارات' : 'Vehicles'}</option>
+                <option value="housing">{isAr ? 'سكن' : 'Housing'}</option>
+              </select>
+            </div>
+          )}
           <div className="space-y-1">
             <label className="text-xs text-gray-400 uppercase">{isAr ? 'كود الحساب (تلقائي)' : 'Account Code (Auto)'}</label>
             <input

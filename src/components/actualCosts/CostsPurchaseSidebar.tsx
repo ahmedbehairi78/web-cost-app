@@ -40,7 +40,7 @@ type Props = {
   theme: string;
   language: string;
   dir: string;
-  activeTab: 'invoice' | 'ipc';
+  activeTab: 'invoice' | 'ipc' | 'service_ipc';
   cardCls: string;
   labelCls: string;
   selectCls: string;
@@ -115,13 +115,16 @@ function CostsPurchaseSidebarInner({
             )}
           >
             <Plus size={16} />
-            {activeTab === 'invoice' ? t('costs_new_invoice') : t('costs_new_ipc')}
+            {activeTab === 'invoice' ? t('costs_new_invoice') : activeTab === 'service_ipc' ? t('costs_new_service_ipc') : t('costs_new_ipc')}
           </button>
           {activeTab === 'invoice' && (
             <ManualHelpButton topicId="costs.invoice.purchase" size={16} />
           )}
           {activeTab === 'ipc' && (
             <ManualHelpButton topicId="costs.ipc.subcontractor" size={16} />
+          )}
+          {activeTab === 'service_ipc' && (
+            <ManualHelpButton topicId="costs.ipc.service" size={16} />
           )}
         </div>
       )}
@@ -155,7 +158,7 @@ function CostsPurchaseSidebarInner({
           onChange={(e) => onStatusFilter(e.target.value as CostsPurchaseStatusFilter)}
         >
           <option value="all">{isAr ? `الكل (${purchaseStatusCounts.all})` : `All (${purchaseStatusCounts.all})`}</option>
-          {activeTab === 'ipc' ? (
+          {activeTab === 'ipc' || activeTab === 'service_ipc' ? (
             <>
               <option value="draft">{isAr ? 'مسودة' : 'Draft'} ({purchaseStatusCounts.draft})</option>
               <option value="submitted">{isAr ? 'بانتظار الاعتماد' : 'Awaiting approval'} ({purchaseStatusCounts.submitted})</option>

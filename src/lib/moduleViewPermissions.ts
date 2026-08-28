@@ -24,6 +24,7 @@ export const MODULE_VIEW_PERMISSION_MAP: Record<
   costs: {
     invoice: 'costs_invoice',
     ipc: 'costs_ipc',
+    service_ipc: 'costs_ipc',
     custody: ['costs_custody', 'ledger'] as const,
   },
   inventory: {
@@ -92,7 +93,10 @@ export const PERMISSION_MENU_HINTS: Partial<
     { ar: 'مستندات المكتب الفني', en: 'Technical office documents' },
   ],
   costs_invoice: [{ ar: 'فاتورة مشتريات', en: 'Purchase invoice' }],
-  costs_ipc: [{ ar: 'مستخلص مقاول', en: 'Subcontractor IPC' }],
+  costs_ipc: [
+    { ar: 'مستخلص مقاول', en: 'Subcontractor IPC' },
+    { ar: 'مستخلص خدمة', en: 'Service IPC' },
+  ],
   costs_custody: [{ ar: 'تسوية عهدة', en: 'Custody settlement' }],
   suppliers: [{ ar: 'الموردون (مرجع الفواتير والمستخلصات)', en: 'Suppliers (invoice & IPC reference)' }],
   subcontractor: [{ ar: 'مقاولو الباطن', en: 'Subcontractors' }],

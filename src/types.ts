@@ -262,7 +262,8 @@ export interface BillingRecord {
 export interface Supplier {
   id: string;
   supplierName: string;
-  type: 'material' | 'labour' | 'equipment' | 'subcontractor';
+  type: 'material' | 'labour' | 'equipment' | 'subcontractor' | 'supplier';
+  serviceKind?: 'works' | 'labour' | 'equipment' | 'vehicles' | 'housing' | null;
   contact?: string;
   email?: string;
   address?: string;

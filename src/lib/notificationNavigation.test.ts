@@ -33,6 +33,16 @@ describe('resolveNotificationNavigation', () => {
     ).toEqual({ moduleId: 'costs', viewId: 'ipc' });
   });
 
+  it('maps service IPC to costs service_ipc tab', () => {
+    expect(
+      resolveNotificationNavigation({
+        type: 'service_ipc_pending',
+        moduleId: 'costs',
+        entityId: 'svc-1',
+      }),
+    ).toEqual({ moduleId: 'costs', viewId: 'service_ipc' });
+  });
+
   it('maps custody settlement to costs custody tab', () => {
     expect(
       resolveNotificationNavigation({

@@ -15,6 +15,7 @@ export type CashBudgetOrigin = (typeof CASH_BUDGET_ORIGINS)[number];
 export const OBLIGATION_CATEGORIES = [
   'supplier',
   'subcontractor',
+  'service',
   'custody_settlement',
   'custody_replenish',
   'payroll',

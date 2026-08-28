@@ -103,7 +103,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin allow-modals"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron؛ `allow-modals` لازم لحوار الطباعة/PDF) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
 | `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography + **`selectionPatches`**) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level) **and** **selection mini-bar**; **حفظ التصميم** persists both. Mini-bar formats selected cells **and header/footer slots** (company · title · scope · extra · footer columns) via `selectionFormat.ts`; reapplied on next preview (live numbers). Print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
-| `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (62 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
+| `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (63 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
 | `src/lib/cashBudget.ts` | **Cash budget math** — period end · `custodyReplenishAmount` · `computeCashBudgetSummary` (opening not double-counted) · server copy `server/src/lib/cashBudget.ts` |
 | `src/components/OperationsManual.tsx` | Full manual window (`module id: manual`) — search, module filter, topic list + `ManualTopicContent` |
 | `src/components/help/ManualHelpButton.tsx` | Contextual `?` — dropdown preview + «فتح الشرح الكامل»; hidden when topic not allowed for user |
@@ -216,7 +216,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `Banks.tsx` | `bank_*` + GL (Firestore) | **local:** `banksApi` + `bankPersistence` — **3 tabs:** `accounts` (statement split-view) · **`transactions`** (movements+cheques split-view) · `statements`; GL via `accountingService`/`glApi`; **no top stat cards** on `accounts`/`transactions` |
 | `Inventory.tsx` | cloud: Firestore | **local:** projects/contracts/COA + مخازن/صرف/إرجاع/تحويلات عبر API — **لا Firestore** |
 | `PurchaseRequests.tsx` | — | **local:** Postgres `purchase_requests` — طلب توريد (مكود/غير مكود) · BOQ كود+وصف فقط · حالات بدون فاتورة/GL · إشعار + واتساب لمسؤولي المشتريات |
-| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** من أرصدة اليومية حتى نهاية الفترة: التزامات (21101/21102/21501 + تعويض 12102 إن قلّ عن الحد) مقابل بنوك 12101 + خزينة 12102 + مستخلصات 12201 · بعد الاعتماد: سداد من **بنوك 12101 فقط** (لا صناديق/عهد 12102) وبحد الالتزامات · جدول إجمالي لكل مشروع · **بدون قيد GL** · `min_balance` على 12102… |
+| `CashBudget.tsx` | — | **local:** Postgres `cash_budget_*` — **موازنة نقدية** من أرصدة اليومية حتى نهاية الفترة: التزامات (21101/21102 باطن+خدمة /21501 + مستخلصات خدمة مقدَّمة غير معتمدة + تعويض 12102 إن قلّ عن الحد) مقابل بنوك 12101 + خزينة 12102 + مستخلصات 12201 · بعد الاعتماد: سداد من **بنوك 12101 فقط** (لا صناديق/عهد 12102) وبحد الالتزامات · جدول إجمالي لكل مشروع · **بدون قيد GL** · `min_balance` على 12102… |
 | `OverheadAllocation.tsx` | — | **local:** Postgres — دورات OHA + **قفل فترات محاسبية** (`PeriodLockPanel`) + قائمة دخل (placeholder) |
 | ~~`SubcontractorExtracts.tsx`~~ | — | **Hidden** — functionality covered by ActualCosts IPC tab; file on disk but removed from Sidebar + `modules.ts` |
 
@@ -534,7 +534,7 @@ feature branch → PR → /review → merge to main
 
 - Always run `npm run lint` (and **`npm run test`** when touching `accountingService` or regressions).
 - Golden paths after changes: create IPC, **purchase invoice via Actual Costs** (GL + SQLite stock + **row click preview**), **subcontractor IPC draft → submit → PM approve** (GL on approve), **custody settlement draft → submit → accounting approve** (GL on approve), **consumption order** (BOQ + expense account + GL `CON-…`), **return** (same expense as `CON-…`, GL `RET-…` without double prefix; visible in **Issues & Returns** tab), GL journal, **received cheque ISS+CLR**, Dashboard + Liquidity totals, capped reports if relevant, **OHA close preview** (pool = allocated per account).
-- When touching **operations manual** topics or `manual_*` i18n keys, run **`npm run test -- src/lib/operationsManual.test.ts`** (62 topics · ar/en key coverage · permission gates).
+- When touching **operations manual** topics or `manual_*` i18n keys, run **`npm run test -- src/lib/operationsManual.test.ts`** (63 topics · ar/en key coverage · permission gates).
 - When touching **offline sync** (`src/lib/offline/*`, idle gate, Idempotency), run **`npm run test -- src/lib/offline/offline.test.ts src/lib/operationsManual.test.ts`**.
 - When touching **shell / window navigation** (`App.tsx`, `Sidebar`, `TopNavBar`, `shellWindowPolicy.ts`), run **`npm run test -- src/lib/shellWindowPolicy.test.ts`** and golden-path **general settings → main module** in dark + ERP.
 - When touching **user preferences / default module / GeneralSettings**, run **`npm run test -- src/lib/shellNavigation.test.ts`** and verify theme + `none` persist after reload.
@@ -718,6 +718,7 @@ The add/edit item modal uses **cascading dropdowns** driven by `existingItems` (
 |-----|-------------|-------------|
 | فاتورة مشتريات | `invoice` | Purchase invoice — **آجلة** (Cr **21101…** مورد) أو **نقدية** (Cr **12102…** عهدة/صندوق) عبر `paymentType` · **Local:** atomic **`POST /purchase-transactions/post-invoice`** (GL + list row + warehouse stock) via `purchaseTransactionsApi.postInvoice` — **do not** split `glApi.createTransaction` then `create`. **Cloud:** `recordPurchaseToProjectInventory()` / fixed-asset / indirect helpers. Toggle **«تسجيل كأصل ثابت»** → Dr **11…**. **Lines:** multi-material + multi-BOQ (`boqItemIds[]`). |
 | مستخلص مقاول | `ipc` | Subcontractor IPC — **`draft` → `submitted` → `approved`**; GL **`POST /api/purchase-transactions/:id/approve`** only (admin / projects_manager); on approve also writes **`boq_actual_costs`** (`subcontractor`, period `currentQty×rate`) for reports — **no GL change**; journal preview via **`JournalPreviewModal`** |
+| مستخلص خدمة | `service_ipc` | مقاول خدمة تحت **21102** (`serviceKind`: labour/equipment/vehicles/housing) — **بدون بنود BOQ**؛ عدة مراكز تكلفة + فصل اختياري؛ قيد مدين **51102/51104/51103** حسب النوع · دائن 21102؛ **لا** `boq_actual_costs`؛ تنبيه `service_ipc_pending` · طباعة بالحالة · التزام موازنة فئة `service` |
 | تسوية عهدة | `custody` | **`<GLCustodySettlement>`** — list + modal; optional per-line **BOQ** (`boqItemId`) for reports; numbering **`SET-{projectCode}-0001`**; **`draft` → `submitted` → `approved`**; GL on approve only; optional `boq_actual_costs` (`custody`) on approve when linked |
 | مصروف غير مباشر | `indirect` | **local:** Dr expense / Cr creditor via **`createTransaction`**; **`costCenterId`** = indirect center (`GET /api/cost-centers?type=indirect`) |
 | مصروف عقد + BOQ | `contract_expense` | **local:** contract expense split across BOQ items → **`contractExpenseOrdersApi`** confirm posts GL `CEX-…` + **`boq_actual_costs`** |
@@ -938,7 +939,7 @@ In-app **step-by-step guide** for operational workflows — Arabic/English via *
 
 | Module / phase | Topic prefix / count |
 |----------------|----------------------|
-| Actual Costs | `costs.*` (5) — purchase · indirect · fixed asset · IPC · custody |
+| Actual Costs | `costs.*` (6) — purchase · indirect · fixed asset · IPC · service IPC · custody |
 | Technical office | `technical.*` (7) — projects · contract · BOQ · billing · MOS |
 | Inventory | `inventory.*` (7) — materials · BOQ link · receipt · consumption · multi-BOQ · return · transfer |
 | GL / OHA | `ledger.*` (5) — filters · manual entry · reverse · statement · overhead close |
@@ -1015,7 +1016,7 @@ npm run test -- server/src/lib/corsOrigin.test.ts server/src/middleware/loginRat
 
 ## 🔴 HANDOFF — موازنة نقدية (تخطيط فقط) ✅ (2026-08-20)
 
-> **جلسة 2026-08-20:** موديول `cash_budget` — **موازنة نقدية من أرصدة اليومية حتى نهاية الفترة.** التزامات = دائن 21101 موردون + 21102 باطن + 21501 رواتب مستحقة + تعويض عهد 12102 إن قلّ عن الحد. المتاح = 12101 بنوك + 12102 خزينة/عهد + 12201 مستخلصات تحت التحصيل. **لا قيد يومية.**
+> **جلسة 2026-08-20:** موديول `cash_budget` — **موازنة نقدية من أرصدة اليومية حتى نهاية الفترة.** التزامات = دائن 21101 موردون + 21102 باطن/خدمة + 21501 رواتب مستحقة + مستخلصات خدمة مقدَّمة غير معتمدة + تعويض عهد 12102 إن قلّ عن الحد. المتاح = 12101 بنوك + 12102 خزينة/عهد + 12201 مستخلصات تحت التحصيل. **لا قيد يومية.**
 
 ### المعادلة
 

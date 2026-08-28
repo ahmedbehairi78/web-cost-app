@@ -146,6 +146,37 @@ export function notifySubcontractorIpcResolved(ipcId: string): void {
   fireCancelOutbox(`subcontractor_ipc:${ipcId}`);
 }
 
+export function notifyServiceIpcSubmitted(
+  ipc: {
+    id: string;
+    referenceNumber: string | null;
+    contractId: string | null;
+    projectId?: string | null;
+    supplierName: string;
+  },
+  excludeUserId?: string,
+): void {
+  const label = ipc.referenceNumber?.trim() || ipc.supplierName || ipc.id.slice(0, 8);
+  const payload: EnqueuePayload = {
+    notificationKey: `service_ipc:${ipc.id}`,
+    notifyType: 'service_ipc_pending',
+    titleAr: `مستخلص خدمة ${label} بانتظار الاعتماد`,
+    titleEn: `Service IPC ${label} awaiting approval`,
+    entityLabel: label,
+    priority: 'normal',
+    contractId: ipc.contractId ?? undefined,
+    projectId: ipc.projectId ?? undefined,
+    excludeUserId,
+  };
+  void enqueueWithReminder(payload).catch((err) => {
+    console.error('[notify-service-ipc-submitted]', ipc.id, err);
+  });
+}
+
+export function notifyServiceIpcResolved(ipcId: string): void {
+  fireCancelOutbox(`service_ipc:${ipcId}`);
+}
+
 export function notifyCustodySettlementSubmitted(
   settlement: {
     id: string;

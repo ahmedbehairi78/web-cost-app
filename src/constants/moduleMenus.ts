@@ -44,6 +44,7 @@ export const MODULE_MENUS: Record<string, ModuleMenuDef> = {
     views: [
       { viewId: 'invoice', labelKey: 'costs_menu_invoice' },
       { viewId: 'ipc', labelKey: 'costs_menu_ipc' },
+      { viewId: 'service_ipc', labelKey: 'costs_menu_service_ipc' },
       { viewId: 'custody', labelKey: 'costs_menu_custody' },
     ],
   },

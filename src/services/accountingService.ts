@@ -193,6 +193,8 @@ export interface Account {
   projectId?: string;
   /** Floor for site custody 12102… leaves — used by cash budget replenish. */
   minBalance?: number;
+  /** Linked suppliers directory row (creditor leaves 21101/21102). */
+  supplierId?: string;
 }
 
 export interface Transaction {

@@ -1,0 +1,1028 @@
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FileText, Loader2, Plus, Printer, Trash2 } from 'lucide-react';
+import { AnimatePresence, motion } from 'motion/react';
+import toast from 'react-hot-toast';
+import { BILLING_DEFAULTS } from '../../constants/billingDefaults';
+import { businessTodayYmd } from '../../lib/businessCalendar';
+import { isLocalBackend } from '../../lib/dataBackend';
+import { cn, listKey, roundMoney2 } from '../../lib/utils';
+import { roundMoney } from '../../lib/money';
+import { displayLocale } from '../../lib/numberLocale';
+import { useLanguage } from '../../context/LanguageContext';
+import { JournalPreviewModal } from '../gl/JournalPreviewModal';
+import { SearchableSelect } from '../ui/SearchableSelect';
+import { SpreadsheetCellInput } from '../ui/SpreadsheetCellInput';
+import { ManualHelpButton } from '../help/ManualHelpButton';
+import {
+  CostsPurchaseSidebar,
+  type CostsPurchaseStatusFilter,
+  type CostsSidebarPurchaseRow,
+} from './CostsPurchaseSidebar';
+import { AddSupplierModal, type NewSupplierFields } from './AddSupplierModal';
+import { purchaseTransactionsApi, suppliersApi, chartOfAccountsApi, settingsApi } from '../../services/local/modulesApi';
+import { invalidateCoaCache, type Account } from '../../services/accountingService';
+import { ApiError } from '../../lib/apiClient';
+import { NetworkQueuedError } from '../../lib/offline/offlineWrite';
+import { ensureLocalContractExists, ensureLocalProjectExists } from '../../lib/localEntitySync';
+import {
+  SERVICE_IPC_KINDS,
+  SERVICE_IPC_TYPE,
+  isServiceContractor,
+  isServiceIpcKind,
+  netQty,
+  periodLineAmount,
+  previousQtyFromApproved,
+  toDateLineAmount,
+  uniqueBoqChapters,
+  type ServiceIpcKind,
+  type ServiceIpcLine,
+} from '../../lib/serviceContractor';
+import { buildServiceIpcEntries } from '../../lib/serviceIpcJournal';
+import {
+  buildServiceIpcCertificateSections,
+  type ServiceIpcPrintData,
+} from '../../lib/reportDocument';
+import type { CompanyPrintInfo } from '../../lib/ipcPrintData';
+import type { StoredReportPrintProfiles } from '../../lib/reportPrintProfiles';
+import { useReportDocumentPreview } from '../../hooks/useReportDocumentPreview';
+import type { Supplier, BOQItem } from '../../types';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '../../firebase';
+
+type ProjectRow = { id: string; projectName: string; projectCode?: string; clientName?: string; budget?: number };
+type ContractRow = {
+  id: string;
+  contractName: string;
+  contractNumber: string;
+  projectId?: string;
+};
+
+type ServiceTx = {
+  id: string;
+  type?: string;
+  supplierId?: string | null;
+  supplierAccountId?: string;
+  supplierName?: string;
+  projectId?: string | null;
+  contractId?: string | null;
+  date?: string;
+  referenceNumber?: string;
+  amount?: number;
+  vatAmount?: number;
+  whtAmount?: number;
+  execGuaranteeAmount?: number;
+  labourInsuranceAmount?: number;
+  manpowerLevyAmount?: number;
+  advancePaymentRecovery?: number;
+  totalAmount?: number;
+  description?: string;
+  status?: string;
+  transactionId?: string | null;
+  items?: ServiceIpcLine[];
+  serviceKind?: string;
+  vatPct?: number;
+  whtPct?: number;
+  execGuaranteePct?: number;
+};
+
+function makeLine(): ServiceIpcLine & { id: string } {
+  return {
+    id: `sl-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    contractId: '',
+    projectId: '',
+    chapterCode: '',
+    chapterName: '',
+    description: '',
+    unit: 'يوم',
+    rate: 0,
+    previousQty: 0,
+    currentQty: 0,
+  };
+}
+
+function posted(tx: ServiceTx): boolean {
+  return Boolean(tx.transactionId) || tx.status === 'approved';
+}
+
+function workflowStatusLabel(tx: Pick<ServiceTx, 'status' | 'transactionId'>, isAr: boolean): string {
+  if (posted(tx)) return isAr ? 'معتمد' : 'Approved';
+  if (tx.status === 'submitted') return isAr ? 'بانتظار الاعتماد' : 'Awaiting approval';
+  if (tx.status === 'draft') return isAr ? 'مسودة' : 'Draft';
+  return isAr ? 'مسودة' : 'Draft';
+}
+
+type Props = {
+  accounts: Account[];
+  suppliers: Supplier[];
+  projects: ProjectRow[];
+  contracts: ContractRow[];
+  boqItems: BOQItem[];
+  theme: string;
+  language: string;
+  dir: string;
+  canCreate: boolean;
+  canApprove: boolean;
+  refreshKey: number;
+  /** Notification deep-link: select + open the form for this id once loaded. */
+  initialOpenId?: string | null;
+  onInitialOpenConsumed?: () => void;
+  onRefresh: () => void;
+  onCoaChanged: () => void;
+};
+
+export function ServiceIpcPanel({
+  accounts,
+  suppliers,
+  projects,
+  contracts,
+  boqItems,
+  theme,
+  language,
+  dir,
+  canCreate,
+  canApprove,
+  refreshKey,
+  initialOpenId = null,
+  onInitialOpenConsumed,
+  onRefresh,
+  onCoaChanged,
+}: Props) {
+  const { t, formatMoney } = useLanguage();
+  const isAr = language === 'ar';
+  const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo & { reportPrintProfiles?: StoredReportPrintProfiles }>({
+    companyName: '',
+    companyNameEn: '',
+  });
+  const { openDocPreview, ReportPreviewHost } = useReportDocumentPreview({
+    language: language === 'en' ? 'en' : 'ar',
+    t,
+    formatMoney,
+    companyInfo,
+  });
+
+  useEffect(() => {
+    const loadCompany = async () => {
+      try {
+        if (isLocalBackend) {
+          const res = await settingsApi.getCompanyInfo();
+          if (res.value) setCompanyInfo((prev) => ({ ...prev, ...res.value }));
+          return;
+        }
+        const snap = await getDoc(doc(db, 'settings', 'company_info'));
+        if (snap.exists()) setCompanyInfo((prev) => ({ ...prev, ...(snap.data() as CompanyPrintInfo) }));
+      } catch {
+        /* keep defaults */
+      }
+    };
+    void loadCompany();
+  }, []);
+
+  const [list, setList] = useState<ServiceTx[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filterProjectId, setFilterProjectId] = useState('');
+  const [filterContractId, setFilterContractId] = useState('');
+  const [statusFilter, setStatusFilter] = useState<CostsPurchaseStatusFilter>('all');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [showModal, setShowModal] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saveMode, setSaveMode] = useState<'draft' | 'submit' | 'approve'>('submit');
+  const [saving, setSaving] = useState(false);
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [preview, setPreview] = useState<{ entries: ReturnType<typeof buildServiceIpcEntries>; description: string } | null>(null);
+  const previewConfirmed = useRef(false);
+  const gridRefs = useRef<(HTMLInputElement | null)[][]>([]);
+
+  const [header, setHeader] = useState({
+    supplierAccountId: '',
+    serviceKind: 'labour' as ServiceIpcKind,
+    date: businessTodayYmd(),
+    referenceNumber: '',
+    description: '',
+    vatPct: BILLING_DEFAULTS.VAT_PCT,
+    execGuaranteePct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+    whtPct: BILLING_DEFAULTS.WHT_PCT,
+    labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+    manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+    advancePaymentRecovery: 0,
+  });
+  const [lines, setLines] = useState<(ServiceIpcLine & { id: string })[]>([makeLine()]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const rows = (await purchaseTransactionsApi.list()) as ServiceTx[];
+      setList(rows.filter((r) => r.type === SERVICE_IPC_TYPE && !(r as { isDeleted?: boolean }).isDeleted));
+    } catch {
+      setList([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void load(); }, [load, refreshKey]);
+
+  const creditorOptions = useMemo(() => {
+    const byId = new Map(suppliers.map((s) => [s.id, s as Supplier & { serviceKind?: string }]));
+    return accounts
+      .filter((a) => {
+        if (a.isGroup || a.status === 'disabled') return false;
+        const code = String(a.accountCode || '');
+        if (code === '21102001') return false;
+        if (!code.startsWith('21102') && String(a.parentCode || '') !== '21102') return false;
+        const sup = a.supplierId ? byId.get(String(a.supplierId)) : undefined;
+        return isServiceContractor(sup);
+      })
+      .sort((x, y) => String(x.accountCode).localeCompare(String(y.accountCode), undefined, { numeric: true }))
+      .map((a) => ({
+        value: a.id as string,
+        label: language === 'ar' ? a.accountName : (a.accountNameEn || a.accountName),
+        secondary: a.accountCode as string,
+      }));
+  }, [accounts, suppliers, language]);
+
+  const nextSupplierCode = useMemo(() => {
+    const codes = accounts
+      .filter((a) => String(a.parentCode) === '21102' && /^\d{8}$/.test(String(a.accountCode)))
+      .map((a) => Number(a.accountCode));
+    const max = codes.length ? Math.max(...codes) : 21102001;
+    return String(Math.max(max + 1, 21102002));
+  }, [accounts]);
+
+  const selectedCoa = accounts.find((a) => a.id === header.supplierAccountId);
+  const selectedSupplier = selectedCoa?.supplierId
+    ? (suppliers.find((s) => s.id === selectedCoa.supplierId) as (Supplier & { serviceKind?: string }) | undefined)
+    : undefined;
+
+  useEffect(() => {
+    const kind = selectedSupplier?.serviceKind;
+    if (isServiceIpcKind(kind)) setHeader((h) => (h.serviceKind === kind ? h : { ...h, serviceKind: kind }));
+  }, [selectedSupplier?.serviceKind]);
+
+  const approvedItemsForPrev = useMemo(() => {
+    const accId = header.supplierAccountId;
+    if (!accId) return [];
+    return list
+      .filter((tx) => posted(tx) && tx.supplierAccountId === accId && tx.id !== editingId)
+      .flatMap((tx) => tx.items ?? []);
+  }, [list, header.supplierAccountId, editingId]);
+
+  const fillPrevious = useCallback((line: ServiceIpcLine & { id: string }) => {
+    const prev = previousQtyFromApproved(approvedItemsForPrev, line);
+    return { ...line, previousQty: prev };
+  }, [approvedItemsForPrev]);
+
+  const worksValue = useMemo(
+    () => roundMoney(lines.reduce((s, l) => s + periodLineAmount(l), 0)),
+    [lines],
+  );
+  const vat = roundMoney(worksValue * (header.vatPct / 100));
+  const exec = roundMoney(worksValue * (header.execGuaranteePct / 100));
+  const wht = roundMoney(worksValue * (header.whtPct / 100));
+  const insurance = roundMoney(worksValue * (header.labourInsurancePct / 100));
+  const levy = roundMoney(worksValue * (header.manpowerLevyPct / 100));
+  const advance = roundMoney(Number(header.advancePaymentRecovery) || 0);
+  const net = roundMoney(worksValue + vat - exec - wht - insurance - levy - advance);
+
+  const counts = useMemo(() => {
+    const draft = list.filter((t) => t.status === 'draft' && !posted(t)).length;
+    const submitted = list.filter((t) => t.status === 'submitted' && !posted(t)).length;
+    const approved = list.filter((t) => posted(t)).length;
+    return { all: list.length, draft, submitted, approved, pending: 0, posted: 0, paid: 0 };
+  }, [list]);
+
+  const filtered = useMemo(() => {
+    let rows = list;
+    if (filterProjectId) {
+      rows = rows.filter((tx) =>
+        tx.projectId === filterProjectId
+        || (tx.items ?? []).some((i) => i.projectId === filterProjectId)
+        || contracts.filter((c) => c.projectId === filterProjectId).some((c) =>
+          tx.contractId === c.id || (tx.items ?? []).some((i) => i.contractId === c.id)),
+      );
+    }
+    if (filterContractId) {
+      rows = rows.filter((tx) =>
+        tx.contractId === filterContractId || (tx.items ?? []).some((i) => i.contractId === filterContractId),
+      );
+    }
+    if (statusFilter === 'draft') rows = rows.filter((t) => t.status === 'draft' && !posted(t));
+    if (statusFilter === 'submitted') rows = rows.filter((t) => t.status === 'submitted' && !posted(t));
+    if (statusFilter === 'approved') rows = rows.filter((t) => posted(t));
+    const q = searchTerm.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter((tx) =>
+        String(tx.referenceNumber || '').toLowerCase().includes(q)
+        || String(tx.supplierName || '').toLowerCase().includes(q),
+      );
+    }
+    return rows;
+  }, [list, filterProjectId, filterContractId, statusFilter, searchTerm, contracts]);
+
+  const selected = filtered.find((t) => t.id === selectedId) ?? list.find((t) => t.id === selectedId);
+
+  const resetForm = () => {
+    setEditingId(null);
+    previewConfirmed.current = false;
+    setPreview(null);
+    setHeader({
+      supplierAccountId: '',
+      serviceKind: 'labour',
+      date: businessTodayYmd(),
+      referenceNumber: '',
+      description: '',
+      vatPct: BILLING_DEFAULTS.VAT_PCT,
+      execGuaranteePct: BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+      whtPct: BILLING_DEFAULTS.WHT_PCT,
+      labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+      manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+      advancePaymentRecovery: 0,
+    });
+    setLines([makeLine()]);
+  };
+
+  const openExisting = (tx: ServiceTx, mode: 'draft' | 'submit' | 'approve' = 'submit') => {
+    setEditingId(tx.id);
+    setSaveMode(mode);
+    previewConfirmed.current = false;
+    setHeader({
+      supplierAccountId: tx.supplierAccountId || '',
+      serviceKind: isServiceIpcKind(tx.serviceKind) ? tx.serviceKind : 'labour',
+      date: tx.date || businessTodayYmd(),
+      referenceNumber: tx.referenceNumber || '',
+      description: tx.description || '',
+      vatPct: Number(tx.vatPct) || BILLING_DEFAULTS.VAT_PCT,
+      execGuaranteePct: Number(tx.execGuaranteePct) || BILLING_DEFAULTS.EXEC_GUARANTEE_PCT,
+      whtPct: Number(tx.whtPct) || BILLING_DEFAULTS.WHT_PCT,
+      labourInsurancePct: BILLING_DEFAULTS.LABOUR_INSURANCE_PCT,
+      manpowerLevyPct: BILLING_DEFAULTS.MANPOWER_LEVY_PCT,
+      advancePaymentRecovery: Number(tx.advancePaymentRecovery) || 0,
+    });
+    const mapped = (tx.items ?? []).map((l, i) => ({
+      ...makeLine(),
+      ...l,
+      id: l.id || `sl-${i}`,
+    }));
+    setLines(mapped.length ? mapped : [makeLine()]);
+    setShowModal(true);
+  };
+
+  const deepLinkOpenedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialOpenId || list.length === 0) return;
+    const row = list.find((t) => t.id === initialOpenId);
+    if (!row) return;
+    setSelectedId(initialOpenId);
+    if (deepLinkOpenedRef.current === initialOpenId) return;
+    deepLinkOpenedRef.current = initialOpenId;
+    openExisting(row, row.status === 'submitted' && !posted(row) && canApprove ? 'approve' : 'submit');
+    onInitialOpenConsumed?.();
+  }, [initialOpenId, list, canApprove, onInitialOpenConsumed]);
+
+  const editingTx = list.find((t) => t.id === editingId);
+  const readOnly = Boolean(editingTx && posted(editingTx));
+
+  const handleSaveSupplier = async (data: NewSupplierFields) => {
+    if (!data.nameEn.trim()) {
+      toast.error(t('toast_english_name_required'));
+      return;
+    }
+    const kind = isServiceIpcKind(data.serviceKind) ? data.serviceKind : 'labour';
+    try {
+      const supplier = await suppliersApi.create({
+        name: data.name || data.nameEn,
+        nameEn: data.nameEn,
+        type: 'subcontractor',
+        serviceKind: kind,
+        taxNumber: data.taxNumber,
+        phone: data.phone,
+        address: data.address,
+        isDeleted: false,
+      } as unknown as Supplier) as { id: string };
+      const account = await chartOfAccountsApi.create({
+        accountName: data.name || data.nameEn,
+        accountNameEn: data.nameEn,
+        accountCode: nextSupplierCode,
+        parentCode: '21102',
+        type: 'liability',
+        isGroup: false,
+        status: 'active',
+        supplierId: supplier.id,
+      }) as { id: string };
+      invalidateCoaCache();
+      onCoaChanged();
+      setHeader((h) => ({ ...h, supplierAccountId: account.id, serviceKind: kind }));
+      setShowSupplierModal(false);
+    } catch {
+      toast.error(t('toast_save_failed'));
+    }
+  };
+
+  const persist = async (mode: 'draft' | 'submit' | 'approve') => {
+    if (!selectedCoa) {
+      toast.error(t('select_supplier'));
+      return;
+    }
+    const activeLines = lines.filter((l) => periodLineAmount(l) > 0 || Number(l.currentQty) > 0);
+    const missingCc = activeLines.find((l) => !String(l.contractId).trim());
+    if (mode !== 'draft' && (activeLines.length === 0 || missingCc)) {
+      toast.error(t('service_ipc_need_cost_center'));
+      return;
+    }
+    const supplierName =
+      (language === 'ar' ? selectedCoa.accountName : (selectedCoa.accountNameEn || selectedCoa.accountName)) || '';
+
+    if (mode === 'approve' && !previewConfirmed.current) {
+      const entries = buildServiceIpcEntries({
+        serviceKind: header.serviceKind,
+        supplierName,
+        supplierAccountCode: selectedCoa.accountCode,
+        lines,
+        vatAmount: vat,
+        execGuarantee: exec,
+        whtAmount: wht,
+        labourInsurance: insurance,
+        manpowerLevy: levy,
+        advancePaymentRecovery: advance,
+      });
+      setPreview({ entries, description: header.description || `${t('service_ipc_entry')} - ${supplierName}` });
+      return;
+    }
+
+    const uniqueContracts = [...new Set(lines.map((l) => l.contractId).filter(Boolean))];
+    const uniqueProjects = [...new Set(lines.map((l) => l.projectId).filter(Boolean))];
+    const status = mode === 'draft' ? 'draft' : mode === 'approve' ? 'submitted' : 'submitted';
+
+    setSaving(true);
+    try {
+      if (isLocalBackend) {
+        for (const cid of uniqueContracts) {
+          const c = contracts.find((x) => x.id === cid);
+          const pid = String(c?.projectId || '');
+          if (pid) {
+            const p = projects.find((x) => x.id === pid);
+            await ensureLocalProjectExists(pid, {
+              projectName: p?.projectName,
+              projectCode: p?.projectCode,
+              clientName: p?.clientName,
+              budget: p?.budget,
+            });
+            await ensureLocalContractExists(cid, pid, {
+              projectId: pid,
+              contractName: c?.contractName,
+              contractNumber: c?.contractNumber,
+            });
+          }
+        }
+      }
+      const body = {
+        type: SERVICE_IPC_TYPE,
+        supplierId: selectedCoa.supplierId || null,
+        supplierAccountId: selectedCoa.id,
+        supplierName,
+        projectId: uniqueProjects.length === 1 ? uniqueProjects[0] : null,
+        contractId: uniqueContracts.length === 1 ? uniqueContracts[0] : null,
+        date: header.date,
+        referenceNumber: header.referenceNumber,
+        amount: worksValue,
+        vatAmount: vat,
+        whtAmount: wht,
+        execGuaranteeAmount: exec,
+        labourInsuranceAmount: insurance,
+        manpowerLevyAmount: levy,
+        advancePaymentRecovery: advance,
+        totalAmount: net,
+        description: header.description,
+        status,
+        serviceKind: header.serviceKind,
+        vatPct: header.vatPct,
+        execGuaranteePct: header.execGuaranteePct,
+        whtPct: header.whtPct,
+        items: lines.map((l) => ({
+          contractId: l.contractId,
+          projectId: l.projectId || undefined,
+          chapterCode: l.chapterCode || undefined,
+          chapterName: l.chapterName || undefined,
+          description: l.description,
+          unit: l.unit,
+          rate: l.rate,
+          previousQty: l.previousQty,
+          currentQty: l.currentQty,
+        })),
+      };
+      let id = editingId;
+      if (editingId) await purchaseTransactionsApi.update(editingId, body);
+      else {
+        const created = await purchaseTransactionsApi.create(body) as { id: string };
+        id = created.id;
+        setEditingId(id);
+      }
+      if (mode === 'approve' && id) {
+        await purchaseTransactionsApi.approve(id);
+      }
+      toast.success(t('service_ipc_saved'));
+      setShowModal(false);
+      resetForm();
+      onRefresh();
+      await load();
+    } catch (err) {
+      if (err instanceof NetworkQueuedError) {
+        toast(err.message);
+        setShowModal(false);
+        return;
+      }
+      const msg = err instanceof ApiError ? err.message : t('toast_save_failed');
+      toast.error(msg);
+    } finally {
+      setSaving(false);
+      previewConfirmed.current = false;
+    }
+  };
+
+  const cardCls = cn(
+    'rounded-xl border p-4',
+    theme === 'dark' ? 'border-gray-800 bg-gray-900/40' : 'border-gray-200 bg-white',
+  );
+  const inputCls = cn(
+    'w-full border rounded-lg py-2 px-3 text-sm outline-none focus:border-blue-500',
+    theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-200',
+  );
+  const labelCls = cn('block text-xs font-bold mb-1.5', theme === 'dark' ? 'text-gray-400' : 'text-gray-500');
+  const selectCls = cn(
+    'w-full rounded-lg border px-3 py-2 text-sm font-bold outline-none focus:border-blue-500',
+    theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-300',
+  );
+  const sectionTitleCls = 'text-xs font-bold uppercase tracking-wide text-gray-500';
+  const colCount = 8;
+
+  const kindLabel = (k: string) => {
+    if (k === 'labour') return t('service_kind_labour');
+    if (k === 'equipment') return t('service_kind_equipment');
+    if (k === 'vehicles') return t('service_kind_vehicles');
+    if (k === 'housing') return t('service_kind_housing');
+    return k;
+  };
+
+  const buildPrintPayload = useCallback(
+    (tx: ServiceTx): ServiceIpcPrintData => {
+      const items = tx.items ?? [];
+      const worksValue = roundMoney(Number(tx.amount) || items.reduce((s, l) => s + periodLineAmount(l), 0));
+      const vatAmount = roundMoney(Number(tx.vatAmount) || 0);
+      const exec = roundMoney(Number(tx.execGuaranteeAmount) || 0);
+      const wht = roundMoney(Number(tx.whtAmount) || 0);
+      const insurance = roundMoney(Number(tx.labourInsuranceAmount) || 0);
+      const levy = roundMoney(Number(tx.manpowerLevyAmount) || 0);
+      const advance = roundMoney(Number(tx.advancePaymentRecovery) || 0);
+      const netPayable = roundMoney(
+        Number(tx.totalAmount) || worksValue + vatAmount - exec - wht - insurance - levy - advance,
+      );
+      const projectIds = [
+        ...new Set(
+          items.map((l) => String(l.projectId || '').trim()).filter(Boolean)
+            .concat(tx.projectId ? [String(tx.projectId)] : []),
+        ),
+      ];
+      const projectName =
+        projectIds.length === 1
+          ? projects.find((p) => p.id === projectIds[0])?.projectName
+          : undefined;
+
+      return {
+        documentNumber: tx.referenceNumber || tx.id || '—',
+        dateLabel: tx.date || '—',
+        statusLabel: workflowStatusLabel(tx, isAr),
+        serviceKindLabel: kindLabel(String(tx.serviceKind || '')),
+        contractorName: tx.supplierName || '—',
+        projectName,
+        lines: items.map((l) => {
+          const c = contracts.find((x) => x.id === l.contractId);
+          const chapter =
+            l.chapterCode || l.chapterName
+              ? [l.chapterCode, l.chapterName].filter(Boolean).join(' — ')
+              : '';
+          return {
+            contractLabel: c
+              ? `${c.contractName} (${c.contractNumber})`
+              : (l.contractId || '—'),
+            chapterLabel: chapter || undefined,
+            description: l.description || '',
+            unit: l.unit || '',
+            rate: Number(l.rate) || 0,
+            previousQty: Number(l.previousQty) || 0,
+            currentQty: Number(l.currentQty) || 0,
+            netQty: netQty(Number(l.previousQty) || 0, Number(l.currentQty) || 0),
+            periodAmount: roundMoney(periodLineAmount(l)),
+          };
+        }),
+        worksValueExVat: worksValue,
+        vatAmount,
+        execGuaranteeAmount: exec,
+        whtAmount: wht,
+        labourInsuranceAmount: insurance,
+        manpowerLevyAmount: levy,
+        advancePaymentRecovery: advance,
+        netPayable,
+      };
+    },
+    [contracts, projects, isAr, t],
+  );
+
+  const handlePrint = useCallback(
+    (tx: ServiceTx) => {
+      const data = buildPrintPayload(tx);
+      const sections = buildServiceIpcCertificateSections(data, language === 'en' ? 'en' : 'ar', formatMoney);
+      openDocPreview({
+        reportId: 'service_ipc',
+        title: isAr
+          ? `مستخلص خدمة — ${data.documentNumber} (${data.statusLabel})`
+          : `Service IPC — ${data.documentNumber} (${data.statusLabel})`,
+        columns: [],
+        rows: [],
+        sections,
+        filename: `service-ipc-${data.documentNumber}`,
+        dateLabel: new Date().toLocaleDateString(displayLocale(language === 'en' ? 'en' : 'ar')),
+        scopeLabel: data.contractorName,
+      });
+    },
+    [buildPrintPayload, formatMoney, language, isAr, openDocPreview],
+  );
+
+  /** Print from open form (draft in progress or saved). */
+  const handlePrintForm = useCallback(() => {
+    const supplierName =
+      selectedCoa
+        ? (language === 'ar' ? selectedCoa.accountName : (selectedCoa.accountNameEn || selectedCoa.accountName))
+        : header.supplierAccountId;
+    const formTx: ServiceTx = {
+      id: editingId || 'draft',
+      referenceNumber: header.referenceNumber || (isAr ? 'مسودة' : 'DRAFT'),
+      date: header.date,
+      status: editingTx?.status || 'draft',
+      transactionId: editingTx?.transactionId,
+      supplierName: String(supplierName || ''),
+      serviceKind: header.serviceKind,
+      amount: worksValue,
+      vatAmount: vat,
+      execGuaranteeAmount: exec,
+      whtAmount: wht,
+      labourInsuranceAmount: insurance,
+      manpowerLevyAmount: levy,
+      advancePaymentRecovery: advance,
+      totalAmount: net,
+      items: lines,
+    };
+    handlePrint(formTx);
+  }, [
+    selectedCoa, language, header, editingId, editingTx, worksValue, vat, exec, wht,
+    insurance, levy, advance, net, lines, isAr, handlePrint,
+  ]);
+
+  return (
+    <div className={cn('flex flex-col md:flex-row md:items-start gap-4', dir === 'rtl' ? 'md:flex-row-reverse' : '')}>
+      <div className="flex-1 min-w-0 md:flex-[3] space-y-4 order-2 md:order-none">
+        <div className="flex items-center gap-2">
+          <ManualHelpButton topicId="costs.ipc.service" />
+        </div>
+        {loading ? (
+          <div className={cn('border rounded-xl p-12 text-center text-gray-500 flex flex-col items-center gap-4', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+            <Loader2 className="animate-spin text-blue-500" size={32} />
+          </div>
+        ) : !selected ? (
+          <div className={cn('border rounded-xl p-12 text-center', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+            <p className="text-sm text-gray-500">{t('costs_filter_select_record')}</p>
+          </div>
+        ) : (
+          <div className={cn(cardCls, 'p-6 space-y-3')}>
+            <div className="flex justify-between gap-3">
+              <div>
+                <h3 className="font-bold text-lg">{selected.referenceNumber || selected.supplierName}</h3>
+                <p className="text-xs text-gray-500">{kindLabel(String(selected.serviceKind || ''))} · {selected.date}</p>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-teal-700 text-white"
+                  onClick={() => handlePrint(selected)}
+                >
+                  <Printer size={14} />
+                  {t('report_print_action')}
+                </button>
+                <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-700 text-white" onClick={() => openExisting(selected)}>
+                  {posted(selected) ? t('view') : t('edit')}
+                </button>
+                {canApprove && selected.status === 'submitted' && !posted(selected) && (
+                  <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-bold bg-blue-600 text-white" onClick={() => openExisting(selected, 'approve')}>
+                    {t('approve')}
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className="text-xs text-gray-500">{workflowStatusLabel(selected, isAr)}</p>
+            <p className="text-sm">{formatMoney(Number(selected.totalAmount || 0))}</p>
+          </div>
+        )}
+      </div>
+
+      <CostsPurchaseSidebar
+        theme={theme}
+        language={language}
+        dir={dir}
+        activeTab="service_ipc"
+        cardCls={cardCls}
+        labelCls={labelCls}
+        selectCls={selectCls}
+        sectionTitleCls={sectionTitleCls}
+        canCreate={canCreate}
+        loading={loading}
+        filterProjectId={filterProjectId}
+        filterContractId={filterContractId}
+        purchaseStatusFilter={statusFilter}
+        searchTerm={searchTerm}
+        projects={projects}
+        contracts={filterProjectId ? contracts.filter((c) => c.projectId === filterProjectId) : contracts}
+        purchaseStatusCounts={counts}
+        list={filtered as CostsSidebarPurchaseRow[]}
+        selectedPurchaseId={selectedId}
+        statusLabel={(tx) => {
+          const row = tx as ServiceTx;
+          if (posted(row)) return isAr ? 'معتمد' : 'Approved';
+          if (row.status === 'submitted') return isAr ? 'بانتظار الاعتماد' : 'Awaiting approval';
+          if (row.status === 'draft') return isAr ? 'مسودة' : 'Draft';
+          return row.status || '';
+        }}
+        paymentTypeOf={() => null}
+        t={t}
+        onFilterProject={setFilterProjectId}
+        onFilterContract={setFilterContractId}
+        onStatusFilter={setStatusFilter}
+        onSearch={setSearchTerm}
+        onSelect={(tx) => setSelectedId(tx.id)}
+        onNew={() => { resetForm(); setShowModal(true); }}
+      />
+
+      <AnimatePresence>
+        {showModal && (
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className={cn(
+                'w-full max-w-[min(96vw,72rem)] max-h-[90vh] overflow-hidden flex flex-col border rounded-2xl shadow-2xl',
+                theme === 'dark' ? 'bg-[#151619] border-gray-800' : 'bg-white border-gray-200',
+              )}
+            >
+              <div className={cn('p-4 border-b flex justify-between items-center', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+                <h3 className="text-lg font-bold flex items-center gap-2">
+                  <FileText className="text-blue-500" size={22} />
+                  {t('service_ipc_entry')}
+                  <ManualHelpButton topicId="costs.ipc.service" />
+                </h3>
+                <button type="button" className="text-gray-500" onClick={() => { setShowModal(false); resetForm(); }}>×</button>
+              </div>
+              <div className="p-4 overflow-y-auto space-y-4 flex-1">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div className="md:col-span-2">
+                    <label className={labelCls}>{t('supplier')}</label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <SearchableSelect
+                          options={creditorOptions}
+                          value={header.supplierAccountId}
+                          onChange={(v) => setHeader((h) => ({ ...h, supplierAccountId: v }))}
+                          theme={theme}
+                          dir={dir}
+                        />
+                      </div>
+                      {canCreate && (
+                        <button type="button" className="px-2 rounded-lg bg-blue-600 text-white" onClick={() => setShowSupplierModal(true)} title={t('add')}>
+                          <Plus size={16} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t('service_kind')}</label>
+                    <select
+                      className={selectCls}
+                      value={header.serviceKind}
+                      disabled={readOnly}
+                      onChange={(e) => setHeader((h) => ({ ...h, serviceKind: e.target.value as ServiceIpcKind }))}
+                    >
+                      {SERVICE_IPC_KINDS.map((k) => (
+                        <option key={k} value={k}>{kindLabel(k)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t('date')}</label>
+                    <input type="date" className={inputCls} value={header.date} disabled={readOnly} onChange={(e) => setHeader((h) => ({ ...h, date: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className={labelCls}>{t('reference')}</label>
+                    <input className={inputCls} value={header.referenceNumber} disabled={readOnly} onChange={(e) => setHeader((h) => ({ ...h, referenceNumber: e.target.value }))} />
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm min-w-[56rem]">
+                    <thead>
+                      <tr className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
+                        <th className="p-1 text-start">{t('cost_center')}</th>
+                        <th className="p-1 text-start">{t('service_ipc_chapter')}</th>
+                        <th className="p-1 text-start">{t('description')}</th>
+                        <th className="p-1">{t('unit')}</th>
+                        <th className="p-1">{t('rate')}</th>
+                        <th className="p-1">{t('service_ipc_prev')}</th>
+                        <th className="p-1">{t('service_ipc_curr')}</th>
+                        <th className="p-1">{t('service_ipc_net')}</th>
+                        <th className="p-1 w-8" />
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {lines.map((line, idx) => {
+                        const chapters = uniqueBoqChapters(boqItems, line.contractId);
+                        return (
+                          <tr key={listKey(line.id, idx, 'sl')}>
+                            <td className="p-1 min-w-[10rem]">
+                              <select
+                                className={selectCls}
+                                disabled={readOnly}
+                                value={line.contractId}
+                                onChange={(e) => {
+                                  const c = contracts.find((x) => x.id === e.target.value);
+                                  setLines((rows) => rows.map((r, i) => i === idx
+                                    ? fillPrevious({ ...r, contractId: e.target.value, projectId: c?.projectId || '', chapterCode: '', chapterName: '' })
+                                    : r));
+                                }}
+                              >
+                                <option value="">—</option>
+                                {contracts.map((c) => (
+                                  <option key={c.id} value={c.id}>{c.contractName} ({c.contractNumber})</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="p-1 min-w-[8rem]">
+                              <select
+                                className={selectCls}
+                                disabled={readOnly || !line.contractId}
+                                value={line.chapterCode || ''}
+                                onChange={(e) => {
+                                  const ch = chapters.find((x) => x.code === e.target.value);
+                                  setLines((rows) => rows.map((r, i) => i === idx
+                                    ? fillPrevious({ ...r, chapterCode: e.target.value, chapterName: ch?.name || '' })
+                                    : r));
+                                }}
+                              >
+                                <option value="">{t('service_ipc_chapter_none')}</option>
+                                {chapters.map((ch) => (
+                                  <option key={ch.code} value={ch.code}>{ch.code} — {ch.name}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="p-1">
+                              <input
+                                className={inputCls}
+                                disabled={readOnly}
+                                value={line.description}
+                                onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx
+                                  ? fillPrevious({ ...r, description: e.target.value })
+                                  : r))}
+                              />
+                            </td>
+                            <td className="p-1 w-20">
+                              <input className={inputCls} disabled={readOnly} value={line.unit} onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx ? { ...r, unit: e.target.value } : r))} />
+                            </td>
+                            <td className="p-1 w-24">
+                              <SpreadsheetCellInput
+                                type="number"
+                                step="0.01"
+                                row={idx}
+                                col={0}
+                                rowCount={lines.length}
+                                colCount={colCount}
+                                gridRefs={gridRefs}
+                                variant="rate"
+                                theme={theme}
+                                disabled={readOnly}
+                                value={line.rate || ''}
+                                onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx ? { ...r, rate: Number(e.target.value) || 0 } : r))}
+                              />
+                            </td>
+                            <td className="p-1 w-20 text-center tabular-nums">{roundMoney2(line.previousQty)}</td>
+                            <td className="p-1 w-24">
+                              <SpreadsheetCellInput
+                                type="number"
+                                step="0.01"
+                                row={idx}
+                                col={1}
+                                rowCount={lines.length}
+                                colCount={colCount}
+                                gridRefs={gridRefs}
+                                variant="qty"
+                                theme={theme}
+                                disabled={readOnly}
+                                value={line.currentQty || ''}
+                                onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx ? { ...r, currentQty: Number(e.target.value) || 0 } : r))}
+                              />
+                            </td>
+                            <td className="p-1 w-24 text-center tabular-nums">{roundMoney2(netQty(line.previousQty, line.currentQty))}</td>
+                            <td className="p-1">
+                              {!readOnly && (
+                                <button type="button" className="text-red-500" onClick={() => setLines((rows) => rows.length <= 1 ? [makeLine()] : rows.filter((_, i) => i !== idx))}>
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  {!readOnly && (
+                    <button type="button" className="mt-2 text-sm font-bold text-blue-500" onClick={() => setLines((rows) => [...rows, makeLine()])}>
+                      + {t('add_line')}
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                  <div>{t('amount')}: <strong>{formatMoney(worksValue)}</strong></div>
+                  <div>{t('vat')}: <strong>{formatMoney(vat)}</strong></div>
+                  <div>{t('net_payable')}: <strong>{formatMoney(net)}</strong></div>
+                  <div>{t('to_date')}: <strong>{formatMoney(roundMoney(lines.reduce((s, l) => s + toDateLineAmount(l), 0)))}</strong></div>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                  {([
+                    ['vatPct', t('vat')],
+                    ['execGuaranteePct', t('retention')],
+                    ['whtPct', t('wht')],
+                    ['labourInsurancePct', t('insurance')],
+                    ['manpowerLevyPct', t('manpower_levy')],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="text-xs">
+                      {label} %
+                      <input
+                        type="number"
+                        step="0.01"
+                        className={inputCls}
+                        disabled={readOnly}
+                        value={header[key]}
+                        onChange={(e) => setHeader((h) => ({ ...h, [key]: Number(e.target.value) || 0 }))}
+                      />
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className={cn('p-4 border-t flex flex-wrap gap-2 justify-end', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+                <button type="button" className="px-4 py-2 rounded-lg font-bold inline-flex items-center gap-2" onClick={handlePrintForm}>
+                  <Printer size={16} />
+                  {t('report_print_action')}
+                </button>
+                <button type="button" className="px-4 py-2 rounded-lg font-bold" onClick={() => { setShowModal(false); resetForm(); }}>{t('cancel')}</button>
+                {!readOnly && (
+                  <>
+                    <button type="button" disabled={saving} className="px-4 py-2 rounded-lg font-bold bg-gray-700 text-white" onClick={() => void persist('draft')}>{t('save_draft')}</button>
+                    <button type="button" disabled={saving} className="px-4 py-2 rounded-lg font-bold bg-amber-600 text-white" onClick={() => void persist('submit')}>{t('submit')}</button>
+                    {canApprove && (
+                      <button type="button" disabled={saving} className="px-4 py-2 rounded-lg font-bold bg-blue-600 text-white" onClick={() => { setSaveMode('approve'); void persist('approve'); }}>{t('approve')}</button>
+                    )}
+                  </>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {showSupplierModal && (
+        <AddSupplierModal
+          open
+          theme={theme}
+          language={language}
+          cancelLabel={t('cancel')}
+          isSubmitting={false}
+          supplierType="subcontractor"
+          askServiceKind
+          computedAccountCode={nextSupplierCode}
+          onClose={() => setShowSupplierModal(false)}
+          onSubmit={handleSaveSupplier}
+        />
+      )}
+
+      <JournalPreviewModal
+        open={preview !== null}
+        title={t('service_ipc_preview')}
+        description={preview?.description}
+        entries={preview?.entries ?? []}
+        resolveCostCenter={(id) => contracts.find((c) => c.id === id)?.contractName}
+        onClose={() => setPreview(null)}
+        onConfirm={() => {
+          previewConfirmed.current = true;
+          setPreview(null);
+          void persist('approve');
+        }}
+      />
+      {ReportPreviewHost}
+    </div>
+  );
+}

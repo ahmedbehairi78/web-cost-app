@@ -521,6 +521,55 @@ export async function buildNotificationFeed(user: NotificationAuthUser): Promise
         createdAt: ipc.date,
       });
     }
+
+    const pendingServiceIpcs = await prisma.purchaseTransaction.findMany({
+      where: {
+        type: 'service_ipc',
+        status: 'submitted',
+        transactionId: null,
+        isDeleted: false,
+      },
+      include: { items: { select: { payload: true } } },
+      orderBy: { date: 'desc' },
+      take: 20,
+    });
+
+    const assignedList = scopedContracts.contractId?.in ?? null;
+
+    for (const ipc of pendingServiceIpcs) {
+      const payload = ipc.items[0]?.payload;
+      const rawItems =
+        payload && typeof payload === 'object' && Array.isArray((payload as { items?: unknown }).items)
+          ? ((payload as { items: unknown[] }).items)
+          : Array.isArray(payload)
+            ? payload
+            : [];
+      const lineContracts = [
+        ...new Set(
+          rawItems
+            .map((row) => String((row as { contractId?: string }).contractId ?? '').trim())
+            .filter(Boolean)
+            .concat(ipc.contractId ? [ipc.contractId] : []),
+        ),
+      ];
+      if (assignedList && lineContracts.length > 0 && !lineContracts.some((id) => assignedList.includes(id))) {
+        continue;
+      }
+      if (assignedList && lineContracts.length === 0) {
+        continue;
+      }
+      const label = ipc.referenceNumber?.trim() || ipc.supplierName || ipc.id.slice(0, 8);
+      pushItem(items, dismissedKeys, readKeys, {
+        key: `service_ipc:${ipc.id}`,
+        type: 'service_ipc_pending',
+        priority: 'normal',
+        titleAr: `مستخلص خدمة ${label} بانتظار الاعتماد`,
+        titleEn: `Service IPC ${label} awaiting approval`,
+        moduleId: 'costs',
+        entityId: ipc.id,
+        createdAt: ipc.date,
+      });
+    }
   }
 
   if (canSeeCosts(user) && canApproveCustodySettlement(user)) {

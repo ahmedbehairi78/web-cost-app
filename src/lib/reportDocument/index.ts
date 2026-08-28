@@ -18,11 +18,14 @@ export {
   buildVoCertificateDocument,
   buildCustodySettlementSections,
   buildConsumptionOrderSections,
+  buildServiceIpcCertificateSections,
 } from './buildCertificateDocs';
 export type {
   CertificateDocBase,
   CustodySettlementPrintData,
   ConsumptionOrderPrintData,
+  ServiceIpcPrintData,
+  ServiceIpcPrintLine,
 } from './buildCertificateDocs';
 export { buildReportsModuleDocument } from './buildReportsModuleDoc';
 export type { ReportsModuleDocContext } from './buildReportsModuleDoc';

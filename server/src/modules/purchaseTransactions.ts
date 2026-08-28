@@ -9,8 +9,15 @@ import { serialize } from '../prisma/serialize.js';
 import { modelScalarFields } from '../prisma/dmmf.js';
 import { createTransaction } from '../accounting/journal.js';
 import { buildSubcontractorIpcEntries } from '../accounting/subcontractorIpcJournal.js';
+import { buildServiceIpcEntries } from '../accounting/serviceIpcJournal.js';
+import { isServiceIpcKind, SERVICE_IPC_TYPE, type ServiceIpcLine } from '../lib/serviceContractor.js';
 import { syncBoqActualCostsForIpc, type IpcBoqLineInput } from '../accounting/boqActualFromSources.js';
-import { notifySubcontractorIpcResolved, notifySubcontractorIpcSubmitted } from '../lib/notificationHooks.js';
+import {
+  notifyServiceIpcResolved,
+  notifyServiceIpcSubmitted,
+  notifySubcontractorIpcResolved,
+  notifySubcontractorIpcSubmitted,
+} from '../lib/notificationHooks.js';
 import { roundMoney } from '../lib/money.js';
 import { assertProjectAccess, priceUnpricedProjectInventory, unitCostInclVat, num } from './inventoryHelpers.js';
 import {
@@ -113,6 +120,7 @@ type IpcPayloadMeta = {
   whtPct?: number;
   execGuaranteePct?: number;
   expenseAccountId?: string;
+  serviceKind?: string;
 };
 
 function pickFields(body: Record<string, unknown>, exclude: string[]): Record<string, unknown> {
@@ -135,6 +143,7 @@ function parseLinePayload(raw: unknown): IpcPayloadMeta {
       whtPct: obj.whtPct != null ? Number(obj.whtPct) : undefined,
       execGuaranteePct: obj.execGuaranteePct != null ? Number(obj.execGuaranteePct) : undefined,
       expenseAccountId: obj.expenseAccountId != null ? String(obj.expenseAccountId) : undefined,
+      serviceKind: obj.serviceKind != null ? String(obj.serviceKind) : undefined,
     };
   }
   if (Array.isArray(raw)) return { items: raw };
@@ -152,11 +161,12 @@ function serializePurchaseRow(row: {
   const txType = String(row.type ?? base.type ?? '');
   return {
     ...base,
-    items: txType === 'ipc' ? lines : [],
+    items: txType === 'ipc' || txType === SERVICE_IPC_TYPE ? lines : [],
     ...(txType === 'invoice' ? { invoiceLines: lines } : {}),
     whtPct: parsed.whtPct,
     execGuaranteePct: parsed.execGuaranteePct,
     expenseAccountId: parsed.expenseAccountId,
+    ...(parsed.serviceKind ? { serviceKind: parsed.serviceKind } : {}),
   };
 }
 
@@ -186,6 +196,7 @@ async function upsertLinePayload(
     ...(body.whtPct != null ? { whtPct: Number(body.whtPct) } : {}),
     ...(body.execGuaranteePct != null ? { execGuaranteePct: Number(body.execGuaranteePct) } : {}),
     ...(body.expenseAccountId != null ? { expenseAccountId: String(body.expenseAccountId) } : {}),
+    ...(body.serviceKind != null ? { serviceKind: String(body.serviceKind) } : {}),
   };
 
   await client.purchaseTransactionItem.deleteMany({ where: { purchaseTransactionId } });
@@ -496,6 +507,25 @@ purchaseTransactionsRouter.post(
         supplierName: full.supplierName,
       });
     }
+    if (
+      full?.type === SERVICE_IPC_TYPE
+      && full.status === 'submitted'
+      && !full.transactionId
+    ) {
+      const serialized = serializePurchaseRow(full);
+      const lineItems = (serialized.items ?? []) as ServiceIpcLine[];
+      const itemContracts = lineItems.map((i) => String(i.contractId ?? '').trim()).filter(Boolean);
+      const itemProjects = lineItems.map((i) => String(i.projectId ?? '').trim()).filter(Boolean);
+      const uniqueContracts = [...new Set(itemContracts)];
+      const uniqueProjects = [...new Set(itemProjects.concat(full.projectId ? [full.projectId] : []))];
+      notifyServiceIpcSubmitted({
+        id: full.id,
+        referenceNumber: full.referenceNumber,
+        contractId: uniqueContracts.length === 1 ? uniqueContracts[0] : null,
+        projectId: uniqueProjects.length === 1 ? uniqueProjects[0] : null,
+        supplierName: full.supplierName,
+      });
+    }
     res.status(201).json(serializePurchaseRow(full!));
   }),
 );
@@ -526,6 +556,25 @@ purchaseTransactionsRouter.put(
         supplierName: full.supplierName,
       });
     }
+    if (
+      full?.type === SERVICE_IPC_TYPE
+      && full.status === 'submitted'
+      && !full.transactionId
+    ) {
+      const serialized = serializePurchaseRow(full);
+      const lineItems = (serialized.items ?? []) as ServiceIpcLine[];
+      const itemContracts = lineItems.map((i) => String(i.contractId ?? '').trim()).filter(Boolean);
+      const itemProjects = lineItems.map((i) => String(i.projectId ?? '').trim()).filter(Boolean);
+      const uniqueContracts = [...new Set(itemContracts)];
+      const uniqueProjects = [...new Set(itemProjects.concat(full.projectId ? [full.projectId] : []))];
+      notifyServiceIpcSubmitted({
+        id: full.id,
+        referenceNumber: full.referenceNumber,
+        contractId: uniqueContracts.length === 1 ? uniqueContracts[0] : null,
+        projectId: uniqueProjects.length === 1 ? uniqueProjects[0] : null,
+        supplierName: full.supplierName,
+      });
+    }
     res.json(serializePurchaseRow(full!));
   }),
 );
@@ -538,6 +587,7 @@ purchaseTransactionsRouter.delete(
       data: { isDeleted: true },
     });
     notifySubcontractorIpcResolved(req.params.id);
+    notifyServiceIpcResolved(req.params.id);
     res.json({ id: req.params.id });
   }),
 );
@@ -555,7 +605,7 @@ purchaseTransactionsRouter.post(
       res.status(404).json({ error: 'Not found' });
       return;
     }
-    if (row.type !== 'ipc') {
+    if (row.type !== 'ipc' && row.type !== SERVICE_IPC_TYPE) {
       res.status(400).json({ error: 'Not a subcontractor IPC' });
       return;
     }
@@ -577,13 +627,12 @@ purchaseTransactionsRouter.post(
       supplierAccountCode = coa?.accountCode ?? undefined;
     }
 
+    const serialized = serializePurchaseRow(row);
     const worksValue = roundMoney(Number(row.amount));
     const vatAmount = roundMoney(Number(row.vatAmount));
     const netPayable = roundMoney(Number(row.totalAmount));
-    const entries = buildSubcontractorIpcEntries({
-      worksValue,
+    const deductionParams = {
       vatAmount,
-      netPayable,
       execGuarantee: roundMoney(Number(row.execGuaranteeAmount)),
       whtAmount: roundMoney(Number(row.whtAmount)),
       labourInsurance: roundMoney(Number(row.labourInsuranceAmount)),
@@ -591,15 +640,49 @@ purchaseTransactionsRouter.post(
       advancePaymentRecovery: roundMoney(Number(row.advancePaymentRecovery)),
       supplierName: row.supplierName,
       supplierAccountCode,
-    });
+    };
 
-    const costCenterId = row.contractId ?? undefined;
+    const isService = row.type === SERVICE_IPC_TYPE;
+    const serviceKindRaw = (serialized as { serviceKind?: string }).serviceKind;
+
+    let entries;
+    if (isService) {
+      if (!isServiceIpcKind(serviceKindRaw)) {
+        res.status(400).json({ error: 'Invalid service kind' });
+        return;
+      }
+      entries = buildServiceIpcEntries({
+        serviceKind: serviceKindRaw,
+        lines: (serialized.items ?? []) as ServiceIpcLine[],
+        ...deductionParams,
+      });
+    } else {
+      entries = buildSubcontractorIpcEntries({
+        worksValue,
+        netPayable,
+        ...deductionParams,
+      });
+    }
+
+    if (isService && entries.filter((e) => e.debit > 0).length === 0) {
+      res.status(400).json({ error: 'Service IPC has no period amounts' });
+      return;
+    }
+
+    const costCenterId = isService ? undefined : (row.contractId ?? undefined);
+    const uniqueProjects = isService
+      ? [...new Set((serialized.items ?? []).map((i) => String((i as ServiceIpcLine).projectId || '').trim()).filter(Boolean))]
+      : [];
+    const journalProjectId = isService
+      ? (uniqueProjects.length === 1 ? uniqueProjects[0] : undefined)
+      : (row.projectId ?? undefined);
+
     const updated = await prisma.$transaction(async (tx) => {
       const glTx = await createTransaction(
         {
           date: row.date,
-          description: row.description || `مستخلص مقاول - ${row.supplierName}`,
-          ...(row.projectId ? { projectId: row.projectId } : {}),
+          description: row.description || (isService ? `مستخلص خدمة - ${row.supplierName}` : `مستخلص مقاول - ${row.supplierName}`),
+          ...(journalProjectId ? { projectId: journalProjectId } : {}),
           ...(costCenterId ? { costCenterId } : {}),
           entries,
         },
@@ -617,16 +700,18 @@ purchaseTransactionsRouter.post(
       });
     });
 
-    // Report-only: allocate period works (currentQty×rate) to BOQ — GL unchanged above.
-    const ipcItems = (serializePurchaseRow(row).items ?? []) as IpcBoqLineInput[];
-    await syncBoqActualCostsForIpc({
-      purchaseTransactionId: row.id,
-      contractId: row.contractId,
-      date: row.date,
-      items: ipcItems,
-    });
+    if (!isService) {
+      const ipcItems = (serialized.items ?? []) as IpcBoqLineInput[];
+      await syncBoqActualCostsForIpc({
+        purchaseTransactionId: row.id,
+        contractId: row.contractId,
+        date: row.date,
+        items: ipcItems,
+      });
+    }
 
     notifySubcontractorIpcResolved(row.id);
+    notifyServiceIpcResolved(row.id);
     res.json(serializePurchaseRow(updated));
   }),
 );

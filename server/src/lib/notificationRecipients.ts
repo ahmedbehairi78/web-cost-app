@@ -18,6 +18,7 @@ export type NotifyEventType =
   | 'mos_draft'
   | 'vo_submitted'
   | 'subcontractor_ipc_pending'
+  | 'service_ipc_pending'
   | 'custody_settlement_pending'
   | 'purchase_request_pending';
 
@@ -62,7 +63,7 @@ function userMatchesNotifyType(
   if (notifyType === 'vo_submitted') {
     return moduleAccess(permissions, 'boq').edit;
   }
-  if (notifyType === 'subcontractor_ipc_pending') {
+  if (notifyType === 'subcontractor_ipc_pending' || notifyType === 'service_ipc_pending') {
     return moduleAccess(permissions, 'costs_ipc').edit || moduleAccess(permissions, 'costs').edit;
   }
   if (notifyType === 'custody_settlement_pending') {
@@ -119,9 +120,16 @@ async function userCanReceiveForContext(
     return assigned.includes(ctx.contractId);
   }
 
-  if (ctx.notifyType === 'subcontractor_ipc_pending' && ctx.contractId) {
+  if (
+    (ctx.notifyType === 'subcontractor_ipc_pending' || ctx.notifyType === 'service_ipc_pending')
+    && ctx.contractId
+  ) {
     if (assigned === null) return true;
     return assigned.includes(ctx.contractId);
+  }
+  if (ctx.notifyType === 'service_ipc_pending' && ctx.projectId) {
+    if (accessibleProjects === null) return true;
+    return accessibleProjects.includes(ctx.projectId);
   }
 
   if (ctx.notifyType === 'custody_settlement_pending' && ctx.projectId) {
