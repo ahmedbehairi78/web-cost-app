@@ -25,7 +25,7 @@ export function useBoqItemsWithRateOverlay<T extends { id: string }>({
   persistOverlay = false,
   normalize,
 }: Options) {
-  const { data: apiRows, loading, error } = useApiQuery<Record<string, unknown>>(
+  const { data: apiRows, loading, error, refresh, refreshAsync } = useApiQuery<Record<string, unknown>>(
     async () => {
       if (!contractId) return [];
       const rows = (await boqApi.list(`?contractId=${encodeURIComponent(contractId)}`)) as Record<
@@ -111,5 +111,5 @@ export function useBoqItemsWithRateOverlay<T extends { id: string }>({
     };
   }, [apiRows, fsById, persistOverlay, contractId]);
 
-  return { items, loading, error };
+  return { items, loading, error, refresh, refreshAsync };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, type DependencyList } from 'react';
+import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
 
 type UseApiQueryOptions = {
   enabled?: boolean;
@@ -9,7 +9,10 @@ export type UseApiQueryResult<T> = {
   data: T[];
   loading: boolean;
   error: Error | null;
+  /** Trigger a refetch (fire-and-forget). */
   refresh: () => void;
+  /** Refetch and resolve when the request finishes. */
+  refreshAsync: () => Promise<void>;
 };
 
 /**
@@ -26,6 +29,23 @@ export function useApiQuery<T>(
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<Error | null>(null);
   const [internalRefreshKey, setInternalRefreshKey] = useState(0);
+  const fetcherRef = useRef(fetcher);
+  fetcherRef.current = fetcher;
+
+  const refreshAsync = useCallback(async () => {
+    if (!enabled) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const rows = await fetcherRef.current();
+      setData(rows);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err : new Error(String(err)));
+      setData([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled]);
 
   useEffect(() => {
     if (!enabled) {
@@ -64,5 +84,6 @@ export function useApiQuery<T>(
     loading,
     error,
     refresh: () => setInternalRefreshKey((k) => k + 1),
+    refreshAsync,
   };
 }

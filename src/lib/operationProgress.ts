@@ -26,3 +26,12 @@ export function formatOperationProgressCount(
   }
   return pct != null ? `${current} / ${total} (${pct}%)` : `${current} / ${total}`;
 }
+
+/** Yield so React can paint progress bar updates during long loops. */
+export function yieldToUi(): Promise<void> {
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => {
+      setTimeout(resolve, 0);
+    });
+  });
+}

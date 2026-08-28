@@ -89,7 +89,6 @@ import {
 } from './lib/apiSession';
 import { useIdleLogout } from './hooks/useIdleLogout';
 import { OfflineStatusBar } from './components/offline/OfflineStatusBar';
-import { GlobalOperationBar } from './components/GlobalOperationBar';
 import { PendingSyncPanel, usePendingSyncPanelState } from './components/offline/PendingSyncPanel';
 import { startOfflineSyncController } from './lib/offline';
 import toast from 'react-hot-toast';
@@ -1196,7 +1195,6 @@ export default function App() {
           show={enteringApp}
           onDismiss={() => setHasOpenedDefault(true)}
         />
-        {isAuthenticated && <GlobalOperationBar />}
         {isLocalBackend && isAuthenticated && (
           <>
             <OfflineStatusBar userId={offlineUserId} />

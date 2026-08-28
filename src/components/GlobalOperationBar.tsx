@@ -1,4 +1,5 @@
 import { Loader2 } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { useLanguage } from '../context/LanguageContext';
 import { useOperationProgress } from '../context/OperationProgressContext';
@@ -16,9 +17,9 @@ export function GlobalOperationBar() {
   const pct = operationProgressPct(active.current, active.total);
   const countLabel = formatOperationProgressCount(active.current, active.total, language);
 
-  return (
+  const bar = (
     <div
-      className="pointer-events-none fixed inset-x-0 top-0 z-[85] border-b border-blue-500/25 bg-blue-950/90 text-blue-50 shadow-lg backdrop-blur-md dark:border-blue-400/20 dark:bg-[#0a1628]/95"
+      className="pointer-events-none fixed inset-x-0 top-0 z-[9999] border-b border-blue-400/40 bg-blue-950/95 text-blue-50 shadow-2xl backdrop-blur-md"
       role="status"
       aria-live="polite"
       aria-busy="true"
@@ -53,4 +54,7 @@ export function GlobalOperationBar() {
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return bar;
+  return createPortal(bar, document.body);
 }

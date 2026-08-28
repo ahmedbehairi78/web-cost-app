@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { OperationProgressEntry } from '../lib/operationProgress';
+import { yieldToUi } from '../lib/operationProgress';
 
 type BeginOptions = {
   id?: string;
@@ -94,6 +95,7 @@ export function useOperationProgressRunner() {
       run: (update: OperationProgressUpdater) => Promise<T>,
     ): Promise<T> => {
       const id = beginOperation(opts);
+      await yieldToUi();
       try {
         return await run((current, message) => {
           updateOperation(id, { current, ...(message !== undefined ? { message } : {}) });

@@ -9,6 +9,7 @@ import { OperationProgressProvider } from './context/OperationProgressContext';
 import { AppPermissionsRoot } from './context/PermissionsContext';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ThemedToaster } from './components/ThemedToaster';
+import { GlobalOperationBar } from './components/GlobalOperationBar';
 import { enforceDevLocalhostOrigin } from './lib/devOriginGuard';
 import { clearChunkReloadFlag } from './lib/lazyImport';
 import { startSpaUpdateWatcher } from './lib/spaBuild';
@@ -53,6 +54,7 @@ root.render(
           <OperationProgressProvider>
             <AppPermissionsRoot>
               <RootApp />
+              <GlobalOperationBar />
               <ThemedToaster />
             </AppPermissionsRoot>
           </OperationProgressProvider>

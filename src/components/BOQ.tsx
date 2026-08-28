@@ -35,6 +35,7 @@ import {
   parseBoqScopeTypeFromImport,
   sumBoqContractScopeTotals,
 } from '../lib/boqScopeType';
+import { yieldToUi } from '../lib/operationProgress';
 import { usePermissions } from '../context/PermissionsContext';
 import { useOperationProgressRunner } from '../context/OperationProgressContext';
 import toast from 'react-hot-toast';
@@ -219,6 +220,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
   const canApproveVo = isLocalBackend && can('boq').edit;
   const canReadBillingProgress = can('billing').view || can('billing').create || can('billing').edit;
   const [dataRefreshKey, setDataRefreshKey] = useState(0);
+  const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [voRefreshKey, setVoRefreshKey] = useState(0);
   const [voModalOpen, setVoModalOpen] = useState(false);
   const [voHighlightId, setVoHighlightId] = useState<string | null>(null);
@@ -308,6 +310,7 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
     items: apiItems,
     loading: apiItemsLoading,
     error: apiItemsError,
+    refreshAsync: refreshBoqItemsAsync,
   } = useBoqItemsWithRateOverlay<BOQItem>({
     contractId: selectedContractId,
     refreshKey: dataRefreshKey,
@@ -1009,13 +1012,24 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           return itemCode && description;
         });
 
-        await runWithProgress(
+        if (importableRows.length === 0) {
+          toast.error(
+            language === 'ar'
+              ? 'لم يُعثر على بنود صالحة في الملف (تحقق من كود البند ووصف البند)'
+              : 'No valid rows in file (check item code and description columns)',
+          );
+          return;
+        }
+
+        setImportProgress({ current: 0, total: importableRows.length });
+
+        const imported = await runWithProgress(
           {
             label: language === 'ar' ? 'استيراد قائمة الكميات…' : 'Importing BOQ…',
             total: importableRows.length,
           },
           async (update) => {
-            let imported = 0;
+            let count = 0;
             for (const row of importableRows) {
               const chapterCode = String(getVal(row, 'كود الفصل', ''));
               const chapterName = String(getVal(row, 'اسم الفصل', ''));
@@ -1102,18 +1116,32 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
                   createdAt: serverTimestamp(),
                 });
               }
-              imported += 1;
-              update(imported, itemCode);
+              count += 1;
+              update(count, itemCode);
+              setImportProgress({ current: count, total: importableRows.length });
+              await yieldToUi();
             }
-            if (isLocalBackend && imported > 0) setDataRefreshKey((k) => k + 1);
-            toast.success(t('toast_boq_import_success'));
+            return count;
           },
+        );
+
+        if (isLocalBackend) {
+          setDataRefreshKey((k) => k + 1);
+          await refreshBoqItemsAsync();
+        }
+
+        toast.success(
+          language === 'ar'
+            ? `تم استيراد ${imported} بند بنجاح`
+            : `Successfully imported ${imported} BOQ item(s)`,
+          { duration: 5000, id: 'boq-import-done' },
         );
       } catch (error) {
         console.error('Import error:', error);
         toast.error(t('toast_boq_import_error'));
       } finally {
         setIsSubmitting(false);
+        setImportProgress(null);
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
     };
@@ -1229,6 +1257,39 @@ export function BOQ({ embedded = false }: { embedded?: boolean }) {
           </div>
         </div>
       </header>
+
+      {importProgress ? (
+        <div
+          className={cn(
+            'mb-4 rounded-xl border px-4 py-3 text-sm shadow-md',
+            theme === 'dark'
+              ? 'border-blue-700/50 bg-blue-950/40 text-blue-100'
+              : theme === 'soft'
+                ? 'border-blue-300 bg-blue-50 text-[#37474f]'
+                : 'border-blue-200 bg-blue-50 text-blue-900',
+          )}
+          role="status"
+          aria-live="polite"
+        >
+          <div className="mb-2 flex items-center gap-2 font-medium">
+            <Loader2 size={16} className="animate-spin shrink-0" />
+            <span>
+              {language === 'ar' ? 'جاري استيراد قائمة الكميات…' : 'Importing BOQ…'}
+            </span>
+            <span className="ms-auto font-mono text-xs tabular-nums">
+              {importProgress.current} / {importProgress.total}
+            </span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-black/10">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-[width] duration-200"
+              style={{
+                width: `${Math.min(100, Math.round((importProgress.current / importProgress.total) * 100))}%`,
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
 
       {/* Selectors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
