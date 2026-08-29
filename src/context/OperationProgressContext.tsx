@@ -11,6 +11,8 @@ import type { OperationProgressEntry } from '../lib/operationProgress';
 import {
   beginLongRunningOperation,
   endLongRunningOperation,
+} from '../lib/longRunningOperation';
+import {
   yieldToUi,
 } from '../lib/operationProgress';
 import { pingIdleActivity } from '../lib/idleActivityBridge';

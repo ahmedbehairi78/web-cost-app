@@ -5,21 +5,6 @@ import { NetworkQueuedError } from './offline/enqueueOrExecute';
 import { isIdleLockedDocument } from './idleActivityBridge';
 import { isBrowserOnline } from './offline/networkStatus';
 
-let longRunningOperationDepth = 0;
-
-/** While > 0, idle lock is suppressed (imports, backup, etc.). */
-export function beginLongRunningOperation(): void {
-  longRunningOperationDepth += 1;
-}
-
-export function endLongRunningOperation(): void {
-  longRunningOperationDepth = Math.max(0, longRunningOperationDepth - 1);
-}
-
-export function isLongRunningOperationActive(): boolean {
-  return longRunningOperationDepth > 0;
-}
-
 export type OperationProgressEntry = {
   id: string;
   label: string;

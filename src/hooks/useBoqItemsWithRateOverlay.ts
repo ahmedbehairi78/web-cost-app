@@ -7,7 +7,7 @@ import { boqApi } from '../services/local/modulesApi';
 import { useApiQuery } from './useApiQuery';
 import { useFirestoreQuery } from './useFirestoreQuery';
 
-type Options = {
+type Options<T extends { id: string }> = {
   contractId: string | null | undefined;
   refreshKey?: number;
   /** When true, persist Firestore rates into Postgres once per item id. */

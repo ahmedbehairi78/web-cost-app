@@ -1,7 +1,7 @@
 /**
  * Gate for idle logout: pause when offline or pending sync / dirty form drafts.
  */
-import { isLongRunningOperationActive } from '../operationProgress';
+import { isLongRunningOperationActive } from '../longRunningOperation';
 import { isBrowserOnline } from './networkStatus';
 import { countFormDrafts } from './formDraftStore';
 import { listOutbox } from './syncOutbox';

@@ -1,13 +1,15 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
-  beginLongRunningOperation,
-  endLongRunningOperation,
   formatOperationProgressCount,
   formatPartialImportMessage,
-  isLongRunningOperationActive,
   operationProgressPct,
   resolveImportFailureReason,
 } from './operationProgress';
+import {
+  beginLongRunningOperation,
+  endLongRunningOperation,
+  isLongRunningOperationActive,
+} from './longRunningOperation';
 
 describe('operationProgressPct', () => {
   it('returns null for indeterminate', () => {
