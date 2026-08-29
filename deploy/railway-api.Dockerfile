@@ -13,7 +13,8 @@ FROM node:22-bookworm-slim AS build
 WORKDIR /app
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends python3 make g++ ca-certificates \
+ && apt-get install -y --no-install-recommends \
+      python3 make g++ ca-certificates openssl libssl3 \
  && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
@@ -109,6 +110,11 @@ RUN npm prune --omit=dev \
 
 FROM node:22-bookworm-slim
 WORKDIR /app
+
+# Prisma migrate deploy at container start needs OpenSSL (bookworm-slim omits it by default).
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends openssl libssl3 ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 
