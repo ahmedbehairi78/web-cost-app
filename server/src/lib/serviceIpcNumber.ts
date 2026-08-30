@@ -47,8 +47,11 @@ export function formatServiceIpcNumber(supplierName: string, seq: number, year: 
   return `مستخلص ${label}-${String(n).padStart(3, '0')}-${year}`;
 }
 
+const NUMBERED_IPC_TYPES = new Set([SERVICE_IPC_TYPE, 'ipc']);
+
+/** Service IPC and works subcontractor IPC share the same per-supplier-year form. */
 export function needsServiceIpcNumber(type: unknown, referenceNumber: unknown): boolean {
-  if (String(type ?? '') !== SERVICE_IPC_TYPE) return false;
+  if (!NUMBERED_IPC_TYPES.has(String(type ?? ''))) return false;
   return parseServiceIpcNumber(String(referenceNumber ?? '').trim()) == null;
 }
 

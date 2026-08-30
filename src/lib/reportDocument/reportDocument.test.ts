@@ -9,7 +9,7 @@ import {
 } from './buildAnalyticalPrintRows';
 import { renderReportDocumentHtml } from './renderHtml';
 import { buildIpcCertificateDocument, buildServiceIpcCertificateSections } from './buildCertificateDocs';
-import { buildBillingIpcPrintData } from '../ipcPrintData';
+import { buildBillingIpcPrintData, buildSubcontractorIpcPrintData } from '../ipcPrintData';
 
 const company = {
   companyName: 'شركة اختبار',
@@ -1145,5 +1145,70 @@ describe('buildConsumptionOrderSections', () => {
     expect(labels).toContain('دفعة مقدمة');
     expect(labels).toContain('المبالغ المسددة سابقاً');
     expect(labels[labels.length - 1]).toBe('المستحق');
+  });
+
+  it('places subcontractor IPC financial summary below the qty table and shows logo + company', () => {
+    const data = buildSubcontractorIpcPrintData({
+      referenceNumber: 'مستخلص محمد الشيخ-001-2026',
+      dateLabel: '2026-08-30',
+      projectName: 'كايرو جيت',
+      contractName: 'عقد 1',
+      subcontractorName: 'محمد الشيخ',
+      statusLabel: 'معتمد',
+      items: [
+        {
+          itemCode: '1.1',
+          description: 'بند',
+          unit: 'م',
+          rate: 100,
+          previousQty: 10,
+          currentQty: 5,
+          totalQty: 15,
+          amount: 1500,
+        },
+      ],
+      worksValueExVat: 500,
+      vatAmount: 210,
+      execGuaranteeAmount: 75,
+      whtAmount: 0,
+      labourInsuranceAmount: 75,
+      manpowerLevyAmount: 0,
+      advancePaymentRecovery: 100,
+      netPayable: 435,
+      previousWorksExVat: 1000,
+      totalWorksExVat: 1500,
+      vatToDate: 210,
+      execGuaranteeToDate: 75,
+      labourInsuranceToDate: 75,
+      whtToDate: 0,
+      manpowerLevyToDate: 0,
+      netAfterDeductions: 1560,
+      previousPayments: 1025,
+    });
+    const doc = buildIpcCertificateDocument({
+      data,
+      printId: 'subcontractor_ipc',
+      language: 'ar',
+      company: { ...company, headerLogo: '/branding/logo-print.svg', companyName: 'Concord Plus' },
+      formatMoney: (n) => n.toFixed(2),
+    });
+    expect(doc.showLogo).toBe(true);
+    expect(doc.headerShowCompany).toBe(true);
+    expect(doc.title).toContain('مستخلص محمد الشيخ-001-2026');
+    expect(doc.title).toContain('معتمد');
+    const kinds = (doc.sections || []).map((s) => s.kind);
+    expect(kinds.indexOf('table')).toBeLessThan(kinds.indexOf('summary'));
+    const summary = (doc.sections || []).find((s) => s.kind === 'summary');
+    expect(summary?.kind).toBe('summary');
+    if (summary?.kind !== 'summary') return;
+    const labels = summary.items.map((i) => i.label);
+    expect(labels).toContain('الأعمال السابقة');
+    expect(labels).toContain('الأعمال الحالية');
+    expect(labels).toContain('إجمالي الأعمال');
+    expect(labels[labels.length - 1]).toBe('المستحق');
+    const html = renderReportDocumentHtml(doc, (n) => n.toFixed(2));
+    expect(html).toContain('doc-subcontractor_ipc');
+    expect(html).toContain('Concord Plus');
+    expect(html).toContain('logo-print.svg');
   });
 });

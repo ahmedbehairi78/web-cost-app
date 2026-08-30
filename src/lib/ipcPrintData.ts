@@ -3,6 +3,7 @@ import { ipcLineToDateAmount, type IpcCoverWorksSplit } from './ipcCoverFromQtyL
 import type { IpcCoverSchedule } from './ipcCoverSchedule';
 import type { IpcCoverContractSums } from './ipcCoverContractSums';
 import { roundMoney } from './money';
+import { serviceIpcPrintTitle } from './serviceContractor';
 
 export interface CompanyPrintInfo {
   companyName: string;
@@ -82,11 +83,25 @@ export interface IpcPrintData {
   advancePaymentTotal?: number;
   advancePaymentRecovery: number;
   netPayable: number;
+  /** To-date waterfall (subcontractor certificate — same as service IPC). */
+  previousWorksExVat?: number;
+  totalWorksExVat?: number;
+  vatToDate?: number;
+  execGuaranteeToDate?: number;
+  labourInsuranceToDate?: number;
+  whtToDate?: number;
+  manpowerLevyToDate?: number;
+  netAfterDeductions?: number;
 }
 
 export function ipcPrintTitle(data: IpcPrintData, language: 'ar' | 'en'): string {
   if (data.variant === 'subcontractor') {
-    return language === 'ar' ? 'مستخلص مقاول باطن' : 'Subcontractor IPC';
+    return serviceIpcPrintTitle({
+      contractorName: data.subcontractorName || data.contractorName,
+      documentNumber: data.documentNumber,
+      statusLabel: data.statusLabel,
+      language,
+    });
   }
   if (data.ipcKind === IPC_KIND.FINAL) {
     return language === 'ar' ? 'مستخلص نهائي' : 'Final Payment Certificate';
@@ -241,6 +256,7 @@ export function buildSubcontractorIpcPrintData(input: {
   projectName?: string;
   contractName?: string;
   subcontractorName?: string;
+  statusLabel?: string;
   items: IpcPrintItem[];
   worksValueExVat: number;
   vatAmount: number;
@@ -250,6 +266,15 @@ export function buildSubcontractorIpcPrintData(input: {
   manpowerLevyAmount: number;
   advancePaymentRecovery: number;
   netPayable: number;
+  previousWorksExVat?: number;
+  totalWorksExVat?: number;
+  vatToDate?: number;
+  execGuaranteeToDate?: number;
+  labourInsuranceToDate?: number;
+  whtToDate?: number;
+  manpowerLevyToDate?: number;
+  netAfterDeductions?: number;
+  previousPayments?: number;
 }): IpcPrintData {
   return {
     variant: 'subcontractor',
@@ -258,6 +283,7 @@ export function buildSubcontractorIpcPrintData(input: {
     projectName: input.projectName,
     contractName: input.contractName,
     subcontractorName: input.subcontractorName,
+    statusLabel: input.statusLabel,
     items: input.items,
     worksValueExVat: input.worksValueExVat,
     vatAmount: input.vatAmount,
@@ -267,5 +293,14 @@ export function buildSubcontractorIpcPrintData(input: {
     manpowerLevyAmount: input.manpowerLevyAmount,
     advancePaymentRecovery: input.advancePaymentRecovery,
     netPayable: input.netPayable,
+    previousWorksExVat: input.previousWorksExVat,
+    totalWorksExVat: input.totalWorksExVat,
+    vatToDate: input.vatToDate,
+    execGuaranteeToDate: input.execGuaranteeToDate,
+    labourInsuranceToDate: input.labourInsuranceToDate,
+    whtToDate: input.whtToDate,
+    manpowerLevyToDate: input.manpowerLevyToDate,
+    netAfterDeductions: input.netAfterDeductions,
+    previousPayments: input.previousPayments,
   };
 }

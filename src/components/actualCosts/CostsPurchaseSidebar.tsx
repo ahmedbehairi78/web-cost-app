@@ -1,6 +1,7 @@
 import React, { memo } from 'react';
 import { Loader2, Plus, Search } from 'lucide-react';
 import { cn } from '../../lib/utils';
+import { displayServiceIpcNumber } from '../../lib/serviceContractor';
 import { ManualHelpButton } from '../help/ManualHelpButton';
 
 export type CostsSidebarPurchaseRow = {
@@ -218,8 +219,10 @@ function CostsPurchaseSidebarInner({
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0 min-h-[1.25rem] leading-tight">
-                      {activeTab === 'service_ipc' ? (
-                        <span className="font-bold shrink-0 truncate max-w-[14rem]">{tx.referenceNumber || tx.supplierName || '—'}</span>
+                      {activeTab === 'service_ipc' || activeTab === 'ipc' ? (
+                        <span className="font-bold shrink-0 truncate max-w-[14rem]">
+                          {displayServiceIpcNumber(tx.referenceNumber) || tx.supplierName || '—'}
+                        </span>
                       ) : (
                         <>
                           <span className="font-bold shrink-0">{tx.referenceNumber || tx.id.slice(0, 8)}</span>

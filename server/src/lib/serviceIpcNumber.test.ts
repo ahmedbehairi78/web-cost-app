@@ -13,7 +13,10 @@ describe('serviceIpcNumber', () => {
     expect(needsServiceIpcNumber('service_ipc', '4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe(true);
     expect(needsServiceIpcNumber('service_ipc', 'SIPC-0001')).toBe(true);
     expect(needsServiceIpcNumber('service_ipc', 'مستخلص محمد الشيخ-001-2026')).toBe(false);
-    expect(needsServiceIpcNumber('ipc', '21546')).toBe(false);
+    expect(needsServiceIpcNumber('ipc', '21546')).toBe(true);
+    expect(needsServiceIpcNumber('ipc', '4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe(true);
+    expect(needsServiceIpcNumber('ipc', 'مستخلص محمد الشيخ-001-2026')).toBe(false);
+    expect(needsServiceIpcNumber('invoice', '21546')).toBe(false);
   });
 
   it('parses compact and spaced labels', () => {

@@ -194,12 +194,22 @@ const SERVICE_IPC_NUMBER_SELECT = {
   date: true,
 } as const;
 
+function ipcNumberPeerType(type: unknown): typeof SERVICE_IPC_TYPE | 'ipc' {
+  return String(type ?? '') === 'ipc' ? 'ipc' : SERVICE_IPC_TYPE;
+}
+
 async function nextServiceIpcNumber(
-  target: { supplierName?: string | null; supplierAccountId?: string | null; supplierId?: string | null; date?: string | null },
+  target: {
+    type?: unknown;
+    supplierName?: string | null;
+    supplierAccountId?: string | null;
+    supplierId?: string | null;
+    date?: string | null;
+  },
   client: DbLike = prisma,
 ): Promise<string> {
   const rows = await client.purchaseTransaction.findMany({
-    where: { type: SERVICE_IPC_TYPE },
+    where: { type: ipcNumberPeerType(target.type) },
     select: SERVICE_IPC_NUMBER_SELECT,
   });
   return nextServiceIpcNumberFromExisting(rows, {
@@ -285,16 +295,27 @@ purchaseTransactionsRouter.get(
     });
     const missing = rows.filter((r) => needsServiceIpcNumber(r.type, r.referenceNumber));
     if (missing.length > 0) {
-      let peers = rows
-        .filter((r) => r.type === SERVICE_IPC_TYPE)
-        .map((r) => ({
+      const peersByType: Record<string, Array<{
+        referenceNumber: string | null;
+        supplierName: string | null;
+        supplierAccountId: string | null;
+        supplierId: string | null;
+        date: string | null;
+      }>> = { [SERVICE_IPC_TYPE]: [], ipc: [] };
+      for (const r of rows) {
+        const bucket = peersByType[ipcNumberPeerType(r.type)];
+        if (!bucket) continue;
+        bucket.push({
           referenceNumber: r.referenceNumber,
           supplierName: r.supplierName,
           supplierAccountId: r.supplierAccountId,
           supplierId: r.supplierId,
           date: r.date,
-        }));
+        });
+      }
       for (const row of missing) {
+        const typeKey = ipcNumberPeerType(row.type);
+        const peers = peersByType[typeKey] ?? [];
         const assigned = nextServiceIpcNumberFromExisting(peers, {
           supplierName: row.supplierName || 'مورد',
           supplierAccountId: row.supplierAccountId,
@@ -306,7 +327,7 @@ purchaseTransactionsRouter.get(
           data: { referenceNumber: assigned },
         });
         row.referenceNumber = assigned;
-        peers = peers.concat([{
+        peersByType[typeKey] = peers.concat([{
           referenceNumber: assigned,
           supplierName: row.supplierName,
           supplierAccountId: row.supplierAccountId,
@@ -577,6 +598,7 @@ purchaseTransactionsRouter.post(
     data.id = String(body.id || randomUUID());
     if (needsServiceIpcNumber(data.type ?? body.type, data.referenceNumber)) {
       data.referenceNumber = await nextServiceIpcNumber({
+        type: data.type ?? body.type,
         supplierName: data.supplierName != null ? String(data.supplierName) : '',
         supplierAccountId: data.supplierAccountId != null ? String(data.supplierAccountId) : null,
         supplierId: data.supplierId != null ? String(data.supplierId) : null,
@@ -656,6 +678,7 @@ purchaseTransactionsRouter.put(
     const nextRef = data.referenceNumber !== undefined ? data.referenceNumber : existing?.referenceNumber;
     if (needsServiceIpcNumber(nextType, nextRef)) {
       data.referenceNumber = await nextServiceIpcNumber({
+        type: nextType,
         supplierName: data.supplierName != null ? String(data.supplierName) : existing?.supplierName,
         supplierAccountId: data.supplierAccountId != null ? String(data.supplierAccountId) : existing?.supplierAccountId,
         supplierId: data.supplierId != null ? String(data.supplierId) : existing?.supplierId,

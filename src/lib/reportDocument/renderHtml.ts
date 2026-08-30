@@ -584,7 +584,7 @@ export function renderReportDocumentHtml(
   const tableCellPhysical = physicalTableCellTextAlign(tableCellAlign, dir);
   const htmlClasses = [
     tableCellAlign === 'auto' ? '' : `tbl-align-${tableCellAlign}`,
-    doc.id === 'service_ipc' ? 'doc-service_ipc' : '',
+    doc.id === 'service_ipc' || doc.id === 'subcontractor_ipc' ? `doc-${doc.id}` : '',
   ].filter(Boolean);
   const htmlClassAttr = htmlClasses.length ? ` class="${esc(htmlClasses.join(' '))}"` : '';
   const tableCellAlignCss = tableCellPhysical
@@ -871,22 +871,28 @@ export function renderReportDocumentHtml(
   .logo.logo-lg img { height: 14mm; max-width: 48mm; }
   .sheet-cover .logo img { height: 14mm; max-width: 48mm; }
   html.doc-service_ipc .logo img,
-  html.doc-service_ipc .logo.logo-lg img {
+  html.doc-service_ipc .logo.logo-lg img,
+  html.doc-subcontractor_ipc .logo img,
+  html.doc-subcontractor_ipc .logo.logo-lg img {
     height: 28mm;
     max-width: 96mm;
   }
-  html.doc-service_ipc .summary-box {
+  html.doc-service_ipc .summary-box,
+  html.doc-subcontractor_ipc .summary-box {
     width: 40%;
     max-width: 40%;
     padding: 2px 6px;
     margin-top: 4px;
   }
-  html.doc-service_ipc .summary-box .kv-item {
+  html.doc-service_ipc .summary-box .kv-item,
+  html.doc-subcontractor_ipc .summary-box .kv-item {
     padding: 0.4px 0;
     gap: 4px;
   }
   html.doc-service_ipc .summary-box .kv-label,
-  html.doc-service_ipc .summary-box .kv-value {
+  html.doc-service_ipc .summary-box .kv-value,
+  html.doc-subcontractor_ipc .summary-box .kv-label,
+  html.doc-subcontractor_ipc .summary-box .kv-value {
     font-size: 7pt;
   }
   .hdr-title-block { margin: 0; }

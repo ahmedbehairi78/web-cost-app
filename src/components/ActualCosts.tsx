@@ -69,6 +69,8 @@ import {
   mapToIpcPrintItems,
   type CompanyPrintInfo,
 } from '../lib/ipcPrintData';
+import { computeServiceIpcCertificateSummary, displayServiceIpcNumber } from '../lib/serviceContractor';
+import { DEFAULT_HEADER_LOGO } from '../lib/concordPlusBrand';
 import type { StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 import {
   ensureLocalContractExists,
@@ -262,6 +264,16 @@ function matchesPurchaseStatusFilter(
   return false;
 }
 
+function resolveStoredPct(storedPct: unknown, amount: unknown, base: unknown): number {
+  if (storedPct != null && storedPct !== '' && Number.isFinite(Number(storedPct))) {
+    return Number(storedPct);
+  }
+  const part = Number(amount) || 0;
+  const whole = Number(base) || 0;
+  if (whole > 0) return Math.round((part / whole) * 10000) / 100;
+  return 0;
+}
+
 function purchaseStatusLabel(
   tx: PurchaseTransaction,
   tab: 'invoice' | 'ipc',
@@ -428,7 +440,7 @@ export function ActualCosts() {
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo & { reportPrintProfiles?: StoredReportPrintProfiles }>({
     companyName: 'شركة النيل للمقاولات والاستثمار العقاري',
     companyNameEn: 'Nile Construction & Real Estate',
-    headerLogo: '',
+    headerLogo: DEFAULT_HEADER_LOGO,
     taxId: '123-456-789',
     address: 'القاهرة، مصر',
     addressEn: 'Cairo, Egypt',
@@ -441,12 +453,23 @@ export function ActualCosts() {
       try {
         if (isLocalBackend) {
           const res = await settingsApi.getCompanyInfo();
-          if (res.value) setCompanyInfo((prev) => ({ ...prev, ...res.value }));
+          if (res.value) {
+            setCompanyInfo((prev) => ({
+              ...prev,
+              ...res.value,
+              headerLogo: (res.value as CompanyPrintInfo).headerLogo || prev.headerLogo || DEFAULT_HEADER_LOGO,
+            }));
+          }
           return;
         }
         const settingsDoc = await getDoc(doc(db, 'settings', 'company_info'));
         if (settingsDoc.exists()) {
-          setCompanyInfo((prev) => ({ ...prev, ...(settingsDoc.data() as CompanyPrintInfo) }));
+          const next = settingsDoc.data() as CompanyPrintInfo;
+          setCompanyInfo((prev) => ({
+            ...prev,
+            ...next,
+            headerLogo: next.headerLogo || prev.headerLogo || DEFAULT_HEADER_LOGO,
+          }));
         }
       } catch {
         /* keep defaults */
@@ -1531,15 +1554,28 @@ export function ActualCosts() {
   }, []);
 
   const calculateIPCDeductions = () => {
-    const worksValue = formData.items.reduce((s, i) => s + i.amount, 0);
-    const vat = worksValue * (formData.vatPct / 100);
-    const exec = worksValue * (formData.execGuaranteePct / 100);
-    const wht = worksValue * (formData.whtPct / 100);
-    const insurance = worksValue * (formData.labourInsurancePct / 100);
-    const levy = worksValue * (formData.manpowerLevyPct / 100);
-    const advance = formData.advancePaymentRecovery;
-    const net = worksValue + vat - exec - wht - insurance - levy - advance;
-    return { worksValue, vat, exec, wht, insurance, levy, advance, net };
+    const cert = computeServiceIpcCertificateSummary(
+      formData.items,
+      {
+        vatPct: formData.vatPct,
+        execGuaranteePct: formData.execGuaranteePct,
+        whtPct: formData.whtPct,
+        labourInsurancePct: formData.labourInsurancePct,
+        manpowerLevyPct: formData.manpowerLevyPct,
+      },
+      formData.advancePaymentRecovery ?? 0,
+    );
+    return {
+      worksValue: cert.currentWorks,
+      vat: cert.vatPeriod,
+      exec: cert.execGuaranteePeriod,
+      wht: cert.whtPeriod,
+      insurance: cert.labourInsurancePeriod,
+      levy: cert.manpowerLevyPeriod,
+      advance: cert.advancePaymentRecovery,
+      net: cert.amountDue,
+      cert,
+    };
   };
 
   const handlePrintSubcontractorIpc = () => {
@@ -1554,7 +1590,7 @@ export function ActualCosts() {
       : '';
     const project = scopedProjects.find((p) => p.id === formData.projectId);
     const contract = scopedContracts.find((c) => c.id === formData.contractId);
-    const { worksValue, vat, exec, wht, insurance, levy, advance, net } = calculateIPCDeductions();
+    const { cert } = calculateIPCDeductions();
     const printItems = mapToIpcPrintItems(
       formData.items.map((item) => {
         const boq = scopedBoqItems.find((b) => b.id === item.boqItemId);
@@ -1566,21 +1602,34 @@ export function ActualCosts() {
         };
       }),
     );
+    const draftStatus = editingPurchase
+      ? purchaseStatusLabel(editingPurchase, 'ipc', language)
+      : (language === 'ar' ? 'مسودة' : 'Draft');
     const data = buildSubcontractorIpcPrintData({
-      referenceNumber: formData.referenceNumber || '—',
+      referenceNumber: displayServiceIpcNumber(formData.referenceNumber) || (language === 'ar' ? 'مسودة' : 'DRAFT'),
       dateLabel: formData.date,
       projectName: project?.projectName,
       contractName: contract?.contractName || contract?.contractNumber,
       subcontractorName,
+      statusLabel: draftStatus,
       items: printItems,
-      worksValueExVat: worksValue,
-      vatAmount: vat,
-      execGuaranteeAmount: exec,
-      whtAmount: wht,
-      labourInsuranceAmount: insurance,
-      manpowerLevyAmount: levy,
-      advancePaymentRecovery: advance,
-      netPayable: net,
+      worksValueExVat: cert.currentWorks,
+      vatAmount: cert.vatToDate,
+      execGuaranteeAmount: cert.execGuaranteeToDate,
+      whtAmount: cert.whtToDate,
+      labourInsuranceAmount: cert.labourInsuranceToDate,
+      manpowerLevyAmount: cert.manpowerLevyToDate,
+      advancePaymentRecovery: cert.advancePaymentRecovery,
+      netPayable: cert.amountDue,
+      previousWorksExVat: cert.previousWorks,
+      totalWorksExVat: cert.totalWorks,
+      vatToDate: cert.vatToDate,
+      execGuaranteeToDate: cert.execGuaranteeToDate,
+      labourInsuranceToDate: cert.labourInsuranceToDate,
+      whtToDate: cert.whtToDate,
+      manpowerLevyToDate: cert.manpowerLevyToDate,
+      netAfterDeductions: cert.netAfterDeductions,
+      previousPayments: cert.previousPayments,
     });
     const scopeLabel = contract
       ? [contract.contractNumber, contract.contractName].filter(Boolean).join(' — ')
@@ -1619,21 +1668,43 @@ export function ActualCosts() {
           };
         }),
       );
+      const periodWorks = roundMoney(Number(tx.amount) || 0);
+      const cert = computeServiceIpcCertificateSummary(
+        tx.items ?? [],
+        {
+          vatPct: resolveStoredPct(tx.vatPct, tx.vatAmount, periodWorks),
+          execGuaranteePct: resolveStoredPct(tx.execGuaranteePct, tx.execGuaranteeAmount, periodWorks),
+          whtPct: resolveStoredPct(tx.whtPct, tx.whtAmount, periodWorks),
+          labourInsurancePct: resolveStoredPct(tx.labourInsurancePct, tx.labourInsuranceAmount, periodWorks),
+          manpowerLevyPct: resolveStoredPct(tx.manpowerLevyPct, tx.manpowerLevyAmount, periodWorks),
+        },
+        Number(tx.advancePaymentRecovery) || 0,
+      );
       const data = buildSubcontractorIpcPrintData({
-        referenceNumber: tx.referenceNumber || '—',
+        referenceNumber: displayServiceIpcNumber(tx.referenceNumber) || '—',
         dateLabel: tx.date,
         projectName: project?.projectName,
         contractName: contract?.contractName || contract?.contractNumber,
         subcontractorName,
+        statusLabel: purchaseStatusLabel(tx, 'ipc', language),
         items: printItems,
-        worksValueExVat: tx.amount,
-        vatAmount: tx.vatAmount,
-        execGuaranteeAmount: tx.execGuaranteeAmount ?? 0,
-        whtAmount: tx.whtAmount ?? 0,
-        labourInsuranceAmount: tx.labourInsuranceAmount ?? 0,
-        manpowerLevyAmount: tx.manpowerLevyAmount ?? 0,
-        advancePaymentRecovery: tx.advancePaymentRecovery ?? 0,
-        netPayable: tx.totalAmount,
+        worksValueExVat: cert.currentWorks || periodWorks,
+        vatAmount: cert.vatToDate,
+        execGuaranteeAmount: cert.execGuaranteeToDate,
+        whtAmount: cert.whtToDate,
+        labourInsuranceAmount: cert.labourInsuranceToDate,
+        manpowerLevyAmount: cert.manpowerLevyToDate,
+        advancePaymentRecovery: cert.advancePaymentRecovery,
+        netPayable: cert.amountDue,
+        previousWorksExVat: cert.previousWorks,
+        totalWorksExVat: cert.totalWorks,
+        vatToDate: cert.vatToDate,
+        execGuaranteeToDate: cert.execGuaranteeToDate,
+        labourInsuranceToDate: cert.labourInsuranceToDate,
+        whtToDate: cert.whtToDate,
+        manpowerLevyToDate: cert.manpowerLevyToDate,
+        netAfterDeductions: cert.netAfterDeductions,
+        previousPayments: cert.previousPayments,
       });
       const scopeLabel = contract
         ? [contract.contractNumber, contract.contractName].filter(Boolean).join(' — ')
@@ -3496,27 +3567,56 @@ export function ActualCosts() {
                 </div>
 
                 {/* Summary */}
+                {activeTab === 'invoice' ? (
                 <div className={cn('p-4 rounded-xl space-y-2', theme === 'dark' ? 'bg-gray-900/50' : 'bg-gray-50')}>
-                  {activeTab === 'invoice' ? (
-                    <>
                       <div className="flex justify-between text-sm"><span className="text-gray-500">{t('amount')}</span><span className="font-mono">{formatMoney(invoiceBaseAmount)}</span></div>
                       <div className="flex justify-between text-sm"><span className="text-gray-500">{t('vat')} ({formData.invoiceVatPct}%)</span><span className="font-mono text-blue-400">{formatMoney(roundMoney(invoiceBaseAmount * (formData.invoiceVatPct / 100)))}</span></div>
                       <div className="flex justify-between text-sm"><span className="text-gray-500">{t('wht_amount')} ({formData.whtPct}%)</span><span className="font-mono text-red-400">{formatMoney(roundMoney(invoiceBaseAmount * (formData.whtPct / 100)))}</span></div>
                       <div className="flex justify-between pt-2 border-t border-gray-800 font-bold"><span>{t('total')}</span><span className="text-lg text-green-500">{formatMoney(roundMoney(invoiceBaseAmount + invoiceBaseAmount * (formData.invoiceVatPct / 100) - invoiceBaseAmount * (formData.whtPct / 100)))}</span></div>
-                    </>
-                  ) : (() => {
-                    const { worksValue, vat, exec, wht, net } = calculateIPCDeductions();
+                </div>
+                ) : (
+                <div className="space-y-2">
+                  <label className="text-xs block max-w-xs">
+                    {t('service_ipc_advance')}
+                    <input
+                      type="number"
+                      step="0.01"
+                      className={inputCls}
+                      disabled={ipcFormReadOnly}
+                      value={formData.advancePaymentRecovery || ''}
+                      onChange={(e) => setFormData((p) => ({ ...p, advancePaymentRecovery: Number(e.target.value) || 0 }))}
+                    />
+                  </label>
+                  {(() => {
+                    const { cert } = calculateIPCDeductions();
                     return (
-                      <>
-                        <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'قيمة الأعمال' : 'Works Value'}</span><span className="font-mono">{formatNumber(worksValue)}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-500">{t('vat')} ({formData.vatPct}%)</span><span className="font-mono text-blue-400">{formatNumber(vat)}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-500">{language === 'ar' ? 'حجز ضمان' : 'Retention'} ({formData.execGuaranteePct}%)</span><span className="font-mono text-orange-400">-{formatNumber(exec)}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-500">{t('wht_amount')} ({formData.whtPct}%)</span><span className="font-mono text-red-400">-{formatNumber(wht)}</span></div>
-                        <div className="flex justify-between pt-2 border-t border-gray-800 font-bold"><span>{language === 'ar' ? 'صافي المستحق' : 'Net Payable'}</span><span className="text-lg text-green-500">{formatNumber(net)}</span></div>
-                      </>
+                      <div className={cn('w-[40%] max-w-[40%] ms-auto rounded-lg border text-[11px] leading-tight divide-y', theme === 'dark' ? 'border-gray-800 divide-gray-800' : 'border-gray-200 divide-gray-100')}>
+                        {([
+                          { key: 'service_ipc_prev_works', value: cert.previousWorks },
+                          { key: 'service_ipc_curr_works', value: cert.currentWorks },
+                          { key: 'service_ipc_total_works', value: cert.totalWorks, strong: true },
+                          { key: 'service_ipc_total_vat', value: cert.vatToDate },
+                          { key: 'service_ipc_retention_works', value: cert.execGuaranteeToDate },
+                          { key: 'service_ipc_retention_insurance', value: cert.labourInsuranceToDate },
+                          ...(cert.whtToDate > 0 ? [{ key: 'service_ipc_wht', value: cert.whtToDate }] : []),
+                          ...(cert.manpowerLevyToDate > 0 ? [{ key: 'service_ipc_levy', value: cert.manpowerLevyToDate }] : []),
+                          { key: 'service_ipc_net_after', value: cert.netAfterDeductions },
+                          ...(cert.advancePaymentRecovery > 0
+                            ? [{ key: 'service_ipc_advance', value: cert.advancePaymentRecovery }]
+                            : []),
+                          { key: 'service_ipc_previous_paid', value: cert.previousPayments },
+                          { key: 'service_ipc_amount_due', value: cert.amountDue, strong: true },
+                        ] as Array<{ key: string; value: number; strong?: boolean }>).map((row) => (
+                          <div key={row.key} className={cn('flex justify-between gap-2 px-2 py-0.5', row.strong && 'font-bold')}>
+                            <span>{t(row.key)}</span>
+                            <span className="tabular-nums">{formatMoney(row.value)}</span>
+                          </div>
+                        ))}
+                      </div>
                     );
                   })()}
                 </div>
+                )}
 
                 <div className="flex flex-wrap gap-4 pt-2">
                   {activeTab === 'ipc' && formData.items.length > 0 && (

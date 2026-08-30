@@ -1590,7 +1590,7 @@ const translations: Record<Language, Record<string, string>> = {
       'اختر حساب المقاول من 21102…، مركز التكلفة/العقد، والتاريخ.',
     manual_costs_ipc_subcontractor_step_3_title: 'البنود والخصومات',
     manual_costs_ipc_subcontractor_step_3_body:
-      'أدخل قيمة الأعمال، VAT، ضمان التنفيذ، خصم المنبع، تأمينات، وخصم الدفعة المقدمة إن وُجد.',
+      'أدخل كميات الفترة والنسب. الملخص أسفل البنود: سابق + حالي = إجمالي الأعمال. الضريبة ومحتجز الضمان والتأمينات (وأي محتجز آخر) على الإجمالي. الصافي − دفعة مقدمة إن وُجدت − المسدد سابقاً = المستحق. قيد الاعتماد يرحّل زيادة الفترة فقط. الرقم لكل مقاول وسنة (مستخلص الاسم-001-2026).',
     manual_costs_ipc_subcontractor_step_4_title: 'معاينة القيد',
     manual_costs_ipc_subcontractor_step_4_body:
       'عند الحفظ الأول تظهر معاينة القيد — راجع توازن المدين/الدائن ثم أكّد الترحيل.',
@@ -4206,7 +4206,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Select subcontractor from 21102… leaves, cost center/contract, and date.',
     manual_costs_ipc_subcontractor_step_3_title: 'Lines and deductions',
     manual_costs_ipc_subcontractor_step_3_body:
-      'Enter works value, VAT, execution guarantee, WHT, insurance, levy, and advance recovery if any.',
+      'Enter period quantities and rates. Summary below the lines: previous + current = total works. VAT and retentions apply on the total. Net − advance (if any) − previous payments = amount due. The approve journal posts the period increment only. Number is per subcontractor and year (مستخلص name-001-2026).',
     manual_costs_ipc_subcontractor_step_4_title: 'Journal preview',
     manual_costs_ipc_subcontractor_step_4_body:
       'First save opens journal preview — verify Dr/Cr balance, then confirm posting.',
