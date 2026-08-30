@@ -1056,7 +1056,7 @@ export function ServiceIpcPanel({
                     onChange={(e) => setHeader((h) => ({ ...h, advancePaymentRecovery: Number(e.target.value) || 0 }))}
                   />
                 </label>
-                <div className={cn('rounded-lg border text-sm divide-y', theme === 'dark' ? 'border-gray-800 divide-gray-800' : 'border-gray-200 divide-gray-100')}>
+                <div className={cn('w-[40%] max-w-[40%] ms-auto rounded-lg border text-[11px] leading-tight divide-y', theme === 'dark' ? 'border-gray-800 divide-gray-800' : 'border-gray-200 divide-gray-100')}>
                   {([
                     { key: 'service_ipc_prev_works', value: summary.previousWorks },
                     { key: 'service_ipc_curr_works', value: summary.currentWorks },
@@ -1073,7 +1073,7 @@ export function ServiceIpcPanel({
                     { key: 'service_ipc_previous_paid', value: summary.previousPayments },
                     { key: 'service_ipc_amount_due', value: summary.amountDue, strong: true },
                   ]).map((row) => (
-                    <div key={row.key} className={cn('flex justify-between gap-3 px-3 py-1.5', row.strong && 'font-bold')}>
+                    <div key={row.key} className={cn('flex justify-between gap-2 px-2 py-0.5', row.strong && 'font-bold')}>
                       <span>{t(row.key)}</span>
                       <span className="tabular-nums">{formatMoney(row.value)}</span>
                     </div>

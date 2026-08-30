@@ -638,7 +638,6 @@ export function buildServiceIpcCertificateSections(
       kind: 'summary',
       title: isAr ? 'الملخص المالي' : 'Financial summary',
       items: summary,
-      width: 'wide',
     },
     signaturesSection(isAr),
   ];

@@ -875,6 +875,20 @@ export function renderReportDocumentHtml(
     height: 28mm;
     max-width: 96mm;
   }
+  html.doc-service_ipc .summary-box {
+    width: 40%;
+    max-width: 40%;
+    padding: 2px 6px;
+    margin-top: 4px;
+  }
+  html.doc-service_ipc .summary-box .kv-item {
+    padding: 0.4px 0;
+    gap: 4px;
+  }
+  html.doc-service_ipc .summary-box .kv-label,
+  html.doc-service_ipc .summary-box .kv-value {
+    font-size: 7pt;
+  }
   .hdr-title-block { margin: 0; }
   h1 {
     margin: 2px 0 0;
