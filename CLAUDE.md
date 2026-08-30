@@ -726,7 +726,7 @@ The add/edit item modal uses **cascading dropdowns** driven by `existingItems` (
 |-----|-------------|-------------|
 | فاتورة مشتريات | `invoice` | Purchase invoice — **آجلة** (Cr **21101…** مورد) أو **نقدية** (Cr **12102…** عهدة/صندوق) عبر `paymentType` · **Local:** atomic **`POST /purchase-transactions/post-invoice`** (GL + list row + warehouse stock) via `purchaseTransactionsApi.postInvoice` — **do not** split `glApi.createTransaction` then `create`. **Cloud:** `recordPurchaseToProjectInventory()` / fixed-asset / indirect helpers. Toggle **«تسجيل كأصل ثابت»** → Dr **11…**. **Lines:** multi-material + multi-BOQ (`boqItemIds[]`). |
 | مستخلص مقاول | `ipc` | Subcontractor IPC — **`draft` → `submitted` → `approved`**; GL **`POST /api/purchase-transactions/:id/approve`** only (admin / projects_manager); on approve also writes **`boq_actual_costs`** (`subcontractor`, period `currentQty×rate`) for reports — **no GL change**; journal preview via **`JournalPreviewModal`** |
-| مستخلص خدمة | `service_ipc` | مقاول خدمة تحت **21102** (`serviceKind`: labour/equipment/vehicles/housing) — **بدون بنود BOQ**؛ عدة مراكز تكلفة + فصل اختياري؛ قيد مدين **51102/51104/51103** حسب النوع · دائن 21102؛ **لا** `boq_actual_costs`؛ تنبيه `service_ipc_pending` · رقم لكل مورد/سنة **`مستخلص محمد الشيخ-001-2026`** (`serviceIpcNumber.ts`) · عنوان الطباعة = الرقم + الحالة · شعار واسم الشركة معاً (شعار بضعف الحجم) · التزام موازنة فئة `service` |
+| مستخلص خدمة | `service_ipc` | مقاول خدمة تحت **21102** (`serviceKind`: labour/equipment/vehicles/housing) — **بدون بنود BOQ**؛ عدة مراكز تكلفة + فصل اختياري؛ قيد مدين **51102/51104/51103** حسب النوع · دائن 21102؛ **لا** `boq_actual_costs`؛ تنبيه `service_ipc_pending` · رقم لكل مورد/سنة **`مستخلص محمد الشيخ-001-2026`** (`serviceIpcNumber.ts`) · عنوان الطباعة = الرقم + الحالة · شعار واسم الشركة معاً (شعار بضعف الحجم) · **ملخص أسفل البنود:** سابق + حالي + إجمالي + ضريبة ومحتجزات على الإجمالي − مقدمة − مسدد سابق = المستحق · التزام موازنة فئة `service` |
 | تسوية عهدة | `custody` | **`<GLCustodySettlement>`** — list + modal; optional per-line **BOQ** (`boqItemId`) for reports; numbering **`SET-{projectCode}-0001`**; **`draft` → `submitted` → `approved`**; GL on approve only; optional `boq_actual_costs` (`custody`) on approve when linked |
 | مصروف غير مباشر | `indirect` | **local:** Dr expense / Cr creditor via **`createTransaction`**; **`costCenterId`** = indirect center (`GET /api/cost-centers?type=indirect`) |
 | مصروف عقد + BOQ | `contract_expense` | **local:** contract expense split across BOQ items → **`contractExpenseOrdersApi`** confirm posts GL `CEX-…` + **`boq_actual_costs`** |
@@ -1022,6 +1022,16 @@ npm run test -- src/lib/serviceContractor.test.ts src/lib/reportDocument/htmlEsc
 
 ```powershell
 npm run test -- src/lib/reportDocument/selectionFormat.test.ts src/lib/reportPrintProfiles.test.ts
+```
+
+---
+
+## 🔴 HANDOFF — ملخص مستخلص الخدمة أسفل البنود ✅ (2026-08-30)
+
+> **جلسة 2026-08-30:** الملخص كان 3 أسطر فوق الجدول (قيمة الفترة + ضريبة + صافي). المطلوب: سابق · حالي · إجمالي · ضريبة · محتجز ضمان وتأمينات على **إجمالي الأعمال** · أي محتجز آخر · الصافي − مقدمة − مسدد سابق = المستحق، **أسفل** جدول البنود.
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts src/lib/reportDocument/reportDocument.test.ts src/lib/operationsManual.test.ts
 ```
 
 ---

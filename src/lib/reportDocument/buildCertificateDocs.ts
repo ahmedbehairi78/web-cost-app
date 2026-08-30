@@ -499,6 +499,7 @@ export type ServiceIpcPrintData = {
   contractorName: string;
   projectName?: string;
   lines: ServiceIpcPrintLine[];
+  /** Period works (table total). */
   worksValueExVat: number;
   vatAmount: number;
   execGuaranteeAmount: number;
@@ -507,6 +508,15 @@ export type ServiceIpcPrintData = {
   manpowerLevyAmount: number;
   advancePaymentRecovery: number;
   netPayable: number;
+  previousWorksExVat?: number;
+  totalWorksExVat?: number;
+  vatToDate?: number;
+  execGuaranteeToDate?: number;
+  labourInsuranceToDate?: number;
+  whtToDate?: number;
+  manpowerLevyToDate?: number;
+  netAfterDeductions?: number;
+  previousPayments?: number;
 };
 
 /** Sections for service contractor IPC (multi cost-center, optional chapter). */
@@ -550,65 +560,85 @@ export function buildServiceIpcCertificateSections(
   }));
 
   const deductionAmt = (n: number) => (n > 0 ? `(${formatMoney(n)})` : formatMoney(0));
+  const previousWorks = data.previousWorksExVat ?? 0;
+  const currentWorks = data.worksValueExVat;
+  const totalWorks = data.totalWorksExVat ?? roundMoney(previousWorks + currentWorks);
+  const vatToDate = data.vatToDate ?? data.vatAmount;
+  const execToDate = data.execGuaranteeToDate ?? data.execGuaranteeAmount;
+  const insToDate = data.labourInsuranceToDate ?? data.labourInsuranceAmount;
+  const whtToDate = data.whtToDate ?? data.whtAmount;
+  const levyToDate = data.manpowerLevyToDate ?? data.manpowerLevyAmount;
+  const withholdToDate = roundMoney(execToDate + insToDate + whtToDate + levyToDate);
+  const netAfter = data.netAfterDeductions ?? roundMoney(totalWorks + vatToDate - withholdToDate);
+  const previousPaid = data.previousPayments ?? 0;
+  const advance = data.advancePaymentRecovery;
+  const due = data.netPayable;
+
   const summary: ReportDocKeyValueItem[] = [
+    { label: isAr ? 'الأعمال السابقة' : 'Previous works', value: formatMoney(previousWorks) },
+    { label: isAr ? 'الأعمال الحالية' : 'Current works', value: formatMoney(currentWorks) },
+    { label: isAr ? 'إجمالي الأعمال' : 'Total works', value: formatMoney(totalWorks), emphasize: true },
+    { label: isAr ? 'إجمالي القيمة المضافة' : 'Total VAT', value: formatMoney(vatToDate) },
     {
-      label: isAr ? 'قيمة أعمال الفترة (بدون ضريبة)' : 'Period work value (excl. VAT)',
-      value: formatMoney(data.worksValueExVat),
+      label: isAr ? 'محتجز ضمان أعمال' : 'Works guarantee retention',
+      value: deductionAmt(execToDate),
+      tone: 'danger',
     },
-    { label: isAr ? 'ضريبة القيمة المضافة' : 'VAT', value: formatMoney(data.vatAmount) },
+    {
+      label: isAr ? 'محتجز التأمينات' : 'Insurance retention',
+      value: deductionAmt(insToDate),
+      tone: 'danger',
+    },
   ];
-  if (data.execGuaranteeAmount > 0) {
-    summary.push({
-      label: isAr ? 'حجز ضمان أعمال' : 'Retention',
-      value: deductionAmt(data.execGuaranteeAmount),
-      tone: 'danger',
-    });
+  if (whtToDate > 0) {
+    summary.push({ label: isAr ? 'خصم وإضافة' : 'WHT', value: deductionAmt(whtToDate), tone: 'danger' });
   }
-  if (data.whtAmount > 0) {
-    summary.push({ label: isAr ? 'خصم وإضافة' : 'WHT', value: deductionAmt(data.whtAmount), tone: 'danger' });
-  }
-  if (data.labourInsuranceAmount > 0) {
+  if (levyToDate > 0) {
     summary.push({
-      label: isAr ? 'تأمينات' : 'Insurance',
-      value: deductionAmt(data.labourInsuranceAmount),
-      tone: 'danger',
-    });
-  }
-  if (data.manpowerLevyAmount > 0) {
-    summary.push({
-      label: isAr ? 'قوى عاملة' : 'Manpower levy',
-      value: deductionAmt(data.manpowerLevyAmount),
-      tone: 'danger',
-    });
-  }
-  if (data.advancePaymentRecovery > 0) {
-    summary.push({
-      label: isAr ? 'استرداد مقدمة' : 'Advance recovery',
-      value: deductionAmt(data.advancePaymentRecovery),
+      label: isAr ? 'محتجز القوى العاملة' : 'Manpower levy',
+      value: deductionAmt(levyToDate),
       tone: 'danger',
     });
   }
   summary.push({
-    label: isAr ? 'صافي المستحق' : 'Net payable',
-    value: formatMoney(data.netPayable),
+    label: isAr ? 'الصافي' : 'Net after retentions',
+    value: formatMoney(netAfter),
+    emphasize: true,
+  });
+  if (advance > 0) {
+    summary.push({
+      label: isAr ? 'دفعة مقدمة' : 'Advance payment',
+      value: deductionAmt(advance),
+      tone: 'danger',
+    });
+  }
+  summary.push({
+    label: isAr ? 'المبالغ المسددة سابقاً' : 'Previous payments',
+    value: deductionAmt(previousPaid),
+    tone: 'danger',
+  });
+  summary.push({
+    label: isAr ? 'المستحق' : 'Amount due',
+    value: formatMoney(due),
     emphasize: true,
   });
 
   return [
     { kind: 'keyValue', items: meta, columnsPerRow: 3 },
     {
-      kind: 'summary',
-      title: isAr ? 'الملخص المالي' : 'Financial summary',
-      items: summary,
-    },
-    {
       kind: 'table',
       title: isAr ? 'بنود المستخلص' : 'IPC lines',
       columns,
       rows,
       flow: true,
-      totals: { amount: data.worksValueExVat },
+      totals: { amount: currentWorks },
       totalsLabel: isAr ? 'إجمالي أعمال الفترة' : 'Period works total',
+    },
+    {
+      kind: 'summary',
+      title: isAr ? 'الملخص المالي' : 'Financial summary',
+      items: summary,
+      width: 'wide',
     },
     signaturesSection(isAr),
   ];

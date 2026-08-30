@@ -8,7 +8,7 @@ import {
   buildSchedulePrintRows,
 } from './buildAnalyticalPrintRows';
 import { renderReportDocumentHtml } from './renderHtml';
-import { buildIpcCertificateDocument } from './buildCertificateDocs';
+import { buildIpcCertificateDocument, buildServiceIpcCertificateSections } from './buildCertificateDocs';
 import { buildBillingIpcPrintData } from '../ipcPrintData';
 
 const company = {
@@ -1086,5 +1086,64 @@ describe('buildConsumptionOrderSections', () => {
     expect(doc.coverPage?.titleLines?.[1]).toBe('MAIN WORKS CONTRACT');
     const html = renderReportDocumentHtml(doc, (n) => n.toFixed(2));
     expect(html).toContain('MAIN WORKS CONTRACT');
+  });
+
+  it('places service IPC financial summary below the lines table', () => {
+    const sections = buildServiceIpcCertificateSections(
+      {
+        documentNumber: 'مستخلص محمد الشيخ-001-2026',
+        dateLabel: '2026-08-28',
+        statusLabel: 'معتمد',
+        serviceKindLabel: 'توريد عمال',
+        contractorName: 'محمد الشيخ',
+        projectName: 'كايرو جيت',
+        lines: [
+          {
+            contractLabel: 'عقد 1',
+            description: 'عمالة',
+            unit: 'يوم',
+            rate: 100,
+            previousQty: 10,
+            currentQty: 5,
+            netQty: 15,
+            periodAmount: 500,
+          },
+        ],
+        worksValueExVat: 500,
+        vatAmount: 210,
+        execGuaranteeAmount: 75,
+        whtAmount: 0,
+        labourInsuranceAmount: 75,
+        manpowerLevyAmount: 0,
+        advancePaymentRecovery: 100,
+        netPayable: 435,
+        previousWorksExVat: 1000,
+        totalWorksExVat: 1500,
+        vatToDate: 210,
+        execGuaranteeToDate: 75,
+        labourInsuranceToDate: 75,
+        whtToDate: 0,
+        manpowerLevyToDate: 0,
+        netAfterDeductions: 1560,
+        previousPayments: 1025,
+      },
+      'ar',
+      (n) => n.toFixed(2),
+    );
+    const kinds = sections.map((s) => s.kind);
+    expect(kinds.indexOf('table')).toBeLessThan(kinds.indexOf('summary'));
+    const summary = sections.find((s) => s.kind === 'summary');
+    expect(summary?.kind).toBe('summary');
+    if (summary?.kind !== 'summary') return;
+    const labels = summary.items.map((i) => i.label);
+    expect(labels).toContain('الأعمال السابقة');
+    expect(labels).toContain('الأعمال الحالية');
+    expect(labels).toContain('إجمالي الأعمال');
+    expect(labels).toContain('إجمالي القيمة المضافة');
+    expect(labels).toContain('محتجز ضمان أعمال');
+    expect(labels).toContain('محتجز التأمينات');
+    expect(labels).toContain('دفعة مقدمة');
+    expect(labels).toContain('المبالغ المسددة سابقاً');
+    expect(labels[labels.length - 1]).toBe('المستحق');
   });
 });

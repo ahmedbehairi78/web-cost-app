@@ -1,3 +1,5 @@
+import { roundMoney } from './money';
+
 /** Subcontractor service classification (still COA 21102). */
 
 export const SERVICE_KINDS = ['works', 'labour', 'equipment', 'vehicles', 'housing'] as const;
@@ -101,6 +103,92 @@ export function periodLineAmount(line: { currentQty?: number; rate?: number }): 
 
 export function toDateLineAmount(line: { previousQty?: number; currentQty?: number; rate?: number }): number {
   return netQty(Number(line.previousQty || 0), Number(line.currentQty || 0)) * Number(line.rate || 0);
+}
+
+export type ServiceIpcSummaryPcts = {
+  vatPct: number;
+  execGuaranteePct: number;
+  whtPct: number;
+  labourInsurancePct: number;
+  manpowerLevyPct: number;
+};
+
+/** Certificate waterfall — withholdings on total works; due = to-date net − advance − previous payments. */
+export type ServiceIpcCertificateSummary = {
+  previousWorks: number;
+  currentWorks: number;
+  totalWorks: number;
+  vatToDate: number;
+  execGuaranteeToDate: number;
+  labourInsuranceToDate: number;
+  whtToDate: number;
+  manpowerLevyToDate: number;
+  netAfterDeductions: number;
+  advancePaymentRecovery: number;
+  previousPayments: number;
+  amountDue: number;
+  vatPeriod: number;
+  execGuaranteePeriod: number;
+  labourInsurancePeriod: number;
+  whtPeriod: number;
+  manpowerLevyPeriod: number;
+};
+
+function applyPct(base: number, pct: number): number {
+  return roundMoney(base * (Number(pct) || 0) / 100);
+}
+
+export function computeServiceIpcCertificateSummary(
+  lines: Array<{ previousQty?: number; currentQty?: number; rate?: number }>,
+  pcts: ServiceIpcSummaryPcts,
+  advancePaymentRecovery = 0,
+): ServiceIpcCertificateSummary {
+  const previousWorks = roundMoney(
+    lines.reduce((s, l) => s + Number(l.previousQty || 0) * Number(l.rate || 0), 0),
+  );
+  const currentWorks = roundMoney(lines.reduce((s, l) => s + periodLineAmount(l), 0));
+  const totalWorks = roundMoney(previousWorks + currentWorks);
+
+  const vatToDate = applyPct(totalWorks, pcts.vatPct);
+  const execGuaranteeToDate = applyPct(totalWorks, pcts.execGuaranteePct);
+  const labourInsuranceToDate = applyPct(totalWorks, pcts.labourInsurancePct);
+  const whtToDate = applyPct(totalWorks, pcts.whtPct);
+  const manpowerLevyToDate = applyPct(totalWorks, pcts.manpowerLevyPct);
+
+  const vatPrev = applyPct(previousWorks, pcts.vatPct);
+  const execPrev = applyPct(previousWorks, pcts.execGuaranteePct);
+  const insPrev = applyPct(previousWorks, pcts.labourInsurancePct);
+  const whtPrev = applyPct(previousWorks, pcts.whtPct);
+  const levyPrev = applyPct(previousWorks, pcts.manpowerLevyPct);
+
+  const withholdToDate = roundMoney(
+    execGuaranteeToDate + labourInsuranceToDate + whtToDate + manpowerLevyToDate,
+  );
+  const withholdPrev = roundMoney(execPrev + insPrev + whtPrev + levyPrev);
+  const netAfterDeductions = roundMoney(totalWorks + vatToDate - withholdToDate);
+  const previousPayments = roundMoney(previousWorks + vatPrev - withholdPrev);
+  const advance = roundMoney(advancePaymentRecovery);
+  const amountDue = roundMoney(netAfterDeductions - advance - previousPayments);
+
+  return {
+    previousWorks,
+    currentWorks,
+    totalWorks,
+    vatToDate,
+    execGuaranteeToDate,
+    labourInsuranceToDate,
+    whtToDate,
+    manpowerLevyToDate,
+    netAfterDeductions,
+    advancePaymentRecovery: advance,
+    previousPayments,
+    amountDue,
+    vatPeriod: roundMoney(vatToDate - vatPrev),
+    execGuaranteePeriod: roundMoney(execGuaranteeToDate - execPrev),
+    labourInsurancePeriod: roundMoney(labourInsuranceToDate - insPrev),
+    whtPeriod: roundMoney(whtToDate - whtPrev),
+    manpowerLevyPeriod: roundMoney(manpowerLevyToDate - levyPrev),
+  };
 }
 
 export function previousQtyFromApproved(

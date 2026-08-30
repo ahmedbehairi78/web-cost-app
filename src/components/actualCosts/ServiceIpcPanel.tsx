@@ -31,10 +31,10 @@ import {
   isServiceContractor,
   isServiceIpcKind,
   netQty,
+  computeServiceIpcCertificateSummary,
   periodLineAmount,
   previousQtyFromApproved,
   serviceIpcPrintTitle,
-  toDateLineAmount,
   uniqueBoqChapters,
   type ServiceIpcKind,
   type ServiceIpcLine,
@@ -293,17 +293,29 @@ export function ServiceIpcPanel({
     return { ...line, previousQty: prev };
   }, [approvedItemsForPrev]);
 
-  const worksValue = useMemo(
-    () => roundMoney(lines.reduce((s, l) => s + periodLineAmount(l), 0)),
-    [lines],
+  const summary = useMemo(
+    () =>
+      computeServiceIpcCertificateSummary(
+        lines,
+        {
+          vatPct: header.vatPct,
+          execGuaranteePct: header.execGuaranteePct,
+          whtPct: header.whtPct,
+          labourInsurancePct: header.labourInsurancePct,
+          manpowerLevyPct: header.manpowerLevyPct,
+        },
+        header.advancePaymentRecovery,
+      ),
+    [lines, header],
   );
-  const vat = roundMoney(worksValue * (header.vatPct / 100));
-  const exec = roundMoney(worksValue * (header.execGuaranteePct / 100));
-  const wht = roundMoney(worksValue * (header.whtPct / 100));
-  const insurance = roundMoney(worksValue * (header.labourInsurancePct / 100));
-  const levy = roundMoney(worksValue * (header.manpowerLevyPct / 100));
-  const advance = roundMoney(Number(header.advancePaymentRecovery) || 0);
-  const net = roundMoney(worksValue + vat - exec - wht - insurance - levy - advance);
+  const worksValue = summary.currentWorks;
+  const vat = summary.vatPeriod;
+  const exec = summary.execGuaranteePeriod;
+  const wht = summary.whtPeriod;
+  const insurance = summary.labourInsurancePeriod;
+  const levy = summary.manpowerLevyPeriod;
+  const advance = summary.advancePaymentRecovery;
+  const net = summary.amountDue;
 
   const counts = useMemo(() => {
     const draft = list.filter((t) => t.status === 'draft' && !posted(t)).length;
@@ -590,16 +602,26 @@ export function ServiceIpcPanel({
   const buildPrintPayload = useCallback(
     (tx: ServiceTx): ServiceIpcPrintData => {
       const items = tx.items ?? [];
-      const worksValue = roundMoney(Number(tx.amount) || items.reduce((s, l) => s + periodLineAmount(l), 0));
-      const vatAmount = roundMoney(Number(tx.vatAmount) || 0);
-      const exec = roundMoney(Number(tx.execGuaranteeAmount) || 0);
-      const wht = roundMoney(Number(tx.whtAmount) || 0);
-      const insurance = roundMoney(Number(tx.labourInsuranceAmount) || 0);
-      const levy = roundMoney(Number(tx.manpowerLevyAmount) || 0);
-      const advance = roundMoney(Number(tx.advancePaymentRecovery) || 0);
-      const netPayable = roundMoney(
-        Number(tx.totalAmount) || worksValue + vatAmount - exec - wht - insurance - levy - advance,
+      const periodWorks = roundMoney(Number(tx.amount) || items.reduce((s, l) => s + periodLineAmount(l), 0));
+      const cert = computeServiceIpcCertificateSummary(
+        items,
+        {
+          vatPct: resolveStoredPct(tx.vatPct, tx.vatAmount, periodWorks),
+          execGuaranteePct: resolveStoredPct(tx.execGuaranteePct, tx.execGuaranteeAmount, periodWorks),
+          whtPct: resolveStoredPct(tx.whtPct, tx.whtAmount, periodWorks),
+          labourInsurancePct: resolveStoredPct(tx.labourInsurancePct, tx.labourInsuranceAmount, periodWorks),
+          manpowerLevyPct: resolveStoredPct(tx.manpowerLevyPct, tx.manpowerLevyAmount, periodWorks),
+        },
+        Number(tx.advancePaymentRecovery) || 0,
       );
+      const worksValue = cert.currentWorks || periodWorks;
+      const vatAmount = cert.vatToDate;
+      const exec = cert.execGuaranteeToDate;
+      const wht = cert.whtToDate;
+      const insurance = cert.labourInsuranceToDate;
+      const levy = cert.manpowerLevyToDate;
+      const advance = cert.advancePaymentRecovery;
+      const netPayable = cert.amountDue;
       const projectIds = [
         ...new Set(
           items.map((l) => String(l.projectId || '').trim()).filter(Boolean)
@@ -646,6 +668,15 @@ export function ServiceIpcPanel({
         manpowerLevyAmount: levy,
         advancePaymentRecovery: advance,
         netPayable,
+        previousWorksExVat: cert.previousWorks,
+        totalWorksExVat: cert.totalWorks,
+        vatToDate: cert.vatToDate,
+        execGuaranteeToDate: cert.execGuaranteeToDate,
+        labourInsuranceToDate: cert.labourInsuranceToDate,
+        whtToDate: cert.whtToDate,
+        manpowerLevyToDate: cert.manpowerLevyToDate,
+        netAfterDeductions: cert.netAfterDeductions,
+        previousPayments: cert.previousPayments,
       };
     },
     [contracts, projects, isAr, t],
@@ -700,6 +731,11 @@ export function ServiceIpcPanel({
       manpowerLevyAmount: levy,
       advancePaymentRecovery: advance,
       totalAmount: net,
+      vatPct: header.vatPct,
+      execGuaranteePct: header.execGuaranteePct,
+      whtPct: header.whtPct,
+      labourInsurancePct: header.labourInsurancePct,
+      manpowerLevyPct: header.manpowerLevyPct,
       items: lines,
     };
     handlePrint(formTx);
@@ -988,12 +1024,6 @@ export function ServiceIpcPanel({
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                  <div>{t('amount')}: <strong>{formatMoney(worksValue)}</strong></div>
-                  <div>{t('vat')}: <strong>{formatMoney(vat)}</strong></div>
-                  <div>{t('net_payable')}: <strong>{formatMoney(net)}</strong></div>
-                  <div>{t('to_date')}: <strong>{formatMoney(roundMoney(lines.reduce((s, l) => s + toDateLineAmount(l), 0)))}</strong></div>
-                </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
                   {([
                     ['vatPct', t('vat')],
@@ -1013,6 +1043,40 @@ export function ServiceIpcPanel({
                         onChange={(e) => setHeader((h) => ({ ...h, [key]: Number(e.target.value) || 0 }))}
                       />
                     </label>
+                  ))}
+                </div>
+                <label className="text-xs block max-w-xs">
+                  {t('service_ipc_advance')}
+                  <input
+                    type="number"
+                    step="0.01"
+                    className={inputCls}
+                    disabled={readOnly}
+                    value={header.advancePaymentRecovery}
+                    onChange={(e) => setHeader((h) => ({ ...h, advancePaymentRecovery: Number(e.target.value) || 0 }))}
+                  />
+                </label>
+                <div className={cn('rounded-lg border text-sm divide-y', theme === 'dark' ? 'border-gray-800 divide-gray-800' : 'border-gray-200 divide-gray-100')}>
+                  {([
+                    { key: 'service_ipc_prev_works', value: summary.previousWorks },
+                    { key: 'service_ipc_curr_works', value: summary.currentWorks },
+                    { key: 'service_ipc_total_works', value: summary.totalWorks, strong: true },
+                    { key: 'service_ipc_total_vat', value: summary.vatToDate },
+                    { key: 'service_ipc_retention_works', value: summary.execGuaranteeToDate },
+                    { key: 'service_ipc_retention_insurance', value: summary.labourInsuranceToDate },
+                    ...(summary.whtToDate > 0 ? [{ key: 'service_ipc_wht', value: summary.whtToDate }] : []),
+                    ...(summary.manpowerLevyToDate > 0 ? [{ key: 'service_ipc_levy', value: summary.manpowerLevyToDate }] : []),
+                    { key: 'service_ipc_net_after', value: summary.netAfterDeductions },
+                    ...(summary.advancePaymentRecovery > 0
+                      ? [{ key: 'service_ipc_advance', value: summary.advancePaymentRecovery }]
+                      : []),
+                    { key: 'service_ipc_previous_paid', value: summary.previousPayments },
+                    { key: 'service_ipc_amount_due', value: summary.amountDue, strong: true },
+                  ]).map((row) => (
+                    <div key={row.key} className={cn('flex justify-between gap-3 px-3 py-1.5', row.strong && 'font-bold')}>
+                      <span>{t(row.key)}</span>
+                      <span className="tabular-nums">{formatMoney(row.value)}</span>
+                    </div>
                   ))}
                 </div>
               </div>

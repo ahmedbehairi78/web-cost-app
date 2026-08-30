@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { roundMoney } from './money';
 import {
   isServiceContractor,
   previousQtyFromApproved,
@@ -7,6 +8,7 @@ import {
   netQty,
   displayServiceIpcNumber,
   serviceIpcPrintTitle,
+  computeServiceIpcCertificateSummary,
 } from './serviceContractor';
 
 describe('serviceContractor', () => {
@@ -77,5 +79,33 @@ describe('serviceContractor', () => {
 
   it('nets previous + current qty', () => {
     expect(netQty(3, 2)).toBe(5);
+  });
+
+  it('builds certificate summary on total works then subtracts previous payments', () => {
+    const summary = computeServiceIpcCertificateSummary(
+      [
+        { previousQty: 10, currentQty: 5, rate: 100 },
+        { previousQty: 0, currentQty: 2, rate: 50 },
+      ],
+      {
+        vatPct: 14,
+        execGuaranteePct: 5,
+        labourInsurancePct: 5,
+        whtPct: 1,
+        manpowerLevyPct: 0,
+      },
+      200,
+    );
+    expect(summary.previousWorks).toBe(1000);
+    expect(summary.currentWorks).toBe(600);
+    expect(summary.totalWorks).toBe(1600);
+    expect(summary.vatToDate).toBe(224);
+    expect(summary.execGuaranteeToDate).toBe(80);
+    expect(summary.labourInsuranceToDate).toBe(80);
+    expect(summary.whtToDate).toBe(16);
+    expect(summary.previousPayments).toBe(1030);
+    expect(summary.amountDue).toBe(roundMoney(summary.netAfterDeductions - 200 - 1030));
+    expect(summary.amountDue).toBe(summary.vatPeriod + summary.currentWorks
+      - summary.execGuaranteePeriod - summary.labourInsurancePeriod - summary.whtPeriod - 200);
   });
 });

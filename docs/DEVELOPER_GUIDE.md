@@ -405,7 +405,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 |---------|--------|-----|
 | **فاتورة مشتريات** | حفظ → ترحيل فوري (أو read-only إن `transactionId`) · **آجلة/نقدية** (`paymentType`) | `recordPurchaseToProjectInventory` / `recordFixedAssetPurchase` — Cr مورد **21101…** أو عهدة **12102…** |
 | **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) |
-| **مستخلص خدمة** | نفس الدورة · `type=service_ipc` | رقم لكل مورد/سنة `مستخلص الاسم-001-2026`؛ عنوان الطباعة = الرقم + الحالة؛ شعار + اسم الشركة معاً؛ اعتماد يرحّل مدين حسب `serviceKind` مع `costCenterId` لكل عقد؛ **لا** توزيع على بنود BOQ |
+| **مستخلص خدمة** | نفس الدورة · `type=service_ipc` | رقم لكل مورد/سنة `مستخلص الاسم-001-2026`؛ عنوان الطباعة = الرقم + الحالة؛ شعار + اسم الشركة معاً؛ ملخص أسفل البنود (سابق/حالي/إجمالي + محتجزات على الإجمالي − مقدمة − مسدد سابق)؛ اعتماد يرحّل مدين حسب `serviceKind` مع `costCenterId` لكل عقد؛ **لا** توزيع على بنود BOQ |
 | **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (`ledger.create` أو `ledger.edit`) — زر الاعتماد في **تفاصيل** التسوية وليس النموذج فقط |
 
 - **معاينة:** النقر على صف فاتورة/IPC في الجدول يفتح النافذة — المرحّلة = للقراءة فقط.
