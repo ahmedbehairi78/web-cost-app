@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useErpModuleDraft, useErpModuleView } from '../hooks/useErpModuleView';
 import {
   Plus, ShoppingCart, X, FileText, Receipt, Loader2,
-  AlertTriangle, Printer
+  AlertTriangle, Printer, Trash2
 } from 'lucide-react';
 import { collection, query, addDoc, serverTimestamp, where, orderBy, limit, writeBatch, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { listenQuery } from '../lib/firestoreListen';
@@ -720,6 +720,7 @@ export function ActualCosts() {
   const [detailPurchaseLoading, setDetailPurchaseLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showIpcDeleteConfirm, setShowIpcDeleteConfirm] = useState(false);
   const [ipcPreviewEntries, setIpcPreviewEntries] = useState<{ entries: JournalPreviewEntry[]; description: string } | null>(null);
   const ipcPreviewConfirmedRef = useRef(false);
   const ipcSaveModeRef = useRef<IpcSaveMode>('submit');
@@ -1611,6 +1612,20 @@ export function ActualCosts() {
       net: cert.amountDue,
       cert,
     };
+  };
+
+  const handleDeleteIpcDraft = async () => {
+    if (!editingPurchase?.id) return;
+    try {
+      await purchaseTransactionsApi.remove(editingPurchase.id);
+      toast.success(language === 'ar' ? 'تم حذف المستخلص' : 'Certificate deleted');
+      setShowModal(false);
+      setShowIpcDeleteConfirm(false);
+      resetForm();
+    } catch (err) {
+      toast.error(language === 'ar' ? 'فشل الحذف' : 'Delete failed');
+      setShowIpcDeleteConfirm(false);
+    }
   };
 
   const handlePrintSubcontractorIpc = () => {
@@ -2592,6 +2607,7 @@ export function ActualCosts() {
     setEditingPurchaseId(null);
     ipcSaveModeRef.current = 'submit';
     setLinkedWarehouseReceiptId('');
+    setShowIpcDeleteConfirm(false);
     setFormData({
       supplierId: '', paymentType: 'credit', projectId: '', contractId: '', costCenterId: '', warehouseAccountId: '', expenseAccountId: '',
       date: businessTodayYmd(), referenceNumber: '',
@@ -3705,7 +3721,28 @@ export function ActualCosts() {
                 </div>
                 </fieldset>
                 <div className="flex flex-wrap gap-4 pt-2">
-                  <button type="button" onClick={() => { setShowModal(false); resetForm(); }} className={cn('flex-1 min-w-[8rem] py-3 rounded-xl font-bold transition-all', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}>{t('cancel')}</button>
+                  <button type="button" onClick={() => { setShowModal(false); setShowIpcDeleteConfirm(false); resetForm(); }} className={cn('flex-1 min-w-[8rem] py-3 rounded-xl font-bold transition-all', theme === 'dark' ? 'bg-gray-800 hover:bg-gray-700 text-white' : 'bg-gray-200 hover:bg-gray-300 text-gray-700')}>{t('cancel')}</button>
+                  {activeTab === 'ipc' && editingPurchase && !ipcFormReadOnly && !showIpcDeleteConfirm && (
+                    <button
+                      type="button"
+                      className="py-3 px-4 rounded-xl font-bold inline-flex items-center gap-2 bg-red-700 hover:bg-red-600 text-white"
+                      onClick={() => setShowIpcDeleteConfirm(true)}
+                    >
+                      <Trash2 size={16} />
+                      {language === 'ar' ? 'حذف المستخلص' : 'Delete Certificate'}
+                    </button>
+                  )}
+                  {activeTab === 'ipc' && showIpcDeleteConfirm && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-bold text-red-500">{language === 'ar' ? 'تأكيد الحذف؟' : 'Confirm delete?'}</span>
+                      <button type="button" className="px-4 py-2 rounded-xl text-sm font-bold bg-red-700 hover:bg-red-600 text-white" onClick={() => void handleDeleteIpcDraft()}>
+                        {language === 'ar' ? 'نعم، احذف' : 'Yes, Delete'}
+                      </button>
+                      <button type="button" className="px-4 py-2 rounded-xl text-sm font-bold" onClick={() => setShowIpcDeleteConfirm(false)}>
+                        {language === 'ar' ? 'تراجع' : 'Cancel'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </form>
             </motion.div>

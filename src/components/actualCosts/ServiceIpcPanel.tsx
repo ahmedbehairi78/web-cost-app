@@ -209,6 +209,7 @@ export function ServiceIpcPanel({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [saveMode, setSaveMode] = useState<'draft' | 'submit' | 'approve'>('submit');
   const [saving, setSaving] = useState(false);
   const [showSupplierModal, setShowSupplierModal] = useState(false);
@@ -458,6 +459,7 @@ export function ServiceIpcPanel({
     setEditingId(null);
     previewConfirmed.current = false;
     setPreview(null);
+    setShowDeleteConfirm(false);
     setHeader({
       supplierAccountId: '',
       serviceKind: 'labour',
@@ -672,6 +674,23 @@ export function ServiceIpcPanel({
     } finally {
       setSaving(false);
       previewConfirmed.current = false;
+    }
+  };
+
+  const handleDeleteDraft = async () => {
+    if (!editingId) return;
+    try {
+      await purchaseTransactionsApi.remove(editingId);
+      toast.success(language === 'ar' ? 'تم حذف المستخلص' : 'Certificate deleted');
+      setShowModal(false);
+      setShowDeleteConfirm(false);
+      resetForm();
+      onRefresh();
+      await load();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : (language === 'ar' ? 'فشل الحذف' : 'Delete failed');
+      toast.error(msg);
+      setShowDeleteConfirm(false);
     }
   };
 
@@ -1184,11 +1203,32 @@ export function ServiceIpcPanel({
                 </div>
               </div>
               <div className={cn('p-4 border-t flex flex-wrap gap-2 justify-end', theme === 'dark' ? 'border-gray-800' : 'border-gray-200')}>
+                {editingId && !readOnly && !showDeleteConfirm && (
+                  <button
+                    type="button"
+                    className="px-4 py-2 rounded-lg font-bold inline-flex items-center gap-2 bg-red-700 hover:bg-red-600 text-white me-auto"
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    <Trash2 size={15} />
+                    {language === 'ar' ? 'حذف المستخلص' : 'Delete Certificate'}
+                  </button>
+                )}
+                {showDeleteConfirm && (
+                  <div className="me-auto flex items-center gap-2">
+                    <span className="text-sm font-bold text-red-500">{language === 'ar' ? 'تأكيد الحذف؟' : 'Confirm delete?'}</span>
+                    <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-bold bg-red-700 hover:bg-red-600 text-white" onClick={() => void handleDeleteDraft()}>
+                      {language === 'ar' ? 'نعم، احذف' : 'Yes, Delete'}
+                    </button>
+                    <button type="button" className="px-3 py-1.5 rounded-lg text-sm font-bold" onClick={() => setShowDeleteConfirm(false)}>
+                      {language === 'ar' ? 'تراجع' : 'Cancel'}
+                    </button>
+                  </div>
+                )}
                 <button type="button" className="px-4 py-2 rounded-lg font-bold inline-flex items-center gap-2" onClick={handlePrintForm}>
                   <Printer size={16} />
                   {t('report_print_action')}
                 </button>
-                <button type="button" className="px-4 py-2 rounded-lg font-bold" onClick={() => { setShowModal(false); resetForm(); }}>{t('cancel')}</button>
+                <button type="button" className="px-4 py-2 rounded-lg font-bold" onClick={() => { setShowModal(false); setShowDeleteConfirm(false); resetForm(); }}>{t('cancel')}</button>
                 {!readOnly && (
                   <>
                     <button type="button" disabled={saving} className="px-4 py-2 rounded-lg font-bold bg-gray-700 text-white" onClick={() => void persist('draft')}>{t('save_draft')}</button>
