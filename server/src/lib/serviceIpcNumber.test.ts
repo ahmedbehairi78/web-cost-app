@@ -3,30 +3,47 @@ import {
   formatServiceIpcNumber,
   needsServiceIpcNumber,
   nextServiceIpcNumberFromExisting,
-  parseServiceIpcSeq,
+  parseServiceIpcNumber,
 } from './serviceIpcNumber.js';
 
 describe('serviceIpcNumber', () => {
-  it('flags empty or UUID refs on service IPC only', () => {
+  it('flags empty, UUID, and bare numbers — not the per-supplier year form', () => {
     expect(needsServiceIpcNumber('service_ipc', '')).toBe(true);
-    expect(needsServiceIpcNumber('service_ipc', '   ')).toBe(true);
+    expect(needsServiceIpcNumber('service_ipc', '21546')).toBe(true);
     expect(needsServiceIpcNumber('service_ipc', '4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe(true);
-    expect(needsServiceIpcNumber('service_ipc', '6')).toBe(false);
-    expect(needsServiceIpcNumber('service_ipc', 'SIPC-0001')).toBe(false);
-    expect(needsServiceIpcNumber('ipc', '')).toBe(false);
+    expect(needsServiceIpcNumber('service_ipc', 'SIPC-0001')).toBe(true);
+    expect(needsServiceIpcNumber('service_ipc', 'مستخلص محمد الشيخ-001-2026')).toBe(false);
+    expect(needsServiceIpcNumber('ipc', '21546')).toBe(false);
   });
 
-  it('parses plain and legacy SIPC sequences', () => {
-    expect(parseServiceIpcSeq('6')).toBe(6);
-    expect(parseServiceIpcSeq('06')).toBe(6);
-    expect(parseServiceIpcSeq('SIPC-0007')).toBe(7);
-    expect(parseServiceIpcSeq('INV-1')).toBe(0);
-    expect(formatServiceIpcNumber(6)).toBe('6');
-    expect(formatServiceIpcNumber(42)).toBe('42');
+  it('parses compact and spaced labels', () => {
+    expect(parseServiceIpcNumber('مستخلص محمد الشيخ-001-2026')).toEqual({
+      supplierLabel: 'محمد الشيخ',
+      seq: 1,
+      year: 2026,
+    });
+    expect(parseServiceIpcNumber('مستخلص تامر يسري - 001 -2026')).toEqual({
+      supplierLabel: 'تامر يسري',
+      seq: 1,
+      year: 2026,
+    });
+    expect(formatServiceIpcNumber('محمد الشيخ', 1, 2026)).toBe('مستخلص محمد الشيخ-001-2026');
   });
 
-  it('takes the next unused sequence', () => {
-    expect(nextServiceIpcNumberFromExisting([])).toBe('1');
-    expect(nextServiceIpcNumberFromExisting(['1', 'SIPC-0003', '6', null])).toBe('7');
+  it('sequences per supplier and year', () => {
+    const peers = [
+      { referenceNumber: 'مستخلص محمد الشيخ-001-2026', supplierName: 'محمد الشيخ', date: '2026-03-01' },
+      { referenceNumber: 'مستخلص تامر يسري-001-2026', supplierName: 'تامر يسري', date: '2026-04-01' },
+      { referenceNumber: 'مستخلص محمد الشيخ-002-2025', supplierName: 'محمد الشيخ', date: '2025-12-01' },
+    ];
+    expect(
+      nextServiceIpcNumberFromExisting(peers, { supplierName: 'محمد الشيخ', date: '2026-08-30' }),
+    ).toBe('مستخلص محمد الشيخ-002-2026');
+    expect(
+      nextServiceIpcNumberFromExisting(peers, { supplierName: 'تامر يسري', date: '2026-08-30' }),
+    ).toBe('مستخلص تامر يسري-002-2026');
+    expect(
+      nextServiceIpcNumberFromExisting([], { supplierName: 'محمد الشيخ', date: '2026-01-15' }),
+    ).toBe('مستخلص محمد الشيخ-001-2026');
   });
 });

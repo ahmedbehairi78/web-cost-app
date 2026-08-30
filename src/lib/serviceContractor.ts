@@ -19,19 +19,22 @@ export function displayServiceIpcNumber(referenceNumber?: string | null, fallbac
   return '';
 }
 
-/** Print title: supplier name before the number — no «خدمة» word. */
+/** Print / list title. The document number already includes المورد + تسلسل + السنة. */
 export function serviceIpcPrintTitle(input: {
   contractorName?: string | null;
   documentNumber?: string | null;
   statusLabel?: string | null;
   language: 'ar' | 'en';
 }): string {
-  const name = String(input.contractorName ?? '').trim();
   const number = displayServiceIpcNumber(input.documentNumber);
   const status = String(input.statusLabel ?? '').trim();
+  if (number && (/^مستخلص\s/.test(number) || /^IPC\s/i.test(number))) {
+    return status ? `${number} (${status})` : number;
+  }
+  const name = String(input.contractorName ?? '').trim();
   const head = input.language === 'ar' ? 'مستخلص' : 'IPC';
   const parts = [head, name, number].filter(Boolean);
-  const title = parts.length <= 1 ? head : `${parts[0]} — ${parts.slice(1).join(' ')}`;
+  const title = parts.length <= 1 ? head : parts.join(' ');
   return status ? `${title} (${status})` : title;
 }
 

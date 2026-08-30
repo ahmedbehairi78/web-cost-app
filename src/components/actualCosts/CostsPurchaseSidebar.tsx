@@ -219,10 +219,7 @@ function CostsPurchaseSidebarInner({
                   >
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0 min-h-[1.25rem] leading-tight">
                       {activeTab === 'service_ipc' ? (
-                        <>
-                          <span className="font-bold shrink-0 truncate max-w-[9rem]">{tx.supplierName || '—'}</span>
-                          <span className="text-xs opacity-80 shrink-0">{tx.referenceNumber || '—'}</span>
-                        </>
+                        <span className="font-bold shrink-0 truncate max-w-[14rem]">{tx.referenceNumber || tx.supplierName || '—'}</span>
                       ) : (
                         <>
                           <span className="font-bold shrink-0">{tx.referenceNumber || tx.id.slice(0, 8)}</span>

@@ -669,9 +669,9 @@ export function ServiceIpcPanel({
         filename: `ipc-${data.documentNumber}`,
         dateLabel: new Date().toLocaleDateString(displayLocale(language === 'en' ? 'en' : 'ar')),
         scopeLabel: data.contractorName,
-        coverPage: {
-          isolate: false,
-          headerVariant: 'tripleLogo',
+        layoutOverrides: {
+          showLogo: true,
+          headerShowCompany: true,
         },
       });
     },

@@ -186,12 +186,28 @@ function serializePurchaseRow(row: {
   };
 }
 
-async function nextServiceIpcNumber(client: DbLike = prisma): Promise<string> {
+const SERVICE_IPC_NUMBER_SELECT = {
+  referenceNumber: true,
+  supplierName: true,
+  supplierAccountId: true,
+  supplierId: true,
+  date: true,
+} as const;
+
+async function nextServiceIpcNumber(
+  target: { supplierName?: string | null; supplierAccountId?: string | null; supplierId?: string | null; date?: string | null },
+  client: DbLike = prisma,
+): Promise<string> {
   const rows = await client.purchaseTransaction.findMany({
     where: { type: SERVICE_IPC_TYPE },
-    select: { referenceNumber: true },
+    select: SERVICE_IPC_NUMBER_SELECT,
   });
-  return nextServiceIpcNumberFromExisting(rows.map((r) => r.referenceNumber));
+  return nextServiceIpcNumberFromExisting(rows, {
+    supplierName: String(target.supplierName || 'مورد'),
+    supplierAccountId: target.supplierAccountId,
+    supplierId: target.supplierId,
+    date: target.date,
+  });
 }
 
 async function upsertLinePayload(
@@ -269,15 +285,34 @@ purchaseTransactionsRouter.get(
     });
     const missing = rows.filter((r) => needsServiceIpcNumber(r.type, r.referenceNumber));
     if (missing.length > 0) {
-      let existing = rows.map((r) => r.referenceNumber);
+      let peers = rows
+        .filter((r) => r.type === SERVICE_IPC_TYPE)
+        .map((r) => ({
+          referenceNumber: r.referenceNumber,
+          supplierName: r.supplierName,
+          supplierAccountId: r.supplierAccountId,
+          supplierId: r.supplierId,
+          date: r.date,
+        }));
       for (const row of missing) {
-        const assigned = nextServiceIpcNumberFromExisting(existing);
+        const assigned = nextServiceIpcNumberFromExisting(peers, {
+          supplierName: row.supplierName || 'مورد',
+          supplierAccountId: row.supplierAccountId,
+          supplierId: row.supplierId,
+          date: row.date,
+        });
         await prisma.purchaseTransaction.update({
           where: { id: row.id },
           data: { referenceNumber: assigned },
         });
         row.referenceNumber = assigned;
-        existing = existing.concat(assigned);
+        peers = peers.concat([{
+          referenceNumber: assigned,
+          supplierName: row.supplierName,
+          supplierAccountId: row.supplierAccountId,
+          supplierId: row.supplierId,
+          date: row.date,
+        }]);
       }
     }
     res.json(rows.map(serializePurchaseRow));
@@ -541,7 +576,12 @@ purchaseTransactionsRouter.post(
     ]);
     data.id = String(body.id || randomUUID());
     if (needsServiceIpcNumber(data.type ?? body.type, data.referenceNumber)) {
-      data.referenceNumber = await nextServiceIpcNumber();
+      data.referenceNumber = await nextServiceIpcNumber({
+        supplierName: data.supplierName != null ? String(data.supplierName) : '',
+        supplierAccountId: data.supplierAccountId != null ? String(data.supplierAccountId) : null,
+        supplierId: data.supplierId != null ? String(data.supplierId) : null,
+        date: data.date != null ? String(data.date) : '',
+      });
     }
     const created = await prisma.purchaseTransaction.create({ data: data as never });
     await upsertLinePayload(String(created.id), body);
@@ -603,12 +643,24 @@ purchaseTransactionsRouter.put(
     ]);
     const existing = await prisma.purchaseTransaction.findUnique({
       where: { id: req.params.id },
-      select: { type: true, referenceNumber: true },
+      select: {
+        type: true,
+        referenceNumber: true,
+        supplierName: true,
+        supplierAccountId: true,
+        supplierId: true,
+        date: true,
+      },
     });
     const nextType = data.type ?? existing?.type;
     const nextRef = data.referenceNumber !== undefined ? data.referenceNumber : existing?.referenceNumber;
     if (needsServiceIpcNumber(nextType, nextRef)) {
-      data.referenceNumber = await nextServiceIpcNumber();
+      data.referenceNumber = await nextServiceIpcNumber({
+        supplierName: data.supplierName != null ? String(data.supplierName) : existing?.supplierName,
+        supplierAccountId: data.supplierAccountId != null ? String(data.supplierAccountId) : existing?.supplierAccountId,
+        supplierId: data.supplierId != null ? String(data.supplierId) : existing?.supplierId,
+        date: data.date != null ? String(data.date) : existing?.date,
+      });
     }
     const updated = await prisma.purchaseTransaction.update({
       where: { id: req.params.id },
@@ -766,7 +818,7 @@ purchaseTransactionsRouter.post(
       );
 
       const referenceNumber = needsServiceIpcNumber(row.type, row.referenceNumber)
-        ? await nextServiceIpcNumber(tx)
+        ? await nextServiceIpcNumber(row, tx)
         : undefined;
 
       return tx.purchaseTransaction.update({

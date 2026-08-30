@@ -582,8 +582,11 @@ export function renderReportDocumentHtml(
   const logoAlign = doc.logoAlign ?? 'start';
   const tableCellAlign = doc.tableCellAlign ?? 'auto';
   const tableCellPhysical = physicalTableCellTextAlign(tableCellAlign, dir);
-  const htmlClassAttr =
-    tableCellAlign === 'auto' ? '' : ` class="tbl-align-${tableCellAlign}"`;
+  const htmlClasses = [
+    tableCellAlign === 'auto' ? '' : `tbl-align-${tableCellAlign}`,
+    doc.id === 'service_ipc' ? 'doc-service_ipc' : '',
+  ].filter(Boolean);
+  const htmlClassAttr = htmlClasses.length ? ` class="${esc(htmlClasses.join(' '))}"` : '';
   const tableCellAlignCss = tableCellPhysical
     ? `html.tbl-align-${tableCellAlign} th,
   html.tbl-align-${tableCellAlign} td,
@@ -867,6 +870,11 @@ export function renderReportDocumentHtml(
   .logo img { height: 8mm; max-width: 36mm; object-fit: contain; }
   .logo.logo-lg img { height: 14mm; max-width: 48mm; }
   .sheet-cover .logo img { height: 14mm; max-width: 48mm; }
+  html.doc-service_ipc .logo img,
+  html.doc-service_ipc .logo.logo-lg img {
+    height: 28mm;
+    max-width: 96mm;
+  }
   .hdr-title-block { margin: 0; }
   h1 {
     margin: 2px 0 0;

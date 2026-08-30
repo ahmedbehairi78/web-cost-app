@@ -40,34 +40,26 @@ describe('serviceContractor', () => {
   it('hides UUID certificate numbers', () => {
     expect(displayServiceIpcNumber('4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe('');
     expect(displayServiceIpcNumber('', '4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe('');
-    expect(displayServiceIpcNumber('6')).toBe('6');
+    expect(displayServiceIpcNumber('مستخلص محمد الشيخ-001-2026')).toBe('مستخلص محمد الشيخ-001-2026');
   });
 
-  it('builds print title with supplier before number and without خدمة', () => {
+  it('uses the per-supplier year number as the title', () => {
     expect(
       serviceIpcPrintTitle({
-        contractorName: 'شركة النور',
-        documentNumber: '6',
+        contractorName: 'محمد الشيخ',
+        documentNumber: 'مستخلص محمد الشيخ-001-2026',
         statusLabel: 'معتمد',
         language: 'ar',
       }),
-    ).toBe('مستخلص — شركة النور 6 (معتمد)');
+    ).toBe('مستخلص محمد الشيخ-001-2026 (معتمد)');
     expect(
       serviceIpcPrintTitle({
-        contractorName: 'Al Noor',
-        documentNumber: '6',
-        statusLabel: 'Approved',
-        language: 'en',
-      }),
-    ).toBe('IPC — Al Noor 6 (Approved)');
-    expect(
-      serviceIpcPrintTitle({
-        contractorName: 'شركة النور',
-        documentNumber: '4cf84bb2-1ae8-435d-a886-20b20ed03fdc',
+        contractorName: 'تامر يسري',
+        documentNumber: 'مستخلص تامر يسري-001-2026',
         statusLabel: 'معتمد',
         language: 'ar',
       }),
-    ).toBe('مستخلص — شركة النور (معتمد)');
+    ).toBe('مستخلص تامر يسري-001-2026 (معتمد)');
   });
 
   it('lists unique BOQ chapters per contract', () => {
