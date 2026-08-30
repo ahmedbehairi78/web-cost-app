@@ -11,6 +11,7 @@ import { createTransaction } from '../accounting/journal.js';
 import { buildSubcontractorIpcEntries } from '../accounting/subcontractorIpcJournal.js';
 import { buildServiceIpcEntries } from '../accounting/serviceIpcJournal.js';
 import { isServiceIpcKind, SERVICE_IPC_TYPE, type ServiceIpcLine } from '../lib/serviceContractor.js';
+import { needsServiceIpcNumber, nextServiceIpcNumberFromExisting } from '../lib/serviceIpcNumber.js';
 import { syncBoqActualCostsForIpc, type IpcBoqLineInput } from '../accounting/boqActualFromSources.js';
 import {
   notifyServiceIpcResolved,
@@ -185,6 +186,14 @@ function serializePurchaseRow(row: {
   };
 }
 
+async function nextServiceIpcNumber(client: DbLike = prisma): Promise<string> {
+  const rows = await client.purchaseTransaction.findMany({
+    where: { type: SERVICE_IPC_TYPE },
+    select: { referenceNumber: true },
+  });
+  return nextServiceIpcNumberFromExisting(rows.map((r) => r.referenceNumber));
+}
+
 async function upsertLinePayload(
   purchaseTransactionId: string,
   body: Record<string, unknown>,
@@ -258,6 +267,19 @@ purchaseTransactionsRouter.get(
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     });
+    const missing = rows.filter((r) => needsServiceIpcNumber(r.type, r.referenceNumber));
+    if (missing.length > 0) {
+      let existing = rows.map((r) => r.referenceNumber);
+      for (const row of missing) {
+        const assigned = nextServiceIpcNumberFromExisting(existing);
+        await prisma.purchaseTransaction.update({
+          where: { id: row.id },
+          data: { referenceNumber: assigned },
+        });
+        row.referenceNumber = assigned;
+        existing = existing.concat(assigned);
+      }
+    }
     res.json(rows.map(serializePurchaseRow));
   }),
 );
@@ -518,6 +540,9 @@ purchaseTransactionsRouter.post(
       'manpowerLevyPct',
     ]);
     data.id = String(body.id || randomUUID());
+    if (needsServiceIpcNumber(data.type ?? body.type, data.referenceNumber)) {
+      data.referenceNumber = await nextServiceIpcNumber();
+    }
     const created = await prisma.purchaseTransaction.create({ data: data as never });
     await upsertLinePayload(String(created.id), body);
     const full = await prisma.purchaseTransaction.findUnique({
@@ -576,6 +601,15 @@ purchaseTransactionsRouter.put(
       'labourInsurancePct',
       'manpowerLevyPct',
     ]);
+    const existing = await prisma.purchaseTransaction.findUnique({
+      where: { id: req.params.id },
+      select: { type: true, referenceNumber: true },
+    });
+    const nextType = data.type ?? existing?.type;
+    const nextRef = data.referenceNumber !== undefined ? data.referenceNumber : existing?.referenceNumber;
+    if (needsServiceIpcNumber(nextType, nextRef)) {
+      data.referenceNumber = await nextServiceIpcNumber();
+    }
     const updated = await prisma.purchaseTransaction.update({
       where: { id: req.params.id },
       data: data as never,
@@ -731,11 +765,16 @@ purchaseTransactionsRouter.post(
         tx,
       );
 
+      const referenceNumber = needsServiceIpcNumber(row.type, row.referenceNumber)
+        ? await nextServiceIpcNumber(tx)
+        : undefined;
+
       return tx.purchaseTransaction.update({
         where: { id: row.id },
         data: {
           status: 'approved',
           transactionId: glTx.id,
+          ...(referenceNumber ? { referenceNumber } : {}),
         },
         include: { items: true },
       });

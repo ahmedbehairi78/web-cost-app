@@ -218,7 +218,17 @@ function CostsPurchaseSidebarInner({
                     )}
                   >
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-0 min-h-[1.25rem] leading-tight">
-                      <span className="font-bold shrink-0">{tx.referenceNumber || tx.id.slice(0, 8)}</span>
+                      {activeTab === 'service_ipc' ? (
+                        <>
+                          <span className="font-bold shrink-0 truncate max-w-[9rem]">{tx.supplierName || '—'}</span>
+                          <span className="text-xs opacity-80 shrink-0">{tx.referenceNumber || '—'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span className="font-bold shrink-0">{tx.referenceNumber || tx.id.slice(0, 8)}</span>
+                          <span className="text-[10px] opacity-75 shrink-0 truncate max-w-[8rem]">{tx.supplierName}</span>
+                        </>
+                      )}
                       <span className="text-xs opacity-80 shrink-0">{tx.date}</span>
                       <span className="text-[10px] opacity-75 shrink-0">{statusLabel(tx)}</span>
                       {paymentType && (
@@ -226,7 +236,6 @@ function CostsPurchaseSidebarInner({
                           {paymentType === 'cash' ? t('invoice_payment_cash') : t('invoice_payment_credit')}
                         </span>
                       )}
-                      <span className="text-[10px] opacity-75 shrink-0 truncate max-w-[8rem]">{tx.supplierName}</span>
                     </div>
                   </button>
                 </li>

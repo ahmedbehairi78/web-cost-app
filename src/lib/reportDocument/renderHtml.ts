@@ -19,7 +19,7 @@ import {
   type ReportDocSection,
   type ReportDocument,
 } from './types';
-import { escapeHtml as esc, isSafeLogoUrl } from './htmlEscape';
+import { absolutizePrintAssetUrl, escapeHtml as esc, isSafeLogoUrl } from './htmlEscape';
 
 function companyName(doc: ReportDocument): string {
   if (doc.language === 'en') {
@@ -528,10 +528,14 @@ function buildSectionSheetBodies(
 }
 
 function renderLogoImg(url: string, expanded: boolean): string {
-  if (!isSafeLogoUrl(url)) {
+  const src = absolutizePrintAssetUrl(url);
+  if (!isSafeLogoUrl(src) && !isSafeLogoUrl(url)) {
     return `<div class="logo${expanded ? ' logo-lg' : ''}"></div>`;
   }
-  return `<div class="logo${expanded ? ' logo-lg' : ''}"><img src="${esc(url)}" alt="" /></div>`;
+  if (!src) {
+    return `<div class="logo${expanded ? ' logo-lg' : ''}"></div>`;
+  }
+  return `<div class="logo${expanded ? ' logo-lg' : ''}"><img src="${esc(src)}" alt="" /></div>`;
 }
 
 /** Physical left / center / right logos (always LTR slot order). */
@@ -647,7 +651,7 @@ export function renderReportDocumentHtml(
     : '';
   const logoHtml =
     doc.showLogo !== false
-      ? `<div class="logo"><img src="${esc(logoUrl)}" alt="" /></div>`
+      ? `<div class="logo logo-lg"><img src="${esc(absolutizePrintAssetUrl(logoUrl))}" alt="" /></div>`
       : '';
   const brandParts =
     logoAlign === 'center'

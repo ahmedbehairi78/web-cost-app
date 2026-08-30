@@ -265,7 +265,7 @@ export const REPORT_PRINT_LABELS: Record<ReportPrintId, { ar: string; en: string
   costs: { ar: 'تكاليف BOQ', en: 'BOQ Costs' },
   billing_ipc: { ar: 'مستخلص العميل (جاري/نهائي)', en: 'Client IPC (Interim/Final)' },
   subcontractor_ipc: { ar: 'مستخلص مقاول باطن', en: 'Subcontractor IPC' },
-  service_ipc: { ar: 'مستخلص خدمة', en: 'Service IPC' },
+  service_ipc: { ar: 'مستخلص', en: 'IPC' },
   mos: { ar: 'مستخلص تشوينات (MOS)', en: 'Material On-Site (MOS)' },
   variation_order: { ar: 'أمر تغيير', en: 'Variation Order' },
   custody_settlement: { ar: 'تسوية عهدة', en: 'Custody Settlement' },

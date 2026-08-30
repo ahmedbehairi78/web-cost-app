@@ -27,16 +27,19 @@ import { ensureLocalContractExists, ensureLocalProjectExists } from '../../lib/l
 import {
   SERVICE_IPC_KINDS,
   SERVICE_IPC_TYPE,
+  displayServiceIpcNumber,
   isServiceContractor,
   isServiceIpcKind,
   netQty,
   periodLineAmount,
   previousQtyFromApproved,
+  serviceIpcPrintTitle,
   toDateLineAmount,
   uniqueBoqChapters,
   type ServiceIpcKind,
   type ServiceIpcLine,
 } from '../../lib/serviceContractor';
+import { DEFAULT_HEADER_LOGO } from '../../lib/concordPlusBrand';
 import { buildServiceIpcEntries } from '../../lib/serviceIpcJournal';
 import {
   buildServiceIpcCertificateSections,
@@ -169,6 +172,7 @@ export function ServiceIpcPanel({
   const [companyInfo, setCompanyInfo] = useState<CompanyPrintInfo & { reportPrintProfiles?: StoredReportPrintProfiles }>({
     companyName: '',
     companyNameEn: '',
+    headerLogo: DEFAULT_HEADER_LOGO,
   });
   const { openDocPreview, ReportPreviewHost } = useReportDocumentPreview({
     language: language === 'en' ? 'en' : 'ar',
@@ -608,7 +612,7 @@ export function ServiceIpcPanel({
           : undefined;
 
       return {
-        documentNumber: tx.referenceNumber || tx.id || '—',
+        documentNumber: displayServiceIpcNumber(tx.referenceNumber) || '—',
         dateLabel: tx.date || '—',
         statusLabel: workflowStatusLabel(tx, isAr),
         serviceKindLabel: kindLabel(String(tx.serviceKind || '')),
@@ -653,15 +657,22 @@ export function ServiceIpcPanel({
       const sections = buildServiceIpcCertificateSections(data, language === 'en' ? 'en' : 'ar', formatMoney);
       openDocPreview({
         reportId: 'service_ipc',
-        title: isAr
-          ? `مستخلص خدمة — ${data.documentNumber} (${data.statusLabel})`
-          : `Service IPC — ${data.documentNumber} (${data.statusLabel})`,
+        title: serviceIpcPrintTitle({
+          contractorName: data.contractorName,
+          documentNumber: data.documentNumber,
+          statusLabel: data.statusLabel,
+          language: isAr ? 'ar' : 'en',
+        }),
         columns: [],
         rows: [],
         sections,
-        filename: `service-ipc-${data.documentNumber}`,
+        filename: `ipc-${data.documentNumber}`,
         dateLabel: new Date().toLocaleDateString(displayLocale(language === 'en' ? 'en' : 'ar')),
         scopeLabel: data.contractorName,
+        coverPage: {
+          isolate: false,
+          headerVariant: 'tripleLogo',
+        },
       });
     },
     [buildPrintPayload, formatMoney, language, isAr, openDocPreview],
@@ -715,7 +726,13 @@ export function ServiceIpcPanel({
           <div className={cn(cardCls, 'p-6 space-y-3')}>
             <div className="flex justify-between gap-3">
               <div>
-                <h3 className="font-bold text-lg">{selected.referenceNumber || selected.supplierName}</h3>
+                <h3 className="font-bold text-lg">
+                  {serviceIpcPrintTitle({
+                    contractorName: selected.supplierName,
+                    documentNumber: displayServiceIpcNumber(selected.referenceNumber),
+                    language: isAr ? 'ar' : 'en',
+                  })}
+                </h3>
                 <p className="text-xs text-gray-500">{kindLabel(String(selected.serviceKind || ''))} · {selected.date}</p>
               </div>
               <div className="flex gap-2">
@@ -839,7 +856,13 @@ export function ServiceIpcPanel({
                   </div>
                   <div>
                     <label className={labelCls}>{t('reference')}</label>
-                    <input className={inputCls} value={header.referenceNumber} disabled={readOnly} onChange={(e) => setHeader((h) => ({ ...h, referenceNumber: e.target.value }))} />
+                    <input
+                      className={inputCls}
+                      value={header.referenceNumber}
+                      placeholder={t('service_ipc_ref_auto')}
+                      disabled={readOnly}
+                      onChange={(e) => setHeader((h) => ({ ...h, referenceNumber: e.target.value }))}
+                    />
                   </div>
                 </div>
 

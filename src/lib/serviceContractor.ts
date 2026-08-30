@@ -8,6 +8,33 @@ export type ServiceIpcKind = (typeof SERVICE_IPC_KINDS)[number];
 
 export const SERVICE_IPC_TYPE = 'service_ipc';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Hide raw UUIDs — those are internal ids, not certificate numbers. */
+export function displayServiceIpcNumber(referenceNumber?: string | null, fallbackId?: string | null): string {
+  const ref = String(referenceNumber ?? '').trim();
+  if (ref && !UUID_RE.test(ref)) return ref;
+  const id = String(fallbackId ?? '').trim();
+  if (id && !UUID_RE.test(id)) return id;
+  return '';
+}
+
+/** Print title: supplier name before the number — no «خدمة» word. */
+export function serviceIpcPrintTitle(input: {
+  contractorName?: string | null;
+  documentNumber?: string | null;
+  statusLabel?: string | null;
+  language: 'ar' | 'en';
+}): string {
+  const name = String(input.contractorName ?? '').trim();
+  const number = displayServiceIpcNumber(input.documentNumber);
+  const status = String(input.statusLabel ?? '').trim();
+  const head = input.language === 'ar' ? 'مستخلص' : 'IPC';
+  const parts = [head, name, number].filter(Boolean);
+  const title = parts.length <= 1 ? head : `${parts[0]} — ${parts.slice(1).join(' ')}`;
+  return status ? `${title} (${status})` : title;
+}
+
 export function isServiceKind(value: unknown): value is ServiceKind {
   return typeof value === 'string' && (SERVICE_KINDS as readonly string[]).includes(value);
 }

@@ -603,7 +603,7 @@ export function buildServiceIpcCertificateSections(
     },
     {
       kind: 'table',
-      title: isAr ? 'بنود مستخلص الخدمة' : 'Service IPC lines',
+      title: isAr ? 'بنود المستخلص' : 'IPC lines',
       columns,
       rows,
       flow: true,

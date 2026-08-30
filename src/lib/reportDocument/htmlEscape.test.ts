@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { escapeHtml, isSafeLogoUrl } from './htmlEscape';
+import { absolutizePrintAssetUrl, escapeHtml, isSafeLogoUrl } from './htmlEscape';
 
 describe('escapeHtml', () => {
   it('escapes markup and quotes', () => {
@@ -20,5 +20,17 @@ describe('isSafeLogoUrl', () => {
   it('rejects javascript and protocol-relative URLs', () => {
     expect(isSafeLogoUrl('javascript:alert(1)')).toBe(false);
     expect(isSafeLogoUrl('//evil.example/x')).toBe(false);
+  });
+
+  it('absolutizes app-relative logos for blob print iframes', () => {
+    expect(absolutizePrintAssetUrl('/branding/my-logo.png', 'https://app.example')).toBe(
+      'https://app.example/branding/my-logo.png',
+    );
+    expect(absolutizePrintAssetUrl('/branding/emaar logo.png', 'https://app.example')).toBe(
+      'https://app.example/branding/emaar%20logo.png',
+    );
+    expect(absolutizePrintAssetUrl('https://cdn.example/logo.png', 'https://app.example')).toBe(
+      'https://cdn.example/logo.png',
+    );
   });
 });

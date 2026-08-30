@@ -137,13 +137,13 @@ export type ReportDocSection =
 /** Cover sheet (client IPC) — triple-logo letterhead + isolated first page. */
 export type ReportCoverPage = {
   /** Put pre-flow sections alone on sheet 1 (qty table starts on sheet 2). */
-  isolate: boolean;
+  isolate?: boolean;
   /** No footer on the cover sheet. */
-  hideFooter: boolean;
+  hideFooter?: boolean;
   /** Expanded header with left / center / right logos. */
-  headerVariant: 'tripleLogo';
+  headerVariant?: 'tripleLogo';
   /** Lines under the center logo (project · CONSTRUCTION CONTRACT · IPC No.). */
-  titleLines: string[];
+  titleLines?: string[];
 };
 
 export type ReportDocument = {

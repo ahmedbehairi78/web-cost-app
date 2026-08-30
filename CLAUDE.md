@@ -726,7 +726,7 @@ The add/edit item modal uses **cascading dropdowns** driven by `existingItems` (
 |-----|-------------|-------------|
 | فاتورة مشتريات | `invoice` | Purchase invoice — **آجلة** (Cr **21101…** مورد) أو **نقدية** (Cr **12102…** عهدة/صندوق) عبر `paymentType` · **Local:** atomic **`POST /purchase-transactions/post-invoice`** (GL + list row + warehouse stock) via `purchaseTransactionsApi.postInvoice` — **do not** split `glApi.createTransaction` then `create`. **Cloud:** `recordPurchaseToProjectInventory()` / fixed-asset / indirect helpers. Toggle **«تسجيل كأصل ثابت»** → Dr **11…**. **Lines:** multi-material + multi-BOQ (`boqItemIds[]`). |
 | مستخلص مقاول | `ipc` | Subcontractor IPC — **`draft` → `submitted` → `approved`**; GL **`POST /api/purchase-transactions/:id/approve`** only (admin / projects_manager); on approve also writes **`boq_actual_costs`** (`subcontractor`, period `currentQty×rate`) for reports — **no GL change**; journal preview via **`JournalPreviewModal`** |
-| مستخلص خدمة | `service_ipc` | مقاول خدمة تحت **21102** (`serviceKind`: labour/equipment/vehicles/housing) — **بدون بنود BOQ**؛ عدة مراكز تكلفة + فصل اختياري؛ قيد مدين **51102/51104/51103** حسب النوع · دائن 21102؛ **لا** `boq_actual_costs`؛ تنبيه `service_ipc_pending` · طباعة بالحالة · التزام موازنة فئة `service` |
+| مستخلص خدمة | `service_ipc` | مقاول خدمة تحت **21102** (`serviceKind`: labour/equipment/vehicles/housing) — **بدون بنود BOQ**؛ عدة مراكز تكلفة + فصل اختياري؛ قيد مدين **51102/51104/51103** حسب النوع · دائن 21102؛ **لا** `boq_actual_costs`؛ تنبيه `service_ipc_pending` · رقم تسلسلي قصير **`1` · `2` · `6`…** (`serviceIpcNumber.ts` — لا UUID) · عنوان الطباعة `مستخلص — {المورد} {الرقم}` بلا كلمة «خدمة» · شعار الشركة من `company_info` (مسار مطلق في معاينة Blob) · التزام موازنة فئة `service` |
 | تسوية عهدة | `custody` | **`<GLCustodySettlement>`** — list + modal; optional per-line **BOQ** (`boqItemId`) for reports; numbering **`SET-{projectCode}-0001`**; **`draft` → `submitted` → `approved`**; GL on approve only; optional `boq_actual_costs` (`custody`) on approve when linked |
 | مصروف غير مباشر | `indirect` | **local:** Dr expense / Cr creditor via **`createTransaction`**; **`costCenterId`** = indirect center (`GET /api/cost-centers?type=indirect`) |
 | مصروف عقد + BOQ | `contract_expense` | **local:** contract expense split across BOQ items → **`contractExpenseOrdersApi`** confirm posts GL `CEX-…` + **`boq_actual_costs`** |
@@ -992,6 +992,22 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — رقم وعنوان مستخلص الخدمة + الشعار ✅ (2026-08-30)
+
+> **جلسة 2026-08-30:** الرقم كان UUID؛ العنوان «مستخلص خدمة — {uuid}»؛ شعار الشركة لا يظهر في معاينة Blob.
+
+| المجال | ملخص |
+|--------|------|
+| **رقم** | تسلسلي قصير `1` · `2` · `6`… عند الإنشاء/التحديث/الاعتماد + تعبئة السجلات الفارغة عند القائمة |
+| **عنوان** | `مستخلص — {اسم المورد} {الرقم} (معتمد)` — بلا كلمة «خدمة» |
+| **شعار** | مسار مطلق لـ `/branding/…` داخل HTML المعاينة + هيدر ثلاثي الشعارات |
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts src/lib/reportDocument/htmlEscape.test.ts server/src/lib/serviceIpcNumber.test.ts
+```
 
 ---
 

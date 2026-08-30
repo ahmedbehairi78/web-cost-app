@@ -5,6 +5,8 @@ import {
   uniqueBoqChapters,
   serviceKindExpenseAccount,
   netQty,
+  displayServiceIpcNumber,
+  serviceIpcPrintTitle,
 } from './serviceContractor';
 
 describe('serviceContractor', () => {
@@ -33,6 +35,39 @@ describe('serviceContractor', () => {
         { contractId: 'c1', chapterCode: 'A', description: 'عامل' },
       ),
     ).toBe(6);
+  });
+
+  it('hides UUID certificate numbers', () => {
+    expect(displayServiceIpcNumber('4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe('');
+    expect(displayServiceIpcNumber('', '4cf84bb2-1ae8-435d-a886-20b20ed03fdc')).toBe('');
+    expect(displayServiceIpcNumber('6')).toBe('6');
+  });
+
+  it('builds print title with supplier before number and without خدمة', () => {
+    expect(
+      serviceIpcPrintTitle({
+        contractorName: 'شركة النور',
+        documentNumber: '6',
+        statusLabel: 'معتمد',
+        language: 'ar',
+      }),
+    ).toBe('مستخلص — شركة النور 6 (معتمد)');
+    expect(
+      serviceIpcPrintTitle({
+        contractorName: 'Al Noor',
+        documentNumber: '6',
+        statusLabel: 'Approved',
+        language: 'en',
+      }),
+    ).toBe('IPC — Al Noor 6 (Approved)');
+    expect(
+      serviceIpcPrintTitle({
+        contractorName: 'شركة النور',
+        documentNumber: '4cf84bb2-1ae8-435d-a886-20b20ed03fdc',
+        statusLabel: 'معتمد',
+        language: 'ar',
+      }),
+    ).toBe('مستخلص — شركة النور (معتمد)');
   });
 
   it('lists unique BOQ chapters per contract', () => {
