@@ -90,11 +90,47 @@ export function hasNonEmptySelection(doc: Document): boolean {
   return sel.toString().replace(/\s+/g, ' ').trim().length > 0;
 }
 
-function closestCell(node: Node | null): HTMLElement | null {
+const TABLE_CELL_SEL = 'td, th';
+/** Certificate / cover key-value fields (not table cells). */
+const KV_FIELD_SEL = '.kv-item';
+const FORMAT_TARGET_SEL = `${TABLE_CELL_SEL}, ${KV_FIELD_SEL}`;
+
+function closestBySelector(node: Node | null, selector: string): HTMLElement | null {
   let cur: Node | null = node;
   while (cur && cur.nodeType === Node.TEXT_NODE) cur = cur.parentNode;
   if (!(cur instanceof Element)) return null;
-  return cur.closest('td, th') as HTMLElement | null;
+  return cur.closest(selector) as HTMLElement | null;
+}
+
+function closestFormatTarget(node: Node | null): HTMLElement | null {
+  return closestBySelector(node, FORMAT_TARGET_SEL);
+}
+
+function kvValueEl(target: HTMLElement): HTMLElement | null {
+  if (target.classList.contains('kv-value')) return target;
+  return target.querySelector(':scope > .kv-value');
+}
+
+function physicalTextAlign(align: SelectionAlign, dir: 'rtl' | 'ltr'): string {
+  if (align === 'center') return 'center';
+  if (align === 'start') return dir === 'rtl' ? 'right' : 'left';
+  return dir === 'rtl' ? 'left' : 'right';
+}
+
+function applyAlignToTargets(targets: HTMLElement[], physical: string): void {
+  for (const target of targets) {
+    target.style.textAlign = physical;
+    target.querySelectorAll('.num-val').forEach((el) => {
+      (el as HTMLElement).style.textAlign = physical;
+    });
+    const value = kvValueEl(target);
+    if (value) {
+      value.style.textAlign = physical;
+      value.style.marginInlineStart = '0';
+      value.style.flex = '1 1 auto';
+      value.style.minWidth = '0';
+    }
+  }
 }
 
 function applyInlineStyles(el: HTMLElement, styles: Record<string, string>): void {
@@ -119,13 +155,13 @@ function fragmentHasTableParts(node: Node): boolean {
   return false;
 }
 
-/** Unique table cells intersecting the current selection. */
-function cellsInSelection(doc: Document): HTMLElement[] {
+/** Unique table cells or certificate kv-fields intersecting the current selection. */
+function formatTargetsInSelection(doc: Document): HTMLElement[] {
   const sel = getSel(doc);
   if (!sel?.rangeCount) return [];
   const range = sel.getRangeAt(0);
-  const start = closestCell(range.startContainer);
-  const end = closestCell(range.endContainer);
+  const start = closestFormatTarget(range.startContainer);
+  const end = closestFormatTarget(range.endContainer);
   if (start && start === end) return [start];
 
   const seen = new Set<HTMLElement>();
@@ -152,7 +188,7 @@ function cellsInSelection(doc: Document): HTMLElement[] {
     ?? (root.tagName === 'TABLE' ? (root as HTMLElement) : null);
   const search = table || root;
   try {
-    search.querySelectorAll('td, th').forEach((node) => {
+    search.querySelectorAll(FORMAT_TARGET_SEL).forEach((node) => {
       if (range.intersectsNode(node)) add(node as HTMLElement);
     });
   } catch {
@@ -164,6 +200,11 @@ function cellsInSelection(doc: Document): HTMLElement[] {
     add(end);
   }
   return cells;
+}
+
+/** Unique table cells or kv-fields intersecting the current selection. */
+function cellsInSelection(doc: Document): HTMLElement[] {
+  return formatTargetsInSelection(doc);
 }
 
 function applyStylesToTableCells(cells: HTMLElement[], styles: Record<string, string>): void {
@@ -331,17 +372,11 @@ export function applySelectionUnderline(doc: Document, mode: SelectionUnderline)
 export function applySelectionAlign(doc: Document, align: SelectionAlign, dir: 'rtl' | 'ltr'): boolean {
   if (!hasNonEmptySelection(doc)) return false;
   pushSelectionUndo(doc);
-  const physical =
-    align === 'center' ? 'center' : align === 'start' ? (dir === 'rtl' ? 'right' : 'left') : dir === 'rtl' ? 'left' : 'right';
+  const physical = physicalTextAlign(align, dir);
 
   const cells = cellsInSelection(doc);
   if (cells.length > 0) {
-    for (const cell of cells) {
-      cell.style.textAlign = physical;
-      cell.querySelectorAll('.num-val').forEach((el) => {
-        (el as HTMLElement).style.textAlign = physical;
-      });
-    }
+    applyAlignToTargets(cells, physical);
     return true;
   }
 
@@ -449,7 +484,7 @@ export function readSelectionFormatState(doc: Document): SelectionFormatState {
   else if (ta === 'right' || ta === 'end') state.align = 'end';
   else if (ta === 'left' || ta === 'start') state.align = 'start';
 
-  const cell = closestCell(node);
+  const cell = closestFormatTarget(node);
   if (cell) {
     const cellCs = win?.getComputedStyle(cell);
     if (cellCs) {
@@ -458,7 +493,9 @@ export function readSelectionFormatState(doc: Document): SelectionFormatState {
         state.shade = rgbToHex(cellBg);
       }
       state.cellBorder = inferBorderFromCss(cellCs.borderTop || cellCs.border);
-      const cta = cellCs.textAlign;
+      const alignEl = kvValueEl(cell) ?? cell;
+      const alignCs = alignEl === cell ? cellCs : win?.getComputedStyle(alignEl);
+      const cta = alignCs?.textAlign ?? cellCs.textAlign;
       if (cta === 'center') state.align = 'center';
       else if (cta === 'right' || cta === 'end') state.align = 'end';
       else if (cta === 'left' || cta === 'start') state.align = 'start';
@@ -505,22 +542,7 @@ export function applyFormatPainterClipboard(
   if (cells.length > 0) {
     applyStylesToTableCells(cells, styles);
     if (clip.align) {
-      const physical =
-        clip.align === 'center'
-          ? 'center'
-          : clip.align === 'start'
-            ? dir === 'rtl'
-              ? 'right'
-              : 'left'
-            : dir === 'rtl'
-              ? 'left'
-              : 'right';
-      for (const target of cells) {
-        target.style.textAlign = physical;
-        target.querySelectorAll('.num-val').forEach((el) => {
-          (el as HTMLElement).style.textAlign = physical;
-        });
-      }
+      applyAlignToTargets(cells, physicalTextAlign(clip.align, dir));
     }
     if (clip.shade && /^#[0-9a-fA-F]{6}$/.test(clip.shade)) {
       for (const target of cells) {
@@ -543,16 +565,7 @@ export function applyFormatPainterClipboard(
   }
 
   if (clip.align) {
-    const physical =
-      clip.align === 'center'
-        ? 'center'
-        : clip.align === 'start'
-          ? dir === 'rtl'
-            ? 'right'
-            : 'left'
-          : dir === 'rtl'
-            ? 'left'
-            : 'right';
+    const physical = physicalTextAlign(clip.align, dir);
     const cmd =
       physical === 'center' ? 'justifyCenter' : physical === 'left' ? 'justifyLeft' : 'justifyRight';
     runCommand(doc, cmd);
@@ -665,6 +678,9 @@ function extractHeaderFooterSlots(sheet: Element, sheetIndex: number, raw: Print
   sheet.querySelectorAll('p.cover-title-line').forEach((el, idx) => {
     pushSlotPatch(raw, sheetIndex, 'cover-title', el as HTMLElement, idx);
   });
+  sheet.querySelectorAll('.kv-item').forEach((el, idx) => {
+    pushSlotPatch(raw, sheetIndex, 'kv', el as HTMLElement, idx);
+  });
   pushSlotPatch(raw, sheetIndex, 'ftr-company', sheet.querySelector('.ftr-company'));
   pushSlotPatch(raw, sheetIndex, 'ftr-center', sheet.querySelector('.ftr-center'));
   pushSlotPatch(raw, sheetIndex, 'ftr-page', sheet.querySelector('.ftr-page'));
@@ -686,6 +702,10 @@ function slotElement(sheet: Element, slot: string, index?: number): HTMLElement 
   if (slot === 'hdr-extra') return sheet.querySelector('p.hdr-extra');
   if (slot === 'cover-title') {
     const list = sheet.querySelectorAll('p.cover-title-line');
+    return (list.item(index ?? 0) as HTMLElement | null) ?? null;
+  }
+  if (slot === 'kv') {
+    const list = sheet.querySelectorAll('.kv-item');
     return (list.item(index ?? 0) as HTMLElement | null) ?? null;
   }
   if (slot === 'ftr-company') return sheet.querySelector('.ftr-company');
@@ -767,7 +787,13 @@ export function applySelectionStylePatches(doc: Document, patches: PrintSelectio
       const sheet = sheets[patch.i];
       if (!sheet) continue;
       const el = slotElement(sheet, patch.slot, patch.r);
-      if (el && patch.s) applyCssTextMerge(el, patch.s);
+      if (el && patch.s) {
+        applyCssTextMerge(el, patch.s);
+        if (patch.slot === 'kv') {
+          const value = kvValueEl(el);
+          if (value) applyCssTextMerge(value, patch.s);
+        }
+      }
       continue;
     }
     if (patch.k === 'h') {

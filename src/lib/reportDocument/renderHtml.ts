@@ -1016,7 +1016,8 @@ export function renderReportDocumentHtml(
     font-weight: 600;
     font-size: ${sizes.cell};
     overflow-wrap: anywhere;
-    margin-inline-start: auto;
+    flex: 1 1 auto;
+    min-width: 0;
     text-align: end;
   }
   .kv-strong .kv-value, .kv-strong .kv-label { font-weight: 800; color: #0f172a; }

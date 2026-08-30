@@ -101,7 +101,7 @@ Parent folder **`../package.json`** (repo root `cost web app/`) proxies `dev` / 
 | `src/lib/dashboardMetrics.ts` | **Dashboard filters/compare/timeline** — `filterDashboardTransactions`, `computeDashboardPeriodStats`, `buildProjectCompareRows` (سيولة), `buildMonthlySeries` (أعمدة شهرية) · **`buildCashFlowSeries`** (تحليل التدفق النقدي — **شهري غير تراكمي**؛ نقطة أصل `__start__` = صفر ثم إجمالي كل شهر؛ الأشهر بلا حركة **`null`** ⇒ `connectNulls` يمدّ الخط؛ رسم Area خطي); UI: `DashboardFilterBar` · `ProjectCompareTable`. Tests: `dashboardMetrics.test.ts`. |
 | `src/lib/reportDocument/` | **منصة مستندات التقارير** — بيانات → HTML نظيف / PDF / طباعة؛ ورقة: هيدر مضغوط + جسم + **فوتر سطر واحد** (شركة عند start · نص/ملاحظة وسط · رقم صفحة عند end — يتبع `dir` اللغة) |
 | `src/hooks/useReportDocumentPreview.tsx` · `src/components/print/ReportPreviewDialog.tsx` | **الطباعة الموحّدة لكل الموديولات** — بناء `ReportDocument` ثم حوار معاينة (iframe **Blob URL** + `sandbox="allow-same-origin allow-modals"` — لا `srcDoc` كامل حتى لا يُفرَّغ إطار Electron؛ `allow-modals` لازم لحوار الطباعة/PDF) + تنسيق + طباعة + PDF + حفظ التصميم — المسار القديم `printReport.ts` حُذف |
-| `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography + **`selectionPatches`**) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level) **and** **selection mini-bar**; **حفظ التصميم** persists both. Mini-bar formats selected cells **and header/footer slots** (company · title · scope · extra · footer columns) via `selectionFormat.ts`; reapplied on next preview (live numbers). Print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
+| `src/lib/reportPrintProfiles.ts` | **Per-report print designs** — `ReportPrintProfile` (orientation/pageSize/density/accent/header/footer/`tableCellAlign`/body typography + **`selectionPatches`**) , `REPORT_PRINT_DEFAULTS`, `resolveReportPrintProfile()` merges `company_info.reportPrintProfiles`. **Edited in** `ReportFormatToolbar` (page-level) **and** **selection mini-bar**; **حفظ التصميم** persists both. Mini-bar formats selected cells, **certificate `.kv-item` fields**, **and header/footer slots** (company · title · scope · extra · footer columns) via `selectionFormat.ts`; reapplied on next preview (live numbers). Print/PDF use live iframe HTML when dirty. General Settings **Print** = company letterhead only. |
 | `src/lib/concordPlusBrand.ts` | **Concord Plus branding** — `CONCORD_NAVY`/`CONCORD_ORANGE`, `CONCORD_LOGO_VIEWBOX`, `CONCORD_TAGLINE_PARTS`, asset URLs (`CONCORD_BRAND`), `resolveHeaderLogo()` |
 | `src/lib/operationsManual.ts` | **In-app operations manual** — `MANUAL_TOPICS` (63 topics), `ManualTopicId`, `resolveManualTopics`, `isManualTopicAllowed` (permission before viewId), `requestOpenManual` / deep-link |
 | `src/lib/cashBudget.ts` | **Cash budget math** — period end · `custodyReplenishAmount` · `computeCashBudgetSummary` (opening not double-counted) · server copy `server/src/lib/cashBudget.ts` |
@@ -1007,6 +1007,21 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ```powershell
 npm run test -- src/lib/serviceContractor.test.ts src/lib/reportDocument/htmlEscape.test.ts server/src/lib/serviceIpcNumber.test.ts
+```
+
+---
+
+## 🔴 HANDOFF — محاذاة حقول شهادة المستخلص من الشريط العائم ✅ (2026-08-30)
+
+> **جلسة 2026-08-30:** بيانات رأس مستخلص الخدمة (رقم · تاريخ · حالة · نوع · مقاول · مشروع) لا تتحرك عند المحاذاة من شريط التنسيق العائم — الحقول `.kv-item` ليست خلايا جدول، والقيمة كانت `margin-inline-start: auto` بعرض المحتوى فقط.
+
+| المجال | ملخص |
+|--------|------|
+| **هدف** | `.kv-item` / `.kv-value` مثل الخلية — `text-align` على القيمة + `flex: 1` |
+| **حفظ** | slot `kv` في `selectionPatches` (فهرس الحقل داخل الورقة) |
+
+```powershell
+npm run test -- src/lib/reportDocument/selectionFormat.test.ts src/lib/reportPrintProfiles.test.ts
 ```
 
 ---

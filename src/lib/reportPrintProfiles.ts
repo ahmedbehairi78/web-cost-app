@@ -167,7 +167,7 @@ export type PrintSelectionStylePatch = {
   i: number;
   r?: number;
   c?: number;
-  /** Named slot when k === 'e' (company line, scope, footer column, …). */
+  /** Named slot when k === 'e' (company · title · scope · footer · certificate kv fields). */
   slot?: string;
   /** element.style.cssText */
   s: string;
@@ -186,6 +186,7 @@ const SELECTION_SLOT_IDS = new Set([
   'ftr-center',
   'ftr-page',
   'cover-title',
+  'kv',
 ]);
 const SELECTION_PATCH_MAX = 2000;
 const SELECTION_PATCH_CSS_MAX = 500;
@@ -217,9 +218,10 @@ export function sanitizeSelectionStylePatches(raw: unknown): PrintSelectionStyle
       const slot = typeof p.slot === 'string' ? p.slot.trim() : '';
       if (!SELECTION_SLOT_IDS.has(slot)) continue;
       patch.slot = slot;
-      if (slot === 'meta' || slot === 'cover-title') {
+      if (slot === 'meta' || slot === 'cover-title' || slot === 'kv') {
         const r = Number(p.r);
-        if (!Number.isInteger(r) || r < 0 || r > 99) continue;
+        const max = slot === 'kv' ? 999 : 99;
+        if (!Number.isInteger(r) || r < 0 || r > max) continue;
         patch.r = r;
       }
     }

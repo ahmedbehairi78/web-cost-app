@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   applyFormatPainterClipboard,
+  applySelectionAlign,
   applySelectionBorder,
   applySelectionColor,
   applySelectionFontSize,
@@ -188,5 +189,51 @@ describe('selectionFormat', () => {
     expect(document.querySelector('p.co')!.style.fontSize).toBe('14pt');
     expect(document.querySelector('h1')!.style.fontSize).toBe('16pt');
     expect(document.querySelector('h1')!.textContent).toBe('Live title');
+  });
+
+  it('aligns certificate kv-field values (not only table cells)', () => {
+    document.body.innerHTML = `
+      <section class="sheet">
+        <div class="kv-grid">
+          <div class="kv-item">
+            <span class="kv-label">المشروع</span>
+            <span class="kv-value">كايرو جيت</span>
+          </div>
+          <div class="kv-item">
+            <span class="kv-label">الحالة</span>
+            <span class="kv-value">معتمد</span>
+          </div>
+        </div>
+      </section>`;
+    clearSelectionUndo(document);
+    selectAllText('.kv-value');
+    expect(applySelectionAlign(document, 'start', 'rtl')).toBe(true);
+    const firstValue = document.querySelector('.kv-value') as HTMLElement;
+    expect(firstValue.style.textAlign).toBe('right');
+    expect(firstValue.style.marginInlineStart).toBe('0');
+    expect(firstValue.style.flex).toMatch(/1/);
+    expect((document.querySelectorAll('.kv-value')[1] as HTMLElement).style.textAlign).toBe('');
+
+    const patches = extractSelectionStylePatches(document);
+    expect(patches.some((p) => p.k === 'e' && p.slot === 'kv' && p.r === 0 && /text-align/i.test(p.s))).toBe(true);
+
+    document.body.innerHTML = `
+      <section class="sheet">
+        <div class="kv-grid">
+          <div class="kv-item">
+            <span class="kv-label">المشروع</span>
+            <span class="kv-value">مشروع آخر</span>
+          </div>
+          <div class="kv-item">
+            <span class="kv-label">الحالة</span>
+            <span class="kv-value">مسودة</span>
+          </div>
+        </div>
+      </section>`;
+    applySelectionStylePatches(document, patches);
+    const restored = document.querySelector('.kv-value') as HTMLElement;
+    expect(restored.style.textAlign).toBe('right');
+    expect(restored.textContent).toBe('مشروع آخر');
+    expect((document.querySelectorAll('.kv-value')[1] as HTMLElement).style.textAlign).toBe('');
   });
 });
