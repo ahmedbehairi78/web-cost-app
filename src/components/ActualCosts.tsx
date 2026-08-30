@@ -761,6 +761,40 @@ export function ActualCosts() {
     isOpen: boolean; title: string; message: string; onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
+  // GL-sourced actual cash payments for subcontractor IPC:
+  // sum of Dr entries on the subcontractor's account from bank/cash for the selected contract
+  const [ipcPaidToDate, setIpcPaidToDate] = useState(0);
+  useEffect(() => {
+    if (!isLocalBackend || activeTab !== 'ipc' || !formData.supplierId || !formData.contractId) {
+      setIpcPaidToDate(0);
+      return;
+    }
+    const supplierAcc = accounts.find((a) => a.id === formData.supplierId);
+    const code = String(supplierAcc?.accountCode || '').trim();
+    if (!code) { setIpcPaidToDate(0); return; }
+    let cancelled = false;
+    glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 })
+      .then((txs) => {
+        if (cancelled) return;
+        let total = 0;
+        for (const tx of txs) {
+          if (tx.isDeleted) continue;
+          const txCcId = tx.costCenterId || '';
+          for (const e of tx.entries) {
+            const eCode = String(e.accountCode || '').trim();
+            const eCcId = e.costCenterId || txCcId;
+            if (eCode === code && e.debit > 0 && eCcId === formData.contractId) {
+              total += e.debit;
+            }
+          }
+        }
+        setIpcPaidToDate(roundMoney2(total));
+      })
+      .catch(() => { if (!cancelled) setIpcPaidToDate(0); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, formData.supplierId, formData.contractId, accounts]);
+
   const [indirectCenters, setIndirectCenters] = useState<
     Array<{ id: string; code: string; name: string; nameEn?: string | null; isActive?: boolean }>
   >([]);
@@ -1564,6 +1598,7 @@ export function ActualCosts() {
         manpowerLevyPct: formData.manpowerLevyPct,
       },
       formData.advancePaymentRecovery ?? 0,
+      ipcPaidToDate > 0 ? ipcPaidToDate : undefined,
     );
     return {
       worksValue: cert.currentWorks,

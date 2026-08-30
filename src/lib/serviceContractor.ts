@@ -142,6 +142,8 @@ export function computeServiceIpcCertificateSummary(
   lines: Array<{ previousQty?: number; currentQty?: number; rate?: number }>,
   pcts: ServiceIpcSummaryPcts,
   advancePaymentRecovery = 0,
+  /** Override المسدد with actual GL cash payments instead of estimating from previousQty×rate */
+  actualPreviousPayments?: number,
 ): ServiceIpcCertificateSummary {
   const previousWorks = roundMoney(
     lines.reduce((s, l) => s + Number(l.previousQty || 0) * Number(l.rate || 0), 0),
@@ -166,7 +168,10 @@ export function computeServiceIpcCertificateSummary(
   );
   const withholdPrev = roundMoney(execPrev + insPrev + whtPrev + levyPrev);
   const netAfterDeductions = roundMoney(totalWorks + vatToDate - withholdToDate);
-  const previousPayments = roundMoney(previousWorks + vatPrev - withholdPrev);
+  // actualPreviousPayments: sum of Dr entries on supplier GL account from bank/cash payments
+  const previousPayments = (actualPreviousPayments != null && actualPreviousPayments >= 0)
+    ? roundMoney(actualPreviousPayments)
+    : roundMoney(previousWorks + vatPrev - withholdPrev);
   const advance = roundMoney(advancePaymentRecovery);
   const amountDue = roundMoney(netAfterDeductions - advance - previousPayments);
 

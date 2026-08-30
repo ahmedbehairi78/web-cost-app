@@ -995,6 +995,25 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — ملء بنود المستخلص الجديد من السابق المعتمد ✅ (2026-08-30)
+
+> **جلسة 2026-08-30:** عند إنشاء مستخلص خدمة/مقاول جديد لنفس المورد/المقاول، كانت الكميات السابقة والفئة والأعمال السابقة والمسدد تظهر صفراً لأن `fillPrevious` يُستدعى يدوياً عند التعديل فقط.
+
+| المجال | ملخص |
+|--------|------|
+| **المشكلة** | بنود جديدة = `makeLine()` فارغ → `previousQty=0` → `previousWorks=0` → `previousPayments=0` |
+| **الحل** | `useEffect` جديد في `ServiceIpcPanel.tsx` يراقب `supplierAccountId` + `editingId` + `list` — إذا كانت البنود ما زالت فارغة (`isBlank`) ينسخ هيكل بنود آخر مستخلص معتمد مع حساب `previousQty` من كل المستخلصات المعتمدة |
+| **الفئة** | تُنسخ `rate` من آخر مستخلص معتمد |
+| **النسب** | تُنسخ `vatPct/execGuaranteePct/whtPct/labourInsurancePct/manpowerLevyPct` حتى يكون `المسدد` في الملخص دقيقاً |
+| **لا تراجع** | لا تمس `fillPrevious` الموجودة · لا تُطبّق التعبئة إذا بدأ المستخدم بالكتابة (`isBlank` check) |
+| **المسدد الحقيقي** | `paidToDate` state في `ServiceIpcPanel` + `ipcPaidToDate` في `ActualCosts` — `glApi.transactionsQuery` ثم مجموع `entry.debit > 0` على حساب المقاول مع `costCenterId` من مراكز التكلفة المختارة · يُمرَّر كـ `actualPreviousPayments` إلى `computeServiceIpcCertificateSummary` · للطباعة من النموذج عبر `_actualPreviousPayments` في `formTx` |
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts
+```
+
+---
+
 ## 🔴 HANDOFF — مستخلص مقاول: رقم + شعار + ملخص كالخدمة ✅ (2026-08-30)
 
 > **جلسة 2026-08-30:** تطبيق تعديلات مستخلص الخدمة على **مستخلص مقاول** (`type=ipc`) بما فيها الشعار.

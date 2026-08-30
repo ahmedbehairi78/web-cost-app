@@ -19,7 +19,7 @@ import {
   type CostsSidebarPurchaseRow,
 } from './CostsPurchaseSidebar';
 import { AddSupplierModal, type NewSupplierFields } from './AddSupplierModal';
-import { purchaseTransactionsApi, suppliersApi, chartOfAccountsApi, settingsApi } from '../../services/local/modulesApi';
+import { purchaseTransactionsApi, suppliersApi, chartOfAccountsApi, settingsApi, glApi } from '../../services/local/modulesApi';
 import { invalidateCoaCache, type Account } from '../../services/accountingService';
 import { ApiError } from '../../lib/apiClient';
 import { NetworkQueuedError } from '../../lib/offline/offlineWrite';
@@ -78,6 +78,8 @@ type ServiceTx = {
   manpowerLevyAmount?: number;
   advancePaymentRecovery?: number;
   totalAmount?: number;
+  /** UI-only: actual GL payments override for print (not stored in DB) */
+  _actualPreviousPayments?: number;
   description?: string;
   status?: string;
   transactionId?: string | null;
@@ -293,6 +295,103 @@ export function ServiceIpcPanel({
     return { ...line, previousQty: prev };
   }, [approvedItemsForPrev]);
 
+  // Auto-populate lines from the latest approved IPC when supplier is selected on a NEW form.
+  // Fills description/unit/rate/contract/chapter and computes previousQty so the summary
+  // shows correct الأعمال السابقة and المسدد without any manual re-entry.
+  useEffect(() => {
+    if (editingId) return; // editing an existing document — keep its own lines
+    if (!header.supplierAccountId) return;
+
+    const approvedForSupplier = list
+      .filter((tx) => posted(tx) && tx.supplierAccountId === header.supplierAccountId)
+      .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    if (approvedForSupplier.length === 0) return;
+
+    const latestTx = approvedForSupplier[0];
+    const latestItems = latestTx.items ?? [];
+    if (latestItems.length === 0) return;
+
+    const allApprovedItems = approvedForSupplier.flatMap((tx) => tx.items ?? []);
+
+    setLines((prev) => {
+      // Only auto-fill while lines are still at the initial blank state
+      const isBlank =
+        prev.length === 1 &&
+        !prev[0].contractId &&
+        !prev[0].description &&
+        prev[0].rate === 0 &&
+        prev[0].currentQty === 0;
+      if (!isBlank) return prev;
+
+      const newLines = latestItems.map((item, i) => ({
+        ...makeLine(),
+        id: `sl-auto-${Date.now()}-${i}`,
+        contractId: String(item.contractId || ''),
+        projectId: String(item.projectId || ''),
+        chapterCode: String(item.chapterCode || ''),
+        chapterName: String(item.chapterName || ''),
+        description: String(item.description || ''),
+        unit: String(item.unit || 'يوم'),
+        rate: Number(item.rate) || 0,
+        previousQty: previousQtyFromApproved(allApprovedItems, item),
+        currentQty: 0,
+      }));
+      return newLines.length > 0 ? newLines : prev;
+    });
+
+    // Copy percentages from last approved IPC so the summary الأعمال السابقة / المسدد is accurate
+    const totalBase = Number(latestTx.amount) || 0;
+    setHeader((h) => ({
+      ...h,
+      vatPct: resolveStoredPct(latestTx.vatPct, latestTx.vatAmount, totalBase),
+      execGuaranteePct: resolveStoredPct(latestTx.execGuaranteePct, latestTx.execGuaranteeAmount, totalBase),
+      whtPct: resolveStoredPct(latestTx.whtPct, latestTx.whtAmount, totalBase),
+      labourInsurancePct: resolveStoredPct(latestTx.labourInsurancePct, latestTx.labourInsuranceAmount, totalBase),
+      manpowerLevyPct: resolveStoredPct(latestTx.manpowerLevyPct, latestTx.manpowerLevyAmount, totalBase),
+    }));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [header.supplierAccountId, editingId, list]);
+
+  // Stable key of sorted unique contractIds from current lines — used as an effect dep
+  const lineContractIdsKey = useMemo(
+    () => [...new Set(lines.map((l) => l.contractId).filter(Boolean))].sort().join(','),
+    [lines],
+  );
+
+  // Actual cash payments to the supplier from GL:
+  // sum of Dr entries on the supplier's account (21102...) where the cost center
+  // matches one of the contracts in this IPC — i.e. مجموع الحركات المدينة في حساب المقاول
+  const [paidToDate, setPaidToDate] = useState(0);
+  useEffect(() => {
+    if (!isLocalBackend || !header.supplierAccountId) { setPaidToDate(0); return; }
+    const supplierAcc = accounts.find((a) => a.id === header.supplierAccountId);
+    const code = String(supplierAcc?.accountCode || '').trim();
+    const contractIds = lineContractIdsKey.split(',').filter(Boolean);
+    if (!code || contractIds.length === 0) { setPaidToDate(0); return; }
+    let cancelled = false;
+    glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 })
+      .then((txs) => {
+        if (cancelled) return;
+        let total = 0;
+        for (const tx of txs) {
+          if (tx.isDeleted) continue;
+          const txCcId = tx.costCenterId || '';
+          for (const e of tx.entries) {
+            const eCode = String(e.accountCode || '').trim();
+            const eCcId = (e.costCenterId || txCcId);
+            // Debit on supplier's account in a relevant cost center = payment made
+            if (eCode === code && e.debit > 0 && contractIds.includes(eCcId)) {
+              total += e.debit;
+            }
+          }
+        }
+        setPaidToDate(roundMoney(total));
+      })
+      .catch(() => { if (!cancelled) setPaidToDate(0); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [header.supplierAccountId, lineContractIdsKey, accounts]);
+
   const summary = useMemo(
     () =>
       computeServiceIpcCertificateSummary(
@@ -305,8 +404,9 @@ export function ServiceIpcPanel({
           manpowerLevyPct: header.manpowerLevyPct,
         },
         header.advancePaymentRecovery,
+        paidToDate > 0 ? paidToDate : undefined,
       ),
-    [lines, header],
+    [lines, header, paidToDate],
   );
   const worksValue = summary.currentWorks;
   const vat = summary.vatPeriod;
@@ -613,6 +713,7 @@ export function ServiceIpcPanel({
           manpowerLevyPct: resolveStoredPct(tx.manpowerLevyPct, tx.manpowerLevyAmount, periodWorks),
         },
         Number(tx.advancePaymentRecovery) || 0,
+        tx._actualPreviousPayments,
       );
       const worksValue = cert.currentWorks || periodWorks;
       const vatAmount = cert.vatToDate;
@@ -737,6 +838,8 @@ export function ServiceIpcPanel({
       labourInsurancePct: header.labourInsurancePct,
       manpowerLevyPct: header.manpowerLevyPct,
       items: lines,
+      // Pass GL-sourced actual payments so the print shows المسدد correctly
+      _actualPreviousPayments: paidToDate > 0 ? paidToDate : undefined,
     };
     handlePrint(formTx);
   }, [
