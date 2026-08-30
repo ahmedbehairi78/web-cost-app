@@ -69,7 +69,7 @@ import {
   mapToIpcPrintItems,
   type CompanyPrintInfo,
 } from '../lib/ipcPrintData';
-import { computeServiceIpcCertificateSummary, displayServiceIpcNumber } from '../lib/serviceContractor';
+import { computeServiceIpcCertificateSummary, displayServiceIpcNumber, resolveContractorAccountCode, sumContractorCashPaymentsFromGl } from '../lib/serviceContractor';
 import { DEFAULT_HEADER_LOGO } from '../lib/concordPlusBrand';
 import type { StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 import {
@@ -762,34 +762,20 @@ export function ActualCosts() {
     isOpen: boolean; title: string; message: string; onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-  // GL-sourced actual cash payments for subcontractor IPC:
-  // sum of Dr entries on the subcontractor's account from bank/cash for the selected contract
+  // المسدد = Dr نقدي على حساب المقاول مصدره بنك 12101 أو صندوق/عهدة 12102 لنفس مركز التكلفة
   const [ipcPaidToDate, setIpcPaidToDate] = useState(0);
   useEffect(() => {
     if (!isLocalBackend || activeTab !== 'ipc' || !formData.supplierId || !formData.contractId) {
       setIpcPaidToDate(0);
       return;
     }
-    const supplierAcc = accounts.find((a) => a.id === formData.supplierId);
-    const code = String(supplierAcc?.accountCode || '').trim();
+    const code = resolveContractorAccountCode(accounts, formData.supplierId);
     if (!code) { setIpcPaidToDate(0); return; }
     let cancelled = false;
     glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 })
       .then((txs) => {
         if (cancelled) return;
-        let total = 0;
-        for (const tx of txs) {
-          if (tx.isDeleted) continue;
-          const txCcId = tx.costCenterId || '';
-          for (const e of tx.entries) {
-            const eCode = String(e.accountCode || '').trim();
-            const eCcId = e.costCenterId || txCcId;
-            if (eCode === code && e.debit > 0 && eCcId === formData.contractId) {
-              total += e.debit;
-            }
-          }
-        }
-        setIpcPaidToDate(roundMoney2(total));
+        setIpcPaidToDate(sumContractorCashPaymentsFromGl(txs, code, [formData.contractId]));
       })
       .catch(() => { if (!cancelled) setIpcPaidToDate(0); });
     return () => { cancelled = true; };
@@ -1599,7 +1585,7 @@ export function ActualCosts() {
         manpowerLevyPct: formData.manpowerLevyPct,
       },
       formData.advancePaymentRecovery ?? 0,
-      ipcPaidToDate > 0 ? ipcPaidToDate : undefined,
+      ipcPaidToDate,
     );
     return {
       worksValue: cert.currentWorks,
@@ -1694,7 +1680,7 @@ export function ActualCosts() {
   };
 
   const handlePrintSubcontractorIpcFromTx = useCallback(
-    (tx: PurchaseTransaction) => {
+    async (tx: PurchaseTransaction) => {
       const supplierCoaAccount = accounts.find(
         (a) => a.id === tx.supplierAccountId && matchesCreditorLedgerForTab(a, 'ipc'),
       );
@@ -1719,6 +1705,17 @@ export function ActualCosts() {
         }),
       );
       const periodWorks = roundMoney(Number(tx.amount) || 0);
+      const code = resolveContractorAccountCode(accounts, String(tx.supplierAccountId || tx.supplierId || ''));
+      const contractId = String(tx.contractId || '').trim();
+      let paid = 0;
+      if (isLocalBackend && code && contractId) {
+        try {
+          const txs = await glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 });
+          paid = sumContractorCashPaymentsFromGl(txs, code, [contractId]);
+        } catch {
+          paid = 0;
+        }
+      }
       const cert = computeServiceIpcCertificateSummary(
         tx.items ?? [],
         {
@@ -1729,6 +1726,7 @@ export function ActualCosts() {
           manpowerLevyPct: resolveStoredPct(tx.manpowerLevyPct, tx.manpowerLevyAmount, periodWorks),
         },
         Number(tx.advancePaymentRecovery) || 0,
+        paid,
       );
       const data = buildSubcontractorIpcPrintData({
         referenceNumber: displayServiceIpcNumber(tx.referenceNumber) || '—',
@@ -3093,7 +3091,7 @@ export function ActualCosts() {
                   onApprove={() => beginIpcApproval(enrichedDetailPurchase)}
                   onPrint={
                     activeTab === 'ipc' && isIpcJournalPosted(enrichedDetailPurchase)
-                      ? () => handlePrintSubcontractorIpcFromTx(enrichedDetailPurchase)
+                      ? () => void handlePrintSubcontractorIpcFromTx(enrichedDetailPurchase)
                       : undefined
                   }
                 />

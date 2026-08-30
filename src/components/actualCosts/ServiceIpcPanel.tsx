@@ -34,7 +34,9 @@ import {
   computeServiceIpcCertificateSummary,
   periodLineAmount,
   previousQtyFromApproved,
+  resolveContractorAccountCode,
   serviceIpcPrintTitle,
+  sumContractorCashPaymentsFromGl,
   uniqueBoqChapters,
   type ServiceIpcKind,
   type ServiceIpcLine,
@@ -359,34 +361,18 @@ export function ServiceIpcPanel({
     [lines],
   );
 
-  // Actual cash payments to the supplier from GL:
-  // sum of Dr entries on the supplier's account (21102...) where the cost center
-  // matches one of the contracts in this IPC — i.e. مجموع الحركات المدينة في حساب المقاول
+  // المسدد = Dr نقدي على حساب المقاول مصدره بنك 12101 أو صندوق/عهدة 12102 لنفس مراكز التكلفة
   const [paidToDate, setPaidToDate] = useState(0);
   useEffect(() => {
     if (!isLocalBackend || !header.supplierAccountId) { setPaidToDate(0); return; }
-    const supplierAcc = accounts.find((a) => a.id === header.supplierAccountId);
-    const code = String(supplierAcc?.accountCode || '').trim();
+    const code = resolveContractorAccountCode(accounts, header.supplierAccountId);
     const contractIds = lineContractIdsKey.split(',').filter(Boolean);
     if (!code || contractIds.length === 0) { setPaidToDate(0); return; }
     let cancelled = false;
     glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 })
       .then((txs) => {
         if (cancelled) return;
-        let total = 0;
-        for (const tx of txs) {
-          if (tx.isDeleted) continue;
-          const txCcId = tx.costCenterId || '';
-          for (const e of tx.entries) {
-            const eCode = String(e.accountCode || '').trim();
-            const eCcId = (e.costCenterId || txCcId);
-            // Debit on supplier's account in a relevant cost center = payment made
-            if (eCode === code && e.debit > 0 && contractIds.includes(eCcId)) {
-              total += e.debit;
-            }
-          }
-        }
-        setPaidToDate(roundMoney(total));
+        setPaidToDate(sumContractorCashPaymentsFromGl(txs, code, contractIds));
       })
       .catch(() => { if (!cancelled) setPaidToDate(0); });
     return () => { cancelled = true; };
@@ -405,7 +391,7 @@ export function ServiceIpcPanel({
           manpowerLevyPct: header.manpowerLevyPct,
         },
         header.advancePaymentRecovery,
-        paidToDate > 0 ? paidToDate : undefined,
+        paidToDate,
       ),
     [lines, header, paidToDate],
   );
@@ -732,7 +718,7 @@ export function ServiceIpcPanel({
           manpowerLevyPct: resolveStoredPct(tx.manpowerLevyPct, tx.manpowerLevyAmount, periodWorks),
         },
         Number(tx.advancePaymentRecovery) || 0,
-        tx._actualPreviousPayments,
+        Number(tx._actualPreviousPayments) || 0,
       );
       const worksValue = cert.currentWorks || periodWorks;
       const vatAmount = cert.vatToDate;
@@ -803,8 +789,23 @@ export function ServiceIpcPanel({
   );
 
   const handlePrint = useCallback(
-    (tx: ServiceTx) => {
-      const data = buildPrintPayload(tx);
+    async (tx: ServiceTx) => {
+      let paid = tx._actualPreviousPayments;
+      if (paid == null && isLocalBackend) {
+        const code = resolveContractorAccountCode(accounts, String(tx.supplierAccountId || tx.supplierId || ''));
+        const ccIds = [...new Set((tx.items ?? []).map((l) => String(l.contractId || '').trim()).filter(Boolean))];
+        if (code && ccIds.length > 0) {
+          try {
+            const txs = await glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 });
+            paid = sumContractorCashPaymentsFromGl(txs, code, ccIds);
+          } catch {
+            paid = 0;
+          }
+        } else {
+          paid = 0;
+        }
+      }
+      const data = buildPrintPayload({ ...tx, _actualPreviousPayments: Number(paid) || 0 });
       const sections = buildServiceIpcCertificateSections(data, language === 'en' ? 'en' : 'ar', formatMoney);
       openDocPreview({
         reportId: 'service_ipc',
@@ -826,7 +827,7 @@ export function ServiceIpcPanel({
         },
       });
     },
-    [buildPrintPayload, formatMoney, language, isAr, openDocPreview],
+    [buildPrintPayload, formatMoney, language, isAr, openDocPreview, accounts],
   );
 
   /** Print from open form (draft in progress or saved). */
@@ -858,12 +859,12 @@ export function ServiceIpcPanel({
       manpowerLevyPct: header.manpowerLevyPct,
       items: lines,
       // Pass GL-sourced actual payments so the print shows المسدد correctly
-      _actualPreviousPayments: paidToDate > 0 ? paidToDate : undefined,
+      _actualPreviousPayments: paidToDate,
     };
-    handlePrint(formTx);
+    void handlePrint(formTx);
   }, [
     selectedCoa, language, header, editingId, editingTx, worksValue, vat, exec, wht,
-    insurance, levy, advance, net, lines, isAr, handlePrint,
+    insurance, levy, advance, net, lines, isAr, handlePrint, paidToDate,
   ]);
 
   return (
@@ -897,7 +898,7 @@ export function ServiceIpcPanel({
                 <button
                   type="button"
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold bg-teal-700 text-white"
-                  onClick={() => handlePrint(selected)}
+                  onClick={() => void handlePrint(selected)}
                 >
                   <Printer size={14} />
                   {t('report_print_action')}

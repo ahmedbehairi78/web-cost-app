@@ -9,6 +9,8 @@ import {
   displayServiceIpcNumber,
   serviceIpcPrintTitle,
   computeServiceIpcCertificateSummary,
+  sumContractorCashPaymentsFromGl,
+  resolveContractorAccountCode,
 } from './serviceContractor';
 
 describe('serviceContractor', () => {
@@ -103,9 +105,66 @@ describe('serviceContractor', () => {
     expect(summary.execGuaranteeToDate).toBe(80);
     expect(summary.labourInsuranceToDate).toBe(80);
     expect(summary.whtToDate).toBe(16);
-    expect(summary.previousPayments).toBe(1030);
-    expect(summary.amountDue).toBe(roundMoney(summary.netAfterDeductions - 200 - 1030));
-    expect(summary.amountDue).toBe(summary.vatPeriod + summary.currentWorks
-      - summary.execGuaranteePeriod - summary.labourInsurancePeriod - summary.whtPeriod - 200);
+    expect(summary.previousPayments).toBe(0);
+    expect(summary.amountDue).toBe(roundMoney(summary.netAfterDeductions - 200));
+  });
+
+  it('uses explicit GL cash payments as المسدد including zero', () => {
+    const pcts = {
+      vatPct: 14,
+      execGuaranteePct: 5,
+      labourInsurancePct: 5,
+      whtPct: 1,
+      manpowerLevyPct: 0,
+    };
+    const lines = [{ previousQty: 10, currentQty: 5, rate: 100 }];
+    expect(computeServiceIpcCertificateSummary(lines, pcts, 0, 0).previousPayments).toBe(0);
+    expect(computeServiceIpcCertificateSummary(lines, pcts, 0, 250).previousPayments).toBe(250);
+  });
+
+  it('sums contractor cash Dr only when the journal credits bank or custody', () => {
+    const txs = [
+      {
+        costCenterId: 'c1',
+        entries: [
+          { accountCode: '21102005', debit: 400, credit: 0, costCenterId: 'c1' },
+          { accountCode: '12101001', debit: 0, credit: 400 },
+        ],
+      },
+      {
+        costCenterId: 'c1',
+        entries: [
+          { accountCode: '21102005', debit: 150, credit: 0, costCenterId: 'c1' },
+          { accountCode: '12102001', debit: 0, credit: 150 },
+        ],
+      },
+      {
+        // IPC reverse / expense — not cash
+        costCenterId: 'c1',
+        entries: [
+          { accountCode: '21102005', debit: 999, credit: 0, costCenterId: 'c1' },
+          { accountCode: '51103001', debit: 0, credit: 999 },
+        ],
+      },
+      {
+        // other contract
+        costCenterId: 'c2',
+        entries: [
+          { accountCode: '21102005', debit: 80, credit: 0, costCenterId: 'c2' },
+          { accountCode: '12101001', debit: 0, credit: 80 },
+        ],
+      },
+    ];
+    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1'])).toBe(550);
+    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1', 'c2'])).toBe(630);
+  });
+
+  it('resolves contractor leaf code from COA id or supplierId', () => {
+    const accounts = [
+      { id: 'coa-1', accountCode: '21102005', supplierId: 'sup-9' },
+    ];
+    expect(resolveContractorAccountCode(accounts, 'coa-1')).toBe('21102005');
+    expect(resolveContractorAccountCode(accounts, 'sup-9')).toBe('21102005');
+    expect(resolveContractorAccountCode(accounts, '21102005')).toBe('21102005');
   });
 });

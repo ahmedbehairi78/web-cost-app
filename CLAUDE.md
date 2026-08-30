@@ -995,6 +995,36 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — المسدد من حركات نقدية فقط (لا أعمال سابقة) ✅ (2026-08-30)
+
+> **جلسة 2026-08-30 مساءً:** المسدد في ملخص مستخلص الخدمة ومقاول الباطن كان يظهر إجمالي الأعمال السابقة لأن `paidToDate > 0 ? paidToDate : undefined` يُسقط إلى تقدير `previousWorks + VAT − محتجزات`.
+
+| المجال | ملخص |
+|--------|------|
+| **القاعدة** | المسدد = مجموع **مدين** حساب المقاول (`21102…`) عندما **نفس القيد** دائن بنك `12101…` أو صندوق/عهدة `12102…` (تسوية العهدة = دائن 12102) و`costCenterId` = عقد المستخلص |
+| **لا تقدير** | `computeServiceIpcCertificateSummary` يستخدم `actualPreviousPayments` أو **صفر** — لا يحسب من `previousQty×rate` |
+| **دالة** | `sumContractorCashPaymentsFromGl` + `resolveContractorAccountCode` في `serviceContractor.ts` |
+| **لا تراجع** | لا `paidToDate > 0 ? … : undefined` — صفر حركة نقدية = مسدد صفر |
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts
+```
+
+---
+
+## 🔴 HANDOFF — حذف مسودة المستخلص (خدمة + مقاول) ✅ (2026-08-30)
+
+> **جلسة 2026-08-30:** إضافة زر **حذف المستخلص** للمستخلصات غير المعتمدة (مسودة أو مقدَّمة) — سواء مستخلص خدمة أو مستخلص مقاول باطن.
+
+| المجال | ملخص |
+|--------|------|
+| **مستخلص الخدمة** | `ServiceIpcPanel.tsx` — state `showDeleteConfirm` + `handleDeleteDraft` + زر أحمر يظهر عندما `editingId && !readOnly` (لم يُعتمد بعد)؛ تأكيد مضمّن قبل الحذف |
+| **مستخلص مقاول** | `ActualCosts.tsx` — state `showIpcDeleteConfirm` + `handleDeleteIpcDraft` + زر في أسفل النموذج يظهر عندما `editingPurchase && !ipcFormReadOnly` |
+| **الحذف** | `purchaseTransactionsApi.remove(id)` → **حذف ناعم** (`isDeleted: true`) عبر `DELETE /purchase-transactions/:id` |
+| **لا تراجع** | لا يظهر الزر للمستخلصات المعتمدة (`transactionId` موجود) |
+
+---
+
 ## 🔴 HANDOFF — ملء بنود المستخلص الجديد من السابق المعتمد ✅ (2026-08-30)
 
 > **جلسة 2026-08-30:** عند إنشاء مستخلص خدمة/مقاول جديد لنفس المورد/المقاول، كانت الكميات السابقة والفئة والأعمال السابقة والمسدد تظهر صفراً لأن `fillPrevious` يُستدعى يدوياً عند التعديل فقط.
@@ -1006,7 +1036,7 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 | **الفئة** | تُنسخ `rate` من آخر مستخلص معتمد |
 | **النسب** | تُنسخ `vatPct/execGuaranteePct/whtPct/labourInsurancePct/manpowerLevyPct` حتى يكون `المسدد` في الملخص دقيقاً |
 | **لا تراجع** | لا تمس `fillPrevious` الموجودة · لا تُطبّق التعبئة إذا بدأ المستخدم بالكتابة (`isBlank` check) |
-| **المسدد الحقيقي** | `paidToDate` state في `ServiceIpcPanel` + `ipcPaidToDate` في `ActualCosts` — `glApi.transactionsQuery` ثم مجموع `entry.debit > 0` على حساب المقاول مع `costCenterId` من مراكز التكلفة المختارة · يُمرَّر كـ `actualPreviousPayments` إلى `computeServiceIpcCertificateSummary` · للطباعة من النموذج عبر `_actualPreviousPayments` في `formTx` |
+| **المسدد الحقيقي** | `sumContractorCashPaymentsFromGl`: مجموع **مدين** حساب المقاول فقط إذا كان **نفس القيد** دائناً بنك `12101…` أو صندوق/عهدة `12102…` (يشمل تسوية العهدة) و`costCenterId` = عقود المستخلص · **لا تقدير من الأعمال السابقة** — صفر إن لم توجد حركة نقدية · `paidToDate > 0 ? … : undefined` كان يُرجع تقدير الأعمال السابقة |
 
 ```powershell
 npm run test -- src/lib/serviceContractor.test.ts

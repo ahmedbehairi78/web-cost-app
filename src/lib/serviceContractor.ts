@@ -142,7 +142,10 @@ export function computeServiceIpcCertificateSummary(
   lines: Array<{ previousQty?: number; currentQty?: number; rate?: number }>,
   pcts: ServiceIpcSummaryPcts,
   advancePaymentRecovery = 0,
-  /** Override المسدد with actual GL cash payments instead of estimating from previousQty×rate */
+  /**
+   * المسدد = actual cash Dr on the contractor GL account (bank / cash / custody).
+   * Pass 0 when none; never omit to fall back to previous works.
+   */
   actualPreviousPayments?: number,
 ): ServiceIpcCertificateSummary {
   const previousWorks = roundMoney(
@@ -168,10 +171,10 @@ export function computeServiceIpcCertificateSummary(
   );
   const withholdPrev = roundMoney(execPrev + insPrev + whtPrev + levyPrev);
   const netAfterDeductions = roundMoney(totalWorks + vatToDate - withholdToDate);
-  // actualPreviousPayments: sum of Dr entries on supplier GL account from bank/cash payments
-  const previousPayments = (actualPreviousPayments != null && actualPreviousPayments >= 0)
-    ? roundMoney(actualPreviousPayments)
-    : roundMoney(previousWorks + vatPrev - withholdPrev);
+  // المسدد is never estimated from previous works — only GL cash Dr (or 0).
+  const previousPayments = (actualPreviousPayments != null && Number.isFinite(Number(actualPreviousPayments)))
+    ? roundMoney(Math.max(0, Number(actualPreviousPayments)))
+    : 0;
   const advance = roundMoney(advancePaymentRecovery);
   const amountDue = roundMoney(netAfterDeductions - advance - previousPayments);
 
@@ -222,4 +225,70 @@ export function uniqueBoqChapters(
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }))
     .map(([code, name]) => ({ code, name }));
+}
+
+/** Bank 12101… or cash/custody 12102… — cash source of a contractor payment. */
+export function isContractorCashPaymentSourceCode(code: string): boolean {
+  const c = String(code || '').trim();
+  return c.startsWith('12101') || c.startsWith('12102');
+}
+
+export type ContractorCashGlTx = {
+  isDeleted?: boolean;
+  costCenterId?: string | null;
+  entries?: Array<{
+    accountCode?: string;
+    debit?: number;
+    credit?: number;
+    costCenterId?: string | null;
+  }>;
+};
+
+/**
+ * المسدد: Dr on the contractor leaf in matching cost centers, only when the same
+ * journal credits a bank (12101…) or cash/custody fund (12102…) — covers bank
+ * payments, cash-fund payments, and custody settlements that settle the contractor.
+ */
+export function sumContractorCashPaymentsFromGl(
+  txs: ContractorCashGlTx[],
+  supplierAccountCode: string,
+  costCenterIds: string[],
+): number {
+  const code = String(supplierAccountCode || '').trim();
+  const centers = new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean));
+  if (!code || centers.size === 0) return 0;
+  let total = 0;
+  for (const tx of txs) {
+    if (tx.isDeleted) continue;
+    const entries = tx.entries ?? [];
+    const hasCashSource = entries.some(
+      (e) => Number(e.credit) > 0 && isContractorCashPaymentSourceCode(String(e.accountCode || '')),
+    );
+    if (!hasCashSource) continue;
+    const headerCc = String(tx.costCenterId || '').trim();
+    for (const e of entries) {
+      if (String(e.accountCode || '').trim() !== code) continue;
+      const debit = Number(e.debit) || 0;
+      if (debit <= 0) continue;
+      const lineCc = String(e.costCenterId || headerCc).trim();
+      if (!centers.has(lineCc)) continue;
+      total += debit;
+    }
+  }
+  return roundMoney(total);
+}
+
+/** Resolve 8-digit contractor COA code from picker id, suppliers.supplierId, or a raw code. */
+export function resolveContractorAccountCode(
+  accounts: Array<{ id?: string; accountCode?: string; supplierId?: string | null }>,
+  supplierRef: string,
+): string {
+  const ref = String(supplierRef || '').trim();
+  if (!ref) return '';
+  const byId = accounts.find((a) => a.id === ref);
+  if (byId) return String(byId.accountCode || '').trim();
+  const bySupplier = accounts.find((a) => String(a.supplierId || '') === ref);
+  if (bySupplier) return String(bySupplier.accountCode || '').trim();
+  if (/^\d{8}$/.test(ref)) return ref;
+  return '';
 }
