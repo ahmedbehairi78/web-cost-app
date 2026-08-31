@@ -336,21 +336,24 @@ export const reportsApi = {
   dashboard: () => apiClient.get('/reports/dashboard'),
   trialBalance: (params: {
     periodStart?: string;
+    asOf?: string;
     projectId?: string;
     contractId?: string;
   } = {}) =>
     apiClient.get<ReportsTrialBalanceResponse>(
       `/reports/trial-balance${buildQuery({
         periodStart: params.periodStart,
+        asOf: params.asOf,
         projectId: params.projectId && params.projectId !== 'all' ? params.projectId : undefined,
         contractId: params.contractId && params.contractId !== 'all' ? params.contractId : undefined,
       })}`,
     ),
-  balanceSheet: (params: { projectId?: string; contractId?: string } = {}) =>
+  balanceSheet: (params: { projectId?: string; contractId?: string; asOf?: string } = {}) =>
     apiClient.get<ReportsBalanceSheetResponse>(
       `/reports/balance-sheet${buildQuery({
         projectId: params.projectId && params.projectId !== 'all' ? params.projectId : undefined,
         contractId: params.contractId && params.contractId !== 'all' ? params.contractId : undefined,
+        asOf: params.asOf,
       })}`,
     ),
   boqCostBreakdown: (params: {
@@ -383,6 +386,7 @@ export type ReportsTrialBalanceRow = {
 
 export type ReportsTrialBalanceResponse = {
   periodStart: string;
+  asOf?: string | null;
   projectId: string;
   contractId: string;
   source: string;
@@ -410,6 +414,7 @@ export type ReportsBalanceSheetSummary = {
 export type ReportsBalanceSheetResponse = {
   projectId: string;
   contractId: string;
+  asOf?: string | null;
   source: string;
   byCode: Record<string, number>;
   summary: ReportsBalanceSheetSummary;

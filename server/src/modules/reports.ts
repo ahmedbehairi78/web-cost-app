@@ -93,12 +93,22 @@ reportsRouter.get(
     const year = new Date().getFullYear();
     const periodStart =
       String(req.query.periodStart ?? '').trim().slice(0, 10) || `${year}-01-01`;
+    const asOf = String(req.query.asOf ?? req.query.dateTo ?? '').trim().slice(0, 10) || '';
     const projectId = normalizeScopeId(req.query.projectId);
     const contractId = normalizeScopeId(req.query.contractId);
     const assignedIds = getAssignedContractIds(req.user);
 
     if (assignedIds !== null && assignedIds.length === 0) {
-      res.json(serialize({ periodStart, projectId, contractId, rows: [], source: 'server_full' }));
+      res.json(
+        serialize({
+          periodStart,
+          asOf: asOf || null,
+          projectId,
+          contractId,
+          rows: [],
+          source: 'server_full',
+        }),
+      );
       return;
     }
     if (contractId !== 'all' && assignedIds !== null && !assignedIds.includes(contractId)) {
@@ -108,6 +118,7 @@ reportsRouter.get(
 
     const aggs = await queryTrialBalanceAggregates({
       periodStart,
+      asOf: asOf || null,
       projectId,
       contractId,
       allowedContractIds: assignedIds,
@@ -116,6 +127,7 @@ reportsRouter.get(
     res.json(
       serialize({
         periodStart,
+        asOf: asOf || null,
         projectId,
         contractId,
         source: 'server_full',
@@ -148,6 +160,7 @@ reportsRouter.get(
   asyncHandler(async (req, res) => {
     const projectId = normalizeScopeId(req.query.projectId);
     const contractId = normalizeScopeId(req.query.contractId);
+    const asOf = String(req.query.asOf ?? req.query.dateTo ?? '').trim().slice(0, 10) || '';
     const assignedIds = getAssignedContractIds(req.user);
 
     if (assignedIds !== null && assignedIds.length === 0) {
@@ -155,6 +168,7 @@ reportsRouter.get(
         serialize({
           projectId,
           contractId,
+          asOf: asOf || null,
           source: 'server_full',
           byCode: {},
           summary: computeBalanceSheetSummary({}),
@@ -170,6 +184,7 @@ reportsRouter.get(
     const nets = await queryBalanceSheetNets({
       projectId,
       contractId,
+      asOf: asOf || null,
       allowedContractIds: assignedIds,
     });
     const byCode = netsToCodeBalMap(nets);
@@ -179,6 +194,7 @@ reportsRouter.get(
       serialize({
         projectId,
         contractId,
+        asOf: asOf || null,
         source: 'server_full',
         byCode,
         summary,

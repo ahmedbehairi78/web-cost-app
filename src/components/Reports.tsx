@@ -35,10 +35,12 @@ import {
   costCentersApi,
   reportsApi,
   settingsApi,
+  fiscalClosingsApi,
   type BoqCostLevel,
   type ReportsBalanceSheetResponse,
   type ReportsTrialBalanceResponse,
 } from '../services/local/modulesApi';
+import { businessTodayYmd } from '../lib/businessCalendar';
 import { buildCostCenterTypeMap, computeDirectIndirectCostSplit } from '../lib/costCenterCostSplit';
 import { SearchableSelect } from './ui/SearchableSelect';
 import { 
@@ -580,6 +582,9 @@ export function Reports() {
   }, [apiTxError, language]);
 
   const [periodStart, setPeriodStart] = useState(() => `${new Date().getFullYear()}-01-01`);
+  /** As-of date for TB/BS server aggregates — set to fiscal close periodEnd to see balanced books after YE-PL. */
+  const [reportAsOf, setReportAsOf] = useState(() => businessTodayYmd());
+  const [suggestedCloseAsOf, setSuggestedCloseAsOf] = useState<string | null>(null);
   const printAreaRef = useRef<HTMLDivElement>(null);
   const allowedContractSet = useMemo(() => new Set(assignedContractIds), [assignedContractIds]);
   const scopedContracts = useMemo(
@@ -632,22 +637,47 @@ export function Reports() {
         reportsApi
           .trialBalance({
             periodStart,
+            asOf: reportAsOf,
             projectId: selectedProjectId,
             contractId: selectedContractId,
           })
           .then((response) => [response]),
-      [needServerTrial, periodStart, selectedProjectId, selectedContractId],
+      [needServerTrial, periodStart, reportAsOf, selectedProjectId, selectedContractId],
       { enabled: needServerTrial },
     );
   const serverTrial = serverTrialWrap[0] ?? null;
 
   const { data: serverBalanceWrap, loading: serverBalanceLoading, error: serverBalanceError } =
     useApiQuery<ReportsBalanceSheetResponse>(
-      () => reportsApi.balanceSheet({}).then((response) => [response]),
-      [needServerBalance],
+      () =>
+        reportsApi.balanceSheet({ asOf: reportAsOf }).then((response) => [response]),
+      [needServerBalance, reportAsOf],
       { enabled: needServerBalance },
     );
   const serverBalance = serverBalanceWrap[0] ?? null;
+
+  useEffect(() => {
+    if (!isLocalBackend) return;
+    let cancelled = false;
+    void fiscalClosingsApi
+      .list()
+      .then((rows) => {
+        if (cancelled) return;
+        const closed = rows
+          .filter((r) =>
+            ['pl_closed', 'bs_approved', 'opening_posted'].includes(String(r.status || '')),
+          )
+          .sort((a, b) => String(b.periodEnd).localeCompare(String(a.periodEnd)));
+        const end = closed[0]?.periodEnd ? String(closed[0].periodEnd).slice(0, 10) : null;
+        setSuggestedCloseAsOf(end);
+      })
+      .catch(() => {
+        if (!cancelled) setSuggestedCloseAsOf(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLocalBackend, activeReport]);
 
   useEffect(() => {
     if (serverTrialError) {
@@ -969,7 +999,8 @@ export function Reports() {
         : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
     };
 
-    if (isLocalBackend && serverTrial) {
+    if (isLocalBackend) {
+      if (!serverTrial?.rows) return [];
       const list: TrialBalanceRow[] = serverTrial.rows.map((r) => ({
         code: r.accountCode,
         name: resolveName(r.accountCode),
@@ -1138,11 +1169,13 @@ export function Reports() {
   const balanceSheet = React.useMemo(() => {
     const codeBalMap = new Map<string, number>();
 
-    if (isLocalBackend && serverBalance?.byCode) {
-      for (const [code, net] of Object.entries(serverBalance.byCode)) {
-        const key = String(code || '').trim();
-        if (!key) continue;
-        codeBalMap.set(key, Number(net) || 0);
+    if (isLocalBackend) {
+      if (serverBalance?.byCode) {
+        for (const [code, net] of Object.entries(serverBalance.byCode)) {
+          const key = String(code || '').trim();
+          if (!key) continue;
+          codeBalMap.set(key, Number(net) || 0);
+        }
       }
     } else {
       const allTx = scopedTransactions.filter(t => !t.isDeleted);
@@ -2436,7 +2469,7 @@ export function Reports() {
                 {/* Title */}
                 <div
                   className={cn(
-                    'mb-8 report-print-doc-title',
+                    'mb-4 report-print-doc-title',
                     currentPrintProfile.titleAlign === 'start' && 'text-start',
                     currentPrintProfile.titleAlign === 'center' && 'text-center',
                     currentPrintProfile.titleAlign === 'end' && 'text-end',
@@ -2445,10 +2478,59 @@ export function Reports() {
                 >
                   <h3 className="text-2xl font-black">{language === 'ar' ? 'الميزانية العمومية' : 'Balance Sheet'}</h3>
                   <p className="text-sm text-gray-500 mt-1">
-                    {language === 'ar' ? 'بتاريخ ' : 'As of '}
-                    {new Date().toLocaleDateString(locale)}
+                    {language === 'ar' ? 'حتى تاريخ ' : 'As of '}
+                    {reportAsOf}
                   </p>
                 </div>
+
+                {isLocalBackend && (
+                  <div className="flex flex-wrap items-center gap-3 mb-6 print:hidden">
+                    <label className={cn('text-xs font-bold uppercase whitespace-nowrap', ui.mutedText)}>
+                      {language === 'ar' ? 'حتى تاريخ' : 'As of'}
+                    </label>
+                    <input
+                      type="date"
+                      aria-label={language === 'ar' ? 'حتى تاريخ' : 'As of date'}
+                      value={reportAsOf}
+                      onChange={(e) => setReportAsOf(e.target.value)}
+                      className={cn('border rounded-lg py-1.5 px-3 text-sm outline-none focus:border-blue-500', ui.input)}
+                    />
+                    {suggestedCloseAsOf && suggestedCloseAsOf !== reportAsOf && (
+                      <button
+                        type="button"
+                        onClick={() => setReportAsOf(suggestedCloseAsOf)}
+                        className={cn(
+                          'text-xs font-bold px-3 py-1.5 rounded-lg border',
+                          theme === 'dark'
+                            ? 'bg-amber-900/20 border-amber-700/40 text-amber-300'
+                            : 'bg-amber-50 border-amber-200 text-amber-900',
+                        )}
+                      >
+                        {language === 'ar'
+                          ? `استخدم نهاية الإقفال (${suggestedCloseAsOf})`
+                          : `Use close period end (${suggestedCloseAsOf})`}
+                      </button>
+                    )}
+                    {serverBalance?.source === 'server_full' && (
+                      <span className={cn('text-[11px] px-2 py-1 rounded font-bold', theme === 'dark' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-700')}>
+                        {language === 'ar' ? 'تجميع خادمي كامل' : 'Full server aggregate'}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {!bs.isBalanced && Math.abs(bs.unclosedPeriodPl) > 0.01 && Math.abs(bs.balanceGap - bs.unclosedPeriodPl) < 1 && suggestedCloseAsOf && reportAsOf > suggestedCloseAsOf && (
+                  <div
+                    className={cn(
+                      'mb-6 p-3 rounded-xl border text-sm print:hidden',
+                      theme === 'dark' ? 'bg-amber-900/15 border-amber-800/40 text-amber-200' : 'bg-amber-50 border-amber-200 text-amber-900',
+                    )}
+                  >
+                    {language === 'ar'
+                      ? `يوجد نشاط على حسابات الدخل بعد تاريخ الإقفال ${suggestedCloseAsOf}. لرؤية الميزانية بعد الإقفال مباشرة اضبط «حتى تاريخ» على نهاية فترة الإقفال.`
+                      : `There is P&L activity after close date ${suggestedCloseAsOf}. Set “As of” to the fiscal close period end to see the post-close balance sheet.`}
+                  </div>
+                )}
 
                 {/* Balance indicator + analytical toggle */}
                 <div className="flex items-center justify-center gap-4 mb-8 flex-wrap">
@@ -2650,17 +2732,48 @@ export function Reports() {
                     onChange={(e) => setPeriodStart(e.target.value)}
                     className={cn('border rounded-lg py-1.5 px-3 text-sm outline-none focus:border-blue-500 transition-colors', ui.input)}
                   />
+                  <label className={cn("text-xs font-bold uppercase whitespace-nowrap", ui.mutedText)}>
+                    {language === 'ar' ? 'حتى تاريخ' : 'As of'}
+                  </label>
+                  <input
+                    type="date"
+                    aria-label={language === 'ar' ? 'حتى تاريخ' : 'As of date'}
+                    value={reportAsOf}
+                    onChange={(e) => setReportAsOf(e.target.value)}
+                    className={cn('border rounded-lg py-1.5 px-3 text-sm outline-none focus:border-blue-500 transition-colors', ui.input)}
+                  />
+                  {suggestedCloseAsOf && suggestedCloseAsOf !== reportAsOf && (
+                    <button
+                      type="button"
+                      onClick={() => setReportAsOf(suggestedCloseAsOf)}
+                      className={cn(
+                        'text-xs font-bold px-3 py-1.5 rounded-lg border',
+                        theme === 'dark'
+                          ? 'bg-amber-900/20 border-amber-700/40 text-amber-300'
+                          : 'bg-amber-50 border-amber-200 text-amber-900',
+                      )}
+                    >
+                      {language === 'ar'
+                        ? `نهاية الإقفال (${suggestedCloseAsOf})`
+                        : `Close end (${suggestedCloseAsOf})`}
+                    </button>
+                  )}
                   <span className={cn('text-[11px] px-2 py-1 rounded font-bold', theme === 'dark' ? 'bg-blue-900/30 text-blue-400' : 'bg-blue-50 text-blue-700')}>
                     {language === 'ar'
-                      ? `الحركة من ${periodStart} حتى اليوم`
-                      : `Movements from ${periodStart} onward`}
+                      ? `من ${periodStart} إلى ${reportAsOf}`
+                      : `${periodStart} → ${reportAsOf}`}
                   </span>
+                  {isLocalBackend && serverTrial?.source === 'server_full' && (
+                    <span className={cn('text-[11px] px-2 py-1 rounded font-bold', theme === 'dark' ? 'bg-emerald-900/30 text-emerald-400' : 'bg-emerald-50 text-emerald-700')}>
+                      {language === 'ar' ? 'تجميع خادمي كامل' : 'Full server'}
+                    </span>
+                  )}
                 </div>
               </div>
               <p className="hidden print:block text-xs font-semibold text-gray-600 mb-6 -mt-4">
                 {language === 'ar'
-                  ? `الحركة من ${periodStart} حتى اليوم`
-                  : `Movements from ${periodStart} onward`}
+                  ? `الحركة من ${periodStart} حتى ${reportAsOf}`
+                  : `Movements from ${periodStart} through ${reportAsOf}`}
               </p>
 
               <div className="overflow-x-auto print:overflow-visible">
