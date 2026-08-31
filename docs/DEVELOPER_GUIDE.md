@@ -405,7 +405,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 |---------|--------|-----|
 | **فاتورة مشتريات** | حفظ → ترحيل فوري (أو read-only إن `transactionId`) · **آجلة/نقدية** (`paymentType`) | `recordPurchaseToProjectInventory` / `recordFixedAssetPurchase` — Cr مورد **21101…** أو عهدة **12102…** |
 | **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) · رقم لكل مقاول/سنة · طباعة: رقم+حالة + شعار الشركة + ملخص أسفل البنود (محتجزات على الإجمالي؛ القيد = زيادة الفترة) |
-| **مستخلص خدمة** | نفس الدورة · `type=service_ipc` | رقم لكل مورد/سنة `مستخلص الاسم-001-2026`؛ عنوان الطباعة = الرقم + الحالة؛ شعار + اسم الشركة معاً؛ ملخص أسفل البنود؛ **المسدد** = `GET /api/gl/contractor-cash-payments` (مدين المقاول + دائن 121…/21601… لنفس مركز التكلفة). اعتماد يرحّل مدين حسب `serviceKind`؛ **لا** توزيع على بنود BOQ. **لا** تستورد `costCenterAttribution` من `serviceContractor.ts` |
+| **مستخلص خدمة** | نفس الدورة · `type=service_ipc` | رقم لكل مورد/سنة `مستخلص الاسم-001-2026`؛ عنوان الطباعة = الرقم + الحالة؛ شعار + اسم الشركة معاً؛ ملخص أسفل البنود؛ **المسدد** = مدين المقاول + دائن 121…/21601… (مركز التكلفة **أو** تحويل بلا مركز؛ مع تقييد المشروع إن وُجد) عبر `GET /api/gl/contractor-cash-payments` + احتياطي مسح GL. اعتماد يرحّل مدين حسب `serviceKind`؛ **لا** توزيع على بنود BOQ. **لا** تستورد `costCenterAttribution` من `serviceContractor.ts` |
 | **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (`ledger.create` أو `ledger.edit`) — زر الاعتماد في **تفاصيل** التسوية وليس النموذج فقط |
 
 - **معاينة:** النقر على صف فاتورة/IPC في الجدول يفتح النافذة — المرحّلة = للقراءة فقط.

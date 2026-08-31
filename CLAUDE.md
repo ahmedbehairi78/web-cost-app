@@ -995,6 +995,23 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — المسدد يشمل تحويل بنك بلا مركز تكلفة ✅ (2026-08-31)
+
+> **جلسة 2026-08-31 مساءً:** مستخلص `محمد الشيخ-007-2026` بلا مسدد رغم تحويل على `21102005` — التحويل البنكي غالباً بلا `costCenterId`.
+
+| المجال | ملخص |
+|--------|------|
+| **قاعدة** | مدين المقاول + دائن `121…`/`21601…`؛ إن وُجد مركز تكلفة يطابق المستخلص؛ **وإن لم يوجد مركز** يُحسب كسداد غير مخصّص (ومع `projectId` يُقيَّد بمشروع المستخلص) |
+| **جلب** | `fetchContractorCashPaidAmount` → API ثم احتياطي مسح GL |
+| **لا تراجع** | لا تشترط عقداً على حركة البنوك لظهور المسدد |
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts server/src/lib/contractorCashPayments.test.ts
+# أعد تشغيل API / انشر Railway ثم افتح المستخلص
+```
+
+---
+
 ## 🔴 HANDOFF — المسدد من API يومية (مدين المقاول نقداً) ✅ (2026-08-31)
 
 > **جلسة 2026-08-31 مساءً:** بدل مسح 3000 قيد على العميل — `GET /api/gl/contractor-cash-payments?accountCode=&costCenterIds=`.

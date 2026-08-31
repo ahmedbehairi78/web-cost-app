@@ -52,6 +52,10 @@ glRouter.get(
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
+    const projectIds = String(req.query.projectIds ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
     if (!accountCode) {
       res.status(400).json({ error: 'accountCode is required' });
       return;
@@ -60,7 +64,11 @@ glRouter.get(
       res.status(400).json({ error: 'costCenterIds is required' });
       return;
     }
-    res.json(await queryContractorCashPayments(accountCode, costCenterIds));
+    res.json(
+      await queryContractorCashPayments(accountCode, costCenterIds, {
+        projectIds: projectIds.length > 0 ? projectIds : undefined,
+      }),
+    );
   }),
 );
 

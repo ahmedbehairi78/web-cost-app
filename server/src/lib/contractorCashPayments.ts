@@ -3,24 +3,33 @@ import { roundMoney } from './money.js';
 
 /**
  * المسدد on a contractor leaf (21102… / 21101…):
- * sum of **debit lines** on that account whose effective cost center
- * (line costCenterId, else journal header) is one of the requested centers,
- * and the same journal credits a cash-like source:
+ * sum of **debit lines** on that account when the same journal credits a cash-like source:
  *   - 121… bank / transfer / cash fund / custody
  *   - 21601… issued-cheque payable (ISS leg)
  *
- * Accrual journals (Cr expense / Dr contractor reverse / etc.) are excluded.
+ * Cost-center scope (per debit line: line costCenterId, else journal header):
+ *   1. Line/header CC ∈ requested cost centers → count
+ *   2. No CC on line/header (common for bank transfers posted without contract):
+ *      - if journal has projectId and projectIds were passed → count only when project matches
+ *      - if journal has no projectId → count as unallocated payment on this contractor
+ * Accrual journals (Cr expense) are excluded.
  */
 
 export type ContractorCashJournal = {
   isDeleted?: boolean;
   costCenterId?: string | null;
+  projectId?: string | null;
   entries?: Array<{
     accountCode?: string | null;
     debit?: unknown;
     credit?: unknown;
     costCenterId?: string | null;
   }>;
+};
+
+export type ContractorCashPaymentOptions = {
+  /** When set, unallocated (no CC) payments that carry a projectId must match one of these. */
+  projectIds?: string[];
 };
 
 export function isCashPaymentSourceAccount(code: string): boolean {
@@ -53,19 +62,31 @@ export function resolveLineCostCenterId(
   return String(transactionCostCenterId ?? '').trim();
 }
 
+function shouldCountUnallocatedDebit(
+  txProjectId: string | null | undefined,
+  projectIds: Set<string>,
+): boolean {
+  const txProject = String(txProjectId ?? '').trim();
+  if (!txProject) return true; // fully unallocated bank/cash payment
+  if (projectIds.size === 0) return true; // caller did not scope by project
+  return projectIds.has(txProject);
+}
+
 /**
- * Pure aggregation — same rules as the GL account statement reading of cash outflows
- * to a contractor, scoped per debit line's cost center (not “any line in the journal”).
+ * Pure aggregation — cash outflows to a contractor for IPC «المسدد».
  */
 export function sumContractorCashPaymentsFromJournals(
   txs: ContractorCashJournal[],
   supplierAccountCode: string,
   costCenterIds: string[],
-): { paid: number; byCostCenter: Record<string, number> } {
+  options?: ContractorCashPaymentOptions,
+): { paid: number; byCostCenter: Record<string, number>; unallocated: number } {
   const code = String(supplierAccountCode || '').trim();
   const centers = new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean));
+  const projects = new Set((options?.projectIds ?? []).map((id) => String(id).trim()).filter(Boolean));
   const byCostCenter: Record<string, number> = {};
-  if (!code || centers.size === 0) return { paid: 0, byCostCenter };
+  let unallocated = 0;
+  if (!code || centers.size === 0) return { paid: 0, byCostCenter, unallocated };
 
   for (const tx of txs) {
     if (tx.isDeleted) continue;
@@ -80,24 +101,37 @@ export function sumContractorCashPaymentsFromJournals(
       const debit = glMoney(e.debit);
       if (debit <= 0) continue;
       const cc = resolveLineCostCenterId(e, tx.costCenterId);
-      if (!cc || !centers.has(cc)) continue;
-      byCostCenter[cc] = roundMoney((byCostCenter[cc] ?? 0) + debit);
+      if (cc) {
+        if (!centers.has(cc)) continue;
+        byCostCenter[cc] = roundMoney((byCostCenter[cc] ?? 0) + debit);
+        continue;
+      }
+      // Bank transfers often omit contract (cost center) — still cash paid to this contractor.
+      if (!shouldCountUnallocatedDebit(tx.projectId, projects)) continue;
+      unallocated = roundMoney(unallocated + debit);
     }
   }
 
-  const paid = roundMoney(Object.values(byCostCenter).reduce((s, n) => s + n, 0));
-  return { paid, byCostCenter };
+  const allocated = Object.values(byCostCenter).reduce((s, n) => s + n, 0);
+  const paid = roundMoney(allocated + unallocated);
+  return { paid, byCostCenter, unallocated };
 }
 
 /** Load matching journals from Postgres and aggregate المسدد. */
 export async function queryContractorCashPayments(
   accountCode: string,
   costCenterIds: string[],
-): Promise<{ paid: number; byCostCenter: Record<string, number>; accountCode: string }> {
+  options?: ContractorCashPaymentOptions,
+): Promise<{
+  paid: number;
+  byCostCenter: Record<string, number>;
+  unallocated: number;
+  accountCode: string;
+}> {
   const code = String(accountCode || '').trim();
   const centers = [...new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean))];
   if (!code || centers.length === 0) {
-    return { paid: 0, byCostCenter: {}, accountCode: code };
+    return { paid: 0, byCostCenter: {}, unallocated: 0, accountCode: code };
   }
 
   const rows = await prisma.transaction.findMany({
@@ -136,6 +170,7 @@ export async function queryContractorCashPayments(
     },
     select: {
       costCenterId: true,
+      projectId: true,
       isDeleted: true,
       entries: {
         select: {
@@ -148,6 +183,11 @@ export async function queryContractorCashPayments(
     },
   });
 
-  const { paid, byCostCenter } = sumContractorCashPaymentsFromJournals(rows, code, centers);
-  return { paid, byCostCenter, accountCode: code };
+  const { paid, byCostCenter, unallocated } = sumContractorCashPaymentsFromJournals(
+    rows,
+    code,
+    centers,
+    options,
+  );
+  return { paid, byCostCenter, unallocated, accountCode: code };
 }

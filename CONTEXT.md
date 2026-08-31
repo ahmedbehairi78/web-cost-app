@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-31 (المسدد عبر GET /api/gl/contractor-cash-payments — مدين المقاول نقداً لمركز التكلفة)
+**آخر تحديث:** 2026-08-31 (المسدد: تحويل بنك بلا مركز تكلفة + API contractor-cash-payments + احتياطي مسح GL)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >

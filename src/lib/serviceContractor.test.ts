@@ -122,7 +122,7 @@ describe('serviceContractor', () => {
     expect(computeServiceIpcCertificateSummary(lines, pcts, 0, 250).previousPayments).toBe(250);
   });
 
-  it('sums contractor cash Dr per debit line cost center (bank, custody, cheque)', () => {
+  it('sums contractor cash Dr per debit line cost center and unallocated bank transfers', () => {
     const txs = [
       {
         costCenterId: 'c1',
@@ -162,10 +162,19 @@ describe('serviceContractor', () => {
           { accountCode: '12101001', debit: 0, credit: 130 },
         ],
       },
+      {
+        // bank transfer without cost center — still counts
+        costCenterId: null,
+        projectId: null,
+        entries: [
+          { accountCode: '21102005', debit: 500, credit: 0 },
+          { accountCode: '12101001', debit: 0, credit: 500 },
+        ],
+      },
     ];
-    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1'])).toBe(800);
-    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1', 'c2'])).toBe(880);
-    expect(sumContractorCashPaymentsFromGl({ data: txs }, '21102005', ['c1'])).toBe(800);
+    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1'])).toBe(1300);
+    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1', 'c2'])).toBe(1380);
+    expect(sumContractorCashPaymentsFromGl({ data: txs }, '21102005', ['c1'])).toBe(1300);
   });
 
   it('resolves contractor leaf code from COA id or supplierId', () => {

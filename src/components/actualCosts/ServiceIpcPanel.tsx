@@ -40,6 +40,7 @@ import {
   type ServiceIpcKind,
   type ServiceIpcLine,
 } from '../../lib/serviceContractor';
+import { fetchContractorCashPaidAmount } from '../../lib/contractorCashPaidFetch';
 import { DEFAULT_HEADER_LOGO } from '../../lib/concordPlusBrand';
 import { buildServiceIpcEntries } from '../../lib/serviceIpcJournal';
 import {
@@ -360,7 +361,12 @@ export function ServiceIpcPanel({
     [lines],
   );
 
-  // المسدد = Σ مدين حساب المقاول من حركات نقدية (بنك/تحويل/شيك/صندوق/عهدة) لنفس مراكز التكلفة
+  const lineProjectIdsKey = useMemo(
+    () => [...new Set(lines.map((l) => String(l.projectId || '').trim()).filter(Boolean))].sort().join(','),
+    [lines],
+  );
+
+  // المسدد = مدين نقدي على حساب المقاول (بنك/تحويل/شيك/صندوق) لنفس المراكز + تحويلات بلا مركز
   const [paidToDate, setPaidToDate] = useState(0);
   useEffect(() => {
     if (!isLocalBackend || !header.supplierAccountId) { setPaidToDate(0); return; }
@@ -368,15 +374,13 @@ export function ServiceIpcPanel({
     const contractIds = lineContractIdsKey.split(',').filter(Boolean);
     if (!code || contractIds.length === 0) { setPaidToDate(0); return; }
     let cancelled = false;
-    glApi.contractorCashPayments(code, contractIds)
-      .then((res) => {
-        if (cancelled) return;
-        setPaidToDate(Number(res.paid) || 0);
-      })
+    const projectIds = lineProjectIdsKey.split(',').filter(Boolean);
+    void fetchContractorCashPaidAmount(code, contractIds, projectIds.length ? projectIds : undefined)
+      .then((paid) => { if (!cancelled) setPaidToDate(paid); })
       .catch(() => { if (!cancelled) setPaidToDate(0); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [header.supplierAccountId, lineContractIdsKey, accounts]);
+  }, [header.supplierAccountId, lineContractIdsKey, lineProjectIdsKey, accounts]);
 
   const summary = useMemo(
     () =>
@@ -793,10 +797,13 @@ export function ServiceIpcPanel({
       if (paid == null && isLocalBackend) {
         const code = resolveContractorAccountCode(accounts, String(tx.supplierAccountId || tx.supplierId || ''));
         const ccIds = [...new Set((tx.items ?? []).map((l) => String(l.contractId || '').trim()).filter(Boolean))];
+        const projectIds = [
+          ...new Set((tx.items ?? []).map((l) => String(l.projectId || '').trim()).filter(Boolean)),
+        ];
+        if (tx.projectId) projectIds.push(String(tx.projectId));
         if (code && ccIds.length > 0) {
           try {
-            const res = await glApi.contractorCashPayments(code, ccIds);
-            paid = Number(res.paid) || 0;
+            paid = await fetchContractorCashPaidAmount(code, ccIds, projectIds.length ? projectIds : undefined);
           } catch {
             paid = 0;
           }

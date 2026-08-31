@@ -230,6 +230,7 @@ export function uniqueBoqChapters(
 export type ContractorCashGlTx = {
   isDeleted?: boolean;
   costCenterId?: string | null;
+  projectId?: string | null;
   entries?: Array<{
     accountCode?: string;
     debit?: unknown;
@@ -283,21 +284,27 @@ function resolveContractorDebitCostCenter(
   return String(transactionCostCenterId ?? '').trim();
 }
 
+export type ContractorCashPaymentOptions = {
+  /** Scope unallocated (no-CC) payments that carry a projectId. */
+  projectIds?: string[];
+};
+
 /**
- * المسدد = Σ debit lines on the contractor leaf for the IPC cost center(s),
- * only when the same journal credits a cash source (121… or 21601…).
- *
- * Per-line cost center (not “any line in the journal”) so a split payment
- * across two contracts does not bleed into the wrong IPC.
- * Prefer `glApi.contractorCashPayments` in the UI (server aggregates full history).
+ * المسدد = Σ cash debit lines on the contractor leaf:
+ * - CC matches IPC cost center(s), or
+ * - no CC (typical bank transfer without contract) — counted once; if the journal
+ *   has projectId and projectIds were passed, project must match.
+ * Prefer `glApi.contractorCashPayments` in the UI.
  */
 export function sumContractorCashPaymentsFromGl(
   txs: unknown,
   supplierAccountCode: string,
   costCenterIds: string[],
+  options?: ContractorCashPaymentOptions,
 ): number {
   const code = String(supplierAccountCode || '').trim();
   const centers = new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean));
+  const projects = new Set((options?.projectIds ?? []).map((id) => String(id).trim()).filter(Boolean));
   if (!code || centers.size === 0) return 0;
   let total = 0;
   for (const tx of asGlTransactionList(txs)) {
@@ -312,7 +319,12 @@ export function sumContractorCashPaymentsFromGl(
       const debit = glMoney(e.debit);
       if (debit <= 0) continue;
       const cc = resolveContractorDebitCostCenter(e, tx.costCenterId);
-      if (!cc || !centers.has(cc)) continue;
+      if (cc) {
+        if (centers.has(cc)) total += debit;
+        continue;
+      }
+      const txProject = String(tx.projectId ?? '').trim();
+      if (txProject && projects.size > 0 && !projects.has(txProject)) continue;
       total += debit;
     }
   }

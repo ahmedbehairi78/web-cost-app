@@ -13,7 +13,7 @@ describe('contractorCashPayments', () => {
     expect(isCashPaymentSourceAccount('21102005')).toBe(false);
   });
 
-  it('sums only contractor debit lines for the requested cost center', () => {
+  it('sums contractor debit lines for cost center and unallocated bank transfers', () => {
     const txs = [
       {
         costCenterId: 'c1',
@@ -45,7 +45,7 @@ describe('contractorCashPayments', () => {
         ],
       },
       {
-        // split payment across two centers in one journal — count only c1 line
+        // split payment — only c1 line
         costCenterId: null,
         entries: [
           { accountCode: '21102005', debit: 300, credit: 0, costCenterId: 'c1' },
@@ -53,14 +53,47 @@ describe('contractorCashPayments', () => {
           { accountCode: '12101001', debit: 0, credit: 400 },
         ],
       },
+      {
+        // bank transfer with no cost center (common) — still المسدد
+        costCenterId: null,
+        projectId: null,
+        entries: [
+          { accountCode: '21102005', debit: 500, credit: 0 },
+          { accountCode: '12101001', debit: 0, credit: 500 },
+        ],
+      },
+      {
+        // other project — excluded when projectIds scoped
+        costCenterId: null,
+        projectId: 'p-other',
+        entries: [
+          { accountCode: '21102005', debit: 77, credit: 0 },
+          { accountCode: '12101001', debit: 0, credit: 77 },
+        ],
+      },
+      {
+        // same project, no CC — included when projectIds = [p1]
+        costCenterId: null,
+        projectId: 'p1',
+        entries: [
+          { accountCode: '21102005', debit: 25, credit: 0 },
+          { accountCode: '12101001', debit: 0, credit: 25 },
+        ],
+      },
     ];
 
-    const c1 = sumContractorCashPaymentsFromJournals(txs, '21102005', ['c1']);
-    expect(c1.paid).toBe(1050); // 400+150+200+300
+    const c1 = sumContractorCashPaymentsFromJournals(txs, '21102005', ['c1'], {
+      projectIds: ['p1'],
+    });
+    // allocated: 400+150+200+300 = 1050; unallocated: 500+25 = 525; not 77
+    expect(c1.paid).toBe(1575);
     expect(c1.byCostCenter.c1).toBe(1050);
+    expect(c1.unallocated).toBe(525);
 
-    const both = sumContractorCashPaymentsFromJournals(txs, '21102005', ['c1', 'c2']);
-    expect(both.paid).toBe(1150);
+    const both = sumContractorCashPaymentsFromJournals(txs, '21102005', ['c1', 'c2'], {
+      projectIds: ['p1'],
+    });
     expect(both.byCostCenter.c2).toBe(100);
+    expect(both.paid).toBe(1675);
   });
 });

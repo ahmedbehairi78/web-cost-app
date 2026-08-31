@@ -289,6 +289,7 @@ function buildGlTransactionsQuery(params: GlTransactionsQuery): string {
 export type ContractorCashPaymentsResult = {
   paid: number;
   byCostCenter: Record<string, number>;
+  unallocated?: number;
   accountCode: string;
 };
 
@@ -299,12 +300,17 @@ export const glApi = {
     apiClient.get<Transaction[]>(`/gl/transactions?${buildGlTransactionsQuery(params)}`),
   /**
    * المسدد — server aggregates cash Dr on contractor leaf for cost centers
-   * (bank / transfer / cheque ISS / cash / custody). Prefer over client-side GL scan.
+   * (bank / transfer / cheque ISS / cash / custody), including unallocated (no-CC) payments.
    */
-  contractorCashPayments: (accountCode: string, costCenterIds: string[]) => {
+  contractorCashPayments: (
+    accountCode: string,
+    costCenterIds: string[],
+    opts?: { projectIds?: string[] },
+  ) => {
     const q = new URLSearchParams();
     q.set('accountCode', accountCode);
     q.set('costCenterIds', costCenterIds.filter(Boolean).join(','));
+    if (opts?.projectIds?.length) q.set('projectIds', opts.projectIds.filter(Boolean).join(','));
     return apiClient.get<ContractorCashPaymentsResult>(`/gl/contractor-cash-payments?${q.toString()}`);
   },
   getTransaction: (id: string) => apiClient.get<Transaction>(`/gl/transactions/${id}`),
