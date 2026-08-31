@@ -1,4 +1,5 @@
 import { roundMoney } from './money';
+import { transactionMatchesCostCenterFilter } from './costCenterAttribution';
 
 /** Subcontractor service classification (still COA 21102). */
 
@@ -227,52 +228,74 @@ export function uniqueBoqChapters(
     .map(([code, name]) => ({ code, name }));
 }
 
-/** Bank 12101… or cash/custody 12102… — cash source of a contractor payment. */
-export function isContractorCashPaymentSourceCode(code: string): boolean {
-  const c = String(code || '').trim();
-  return c.startsWith('12101') || c.startsWith('12102');
-}
-
 export type ContractorCashGlTx = {
   isDeleted?: boolean;
   costCenterId?: string | null;
   entries?: Array<{
     accountCode?: string;
-    debit?: number;
-    credit?: number;
+    debit?: unknown;
+    credit?: unknown;
     costCenterId?: string | null;
   }>;
 };
 
+/** Bank/cash 121… or issued-cheque clearing 21601… — cash-like payment to a contractor. */
+export function isContractorCashPaymentSourceCode(code: string): boolean {
+  const c = String(code || '').trim();
+  if (c.startsWith('121')) return true;
+  if (c.startsWith('21601')) return true;
+  return false;
+}
+
+function glMoney(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : 0;
+  }
+  if (value && typeof value === 'object' && typeof (value as { toNumber?: () => number }).toNumber === 'function') {
+    const n = Number((value as { toNumber: () => number }).toNumber());
+    return Number.isFinite(n) ? n : 0;
+  }
+  return 0;
+}
+
+/** GL list endpoints return an array; tolerate a wrapped `{ data }` payload. */
+export function asGlTransactionList(raw: unknown): ContractorCashGlTx[] {
+  if (Array.isArray(raw)) return raw as ContractorCashGlTx[];
+  if (raw && typeof raw === 'object') {
+    const o = raw as { data?: unknown; items?: unknown };
+    if (Array.isArray(o.data)) return o.data as ContractorCashGlTx[];
+    if (Array.isArray(o.items)) return o.items as ContractorCashGlTx[];
+  }
+  return [];
+}
+
 /**
- * المسدد: Dr on the contractor leaf in matching cost centers, only when the same
- * journal credits a bank (12101…) or cash/custody fund (12102…) — covers bank
- * payments, cash-fund payments, and custody settlements that settle the contractor.
+ * المسدد from the contractor's GL account (same reading as the account statement):
+ * Dr on the contractor leaf, in journals that match the IPC cost center (header or any line),
+ * whose credit is bank/cash (121…) or issued cheques (21601…) or custody (12102…).
  */
 export function sumContractorCashPaymentsFromGl(
-  txs: ContractorCashGlTx[],
+  txs: unknown,
   supplierAccountCode: string,
   costCenterIds: string[],
 ): number {
   const code = String(supplierAccountCode || '').trim();
-  const centers = new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean));
-  if (!code || centers.size === 0) return 0;
+  const centers = [...new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean))];
+  if (!code || centers.length === 0) return 0;
   let total = 0;
-  for (const tx of txs) {
+  for (const tx of asGlTransactionList(txs)) {
     if (tx.isDeleted) continue;
     const entries = tx.entries ?? [];
     const hasCashSource = entries.some(
-      (e) => Number(e.credit) > 0 && isContractorCashPaymentSourceCode(String(e.accountCode || '')),
+      (e) => glMoney(e.credit) > 0 && isContractorCashPaymentSourceCode(String(e.accountCode || '')),
     );
     if (!hasCashSource) continue;
-    const headerCc = String(tx.costCenterId || '').trim();
+    if (!centers.some((id) => transactionMatchesCostCenterFilter(tx, id))) continue;
     for (const e of entries) {
       if (String(e.accountCode || '').trim() !== code) continue;
-      const debit = Number(e.debit) || 0;
-      if (debit <= 0) continue;
-      const lineCc = String(e.costCenterId || headerCc).trim();
-      if (!centers.has(lineCc)) continue;
-      total += debit;
+      total += glMoney(e.debit);
     }
   }
   return roundMoney(total);

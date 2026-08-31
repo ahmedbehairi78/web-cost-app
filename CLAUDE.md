@@ -1001,10 +1001,10 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 | المجال | ملخص |
 |--------|------|
-| **القاعدة** | المسدد = مجموع **مدين** حساب المقاول (`21102…`) عندما **نفس القيد** دائن بنك `12101…` أو صندوق/عهدة `12102…` (تسوية العهدة = دائن 12102) و`costCenterId` = عقد المستخلص |
+| **القاعدة** | المسدد = مجموع **مدين** حساب المقاول في قيود تطابق مركز التكلفة (رأس القيد أو أي سطر) ودائنها بنك/صندوق `121…` **أو شيك صادر `21601…`** (ترحيل ISS) أو تسوية عهدة |
 | **لا تقدير** | `computeServiceIpcCertificateSummary` يستخدم `actualPreviousPayments` أو **صفر** — لا يحسب من `previousQty×rate` |
 | **دالة** | `sumContractorCashPaymentsFromGl` + `resolveContractorAccountCode` في `serviceContractor.ts` |
-| **لا تراجع** | لا `paidToDate > 0 ? … : undefined` — صفر حركة نقدية = مسدد صفر |
+| **لا تراجع** | لا تشترط مركز التكلفة على سطر المقاول وحده (حركات البنك/الشيك تخزّنه في رأس القيد) · لا تستبعد `21601` |
 
 ```powershell
 npm run test -- src/lib/serviceContractor.test.ts
