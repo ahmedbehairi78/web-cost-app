@@ -1,5 +1,27 @@
 import { roundMoney } from './money';
-import { transactionMatchesCostCenterFilter } from './costCenterAttribution';
+
+/**
+ * Local copy of cost-center matching (header or any journal line).
+ * Do **not** import `costCenterAttribution` from this file: print/GL chunks already
+ * load that module, and a second edge (`serviceContractor` → attribution) created a
+ * Vite circular chunk that crashed app boot after login (default module = ledger).
+ */
+function journalMatchesCostCenter(
+  transaction: {
+    costCenterId?: string | null;
+    entries?: Array<{ costCenterId?: string | null }>;
+  },
+  contractOrCenterId: string,
+): boolean {
+  const target = String(contractOrCenterId).trim();
+  if (!target) return true;
+  if (String(transaction.costCenterId ?? '').trim() === target) return true;
+  return (transaction.entries ?? []).some((e) => {
+    const line = String(e.costCenterId ?? '').trim();
+    if (line) return line === target;
+    return String(transaction.costCenterId ?? '').trim() === target;
+  });
+}
 
 /** Subcontractor service classification (still COA 21102). */
 
@@ -292,7 +314,7 @@ export function sumContractorCashPaymentsFromGl(
       (e) => glMoney(e.credit) > 0 && isContractorCashPaymentSourceCode(String(e.accountCode || '')),
     );
     if (!hasCashSource) continue;
-    if (!centers.some((id) => transactionMatchesCostCenterFilter(tx, id))) continue;
+    if (!centers.some((id) => journalMatchesCostCenter(tx, id))) continue;
     for (const e of entries) {
       if (String(e.accountCode || '').trim() !== code) continue;
       total += glMoney(e.debit);

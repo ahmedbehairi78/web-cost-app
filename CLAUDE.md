@@ -995,6 +995,24 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — إقلاع التطبيق بعد ربط المسدد بمركز التكلفة ✅ (2026-08-31)
+
+> **جلسة 2026-08-31:** بعد استيراد `transactionMatchesCostCenterFilter` داخل `serviceContractor.ts` فشل الإقلاع بعد الدخول (الموديول الافتراضي = دفتر اليومية).
+
+| المجال | ملخص |
+|--------|------|
+| **السبب** | دفتر اليومية يسحب معاينة الطباعة → `reportDocument` → `ipcPrintData` → `serviceContractor`، ويسحب أيضاً `glBilingual` → `costCenterAttribution`. الحافة الجديدة `serviceContractor` → `costCenterAttribution` كوّنت دورة أجزاء Vite (`Cannot access … before initialization`) |
+| **الإصلاح** | مطابقة مركز التكلفة **محلياً** في `serviceContractor.ts` — **لا** تستورد `costCenterAttribution` من هذا الملف |
+| **المسدد** | كما هو: رأس القيد أو أي سطر + دائن `121…` / `21601…` |
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts src/lib/costCenterAttribution.test.ts
+```
+
+**لا تراجع:** لا تعِد `import { transactionMatchesCostCenterFilter } from './costCenterAttribution'` داخل `serviceContractor.ts`.
+
+---
+
 ## 🔴 HANDOFF — المسدد من حركات نقدية فقط (لا أعمال سابقة) ✅ (2026-08-30)
 
 > **جلسة 2026-08-30 مساءً:** المسدد في ملخص مستخلص الخدمة ومقاول الباطن كان يظهر إجمالي الأعمال السابقة لأن `paidToDate > 0 ? paidToDate : undefined` يُسقط إلى تقدير `previousWorks + VAT − محتجزات`.
