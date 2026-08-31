@@ -12,7 +12,22 @@ export type ServiceIpcNumberPeer = {
   supplierAccountId?: string | null;
   supplierId?: string | null;
   date?: string | null;
+  /** When set, only approved peers feed the sequence (draft/submitted must not consume numbers). */
+  status?: string | null;
+  transactionId?: string | null;
+  isDeleted?: boolean | null;
 };
+
+/** Certificate number is reserved for approved IPCs only. */
+export function isApprovedIpcForNumbering(row: {
+  status?: string | null;
+  transactionId?: string | null;
+  isDeleted?: boolean | null;
+}): boolean {
+  if (row.isDeleted) return false;
+  if (String(row.status || '').toLowerCase() === 'approved') return true;
+  return Boolean(String(row.transactionId || '').trim());
+}
 
 function normalizeSupplierKey(name: string): string {
   return String(name || '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -76,6 +91,9 @@ export function nextServiceIpcNumberFromExisting(
   const nameKey = normalizeSupplierKey(target.supplierName);
   let max = 0;
   for (const row of existing) {
+    // Prefer explicit approval flags when present; legacy peers without status still count.
+    const hasApprovalMeta = row.status != null || row.transactionId != null || row.isDeleted != null;
+    if (hasApprovalMeta && !isApprovedIpcForNumbering(row)) continue;
     const parsed = parseServiceIpcNumber(String(row.referenceNumber || ''));
     if (!parsed || parsed.year !== year) continue;
     const sameId = supplierKey(row) === key;

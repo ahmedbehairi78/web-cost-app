@@ -27,11 +27,12 @@ export const EXCEL_NAV_FIELD_SELECTOR = [
   ':not([type=button]):not([type=submit]):not([type=reset]):not([type=image])',
   ':not([type=range]):not([type=color]):not([type=date]):not([type=datetime-local])',
   ':not([type=month]):not([type=week]):not([type=time])',
-  ':not([disabled]):not([readonly]):not([data-excel-nav=off])',
-  ', textarea:not([disabled]):not([readonly]):not([data-excel-nav=off])',
+  ':not([disabled]):not([readonly]):not([data-excel-nav=off]):not([data-excel-nav=managed])',
+  ', textarea:not([disabled]):not([readonly]):not([data-excel-nav=off]):not([data-excel-nav=managed])',
+  ', select:not([disabled]):not([data-excel-nav=off]):not([data-excel-nav=managed])',
 ].join('');
 
-export type ExcelNavField = HTMLInputElement | HTMLTextAreaElement;
+export type ExcelNavField = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 
 export type RectLike = {
   left: number;
@@ -43,32 +44,57 @@ export type RectLike = {
 };
 
 export function isExcelNavField(el: EventTarget | null): el is ExcelNavField {
-  if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return false;
-  if (el.disabled || el.readOnly) return false;
-  if (el.dataset.excelNav === 'off') return false;
-  if (el instanceof HTMLTextAreaElement) return true;
-  const type = (el.getAttribute('type') || 'text').toLowerCase();
+  if (el == null || typeof el !== 'object') return false;
+  const node = el as Partial<ExcelNavField> & {
+    tagName?: string;
+    disabled?: boolean;
+    readOnly?: boolean;
+    dataset?: DOMStringMap;
+    getAttribute?: (name: string) => string | null;
+  };
+  const tag = String(node.tagName || '').toUpperCase();
+  const isInput = tag === 'INPUT'
+    || (typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement);
+  const isTextarea = tag === 'TEXTAREA'
+    || (typeof HTMLTextAreaElement !== 'undefined' && el instanceof HTMLTextAreaElement);
+  const isSelect = tag === 'SELECT'
+    || (typeof HTMLSelectElement !== 'undefined' && el instanceof HTMLSelectElement);
+  if (!isInput && !isTextarea && !isSelect) return false;
+  if (node.disabled) return false;
+  if ((isInput || isTextarea) && node.readOnly) return false;
+  if (node.dataset?.excelNav === 'off' || node.dataset?.excelNav === 'managed') return false;
+  if (isSelect || isTextarea) return true;
+  const type = (node.getAttribute?.('type') || (node as HTMLInputElement).type || 'text').toLowerCase();
   return SELECTABLE_INPUT_TYPES.has(type);
 }
 
 export function isExcelSelectableField(el: EventTarget | null): el is ExcelNavField {
   if (!isExcelNavField(el)) return false;
+  if (el instanceof HTMLSelectElement) return false; // selects don't use select-all
   if (el.dataset.excelSelect === 'off') return false;
   return true;
 }
 
 export function isNumberInput(el: ExcelNavField): boolean {
-  const typed = el as HTMLInputElement;
-  if (typeof typed.type === 'string' && typed.type.length > 0) {
-    return typed.type.toLowerCase() === 'number';
+  // Duck-type: vitest/node mocks are not always real HTMLInputElement instances
+  if (typeof HTMLInputElement !== 'undefined' && el instanceof HTMLInputElement) {
+    const typed = el;
+    if (typeof typed.type === 'string' && typed.type.length > 0) {
+      return typed.type.toLowerCase() === 'number';
+    }
   }
   if (typeof el.getAttribute === 'function') {
     return (el.getAttribute('type') || '').toLowerCase() === 'number';
   }
-  return false;
+  const maybeType = (el as { type?: string }).type;
+  return typeof maybeType === 'string' && maybeType.toLowerCase() === 'number';
 }
 
 export function fieldHasFullSelection(el: ExcelNavField): boolean {
+  if (typeof HTMLSelectElement !== 'undefined' && el instanceof HTMLSelectElement) return true;
+  if (typeof (el as HTMLSelectElement).selectedIndex === 'number' && !('selectionStart' in el)) {
+    return true;
+  }
   const len = el.value?.length ?? 0;
   if (typeof el.selectionStart !== 'number' || typeof el.selectionEnd !== 'number') {
     // number inputs in some browsers report null selection — treat as fully selected
@@ -291,6 +317,7 @@ function listScopeNavFields(scope: Element, except: ExcelNavField): ExcelNavFiel
 function focusAndSelect(el: ExcelNavField): void {
   requestAnimationFrame(() => {
     el.focus();
+    if (el instanceof HTMLSelectElement) return;
     try {
       el.select();
     } catch {
@@ -360,6 +387,13 @@ function handleNavKeyDown(e: KeyboardEvent): void {
 
   // Explicitly managed grids (SpreadsheetCellInput) own their arrow keys
   if (el.dataset.excelNav === 'managed') return;
+
+  // In tables, arrow keys move between cells (Excel) — do not cycle <select> options
+  if (el instanceof HTMLSelectElement && el.closest('table') && ARROW_KEYS.has(e.key)) {
+    if (tryTableNavigation(e, el)) return;
+    e.preventDefault();
+    return;
+  }
 
   if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !shouldNavigateHorizontally(el, e.key)) {
     return;

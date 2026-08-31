@@ -11,7 +11,6 @@ import { displayLocale } from '../../lib/numberLocale';
 import { useLanguage } from '../../context/LanguageContext';
 import { JournalPreviewModal } from '../gl/JournalPreviewModal';
 import { SearchableSelect } from '../ui/SearchableSelect';
-import { SpreadsheetCellInput } from '../ui/SpreadsheetCellInput';
 import { ManualHelpButton } from '../help/ManualHelpButton';
 import {
   CostsPurchaseSidebar,
@@ -217,7 +216,6 @@ export function ServiceIpcPanel({
   const [showSupplierModal, setShowSupplierModal] = useState(false);
   const [preview, setPreview] = useState<{ entries: ReturnType<typeof buildServiceIpcEntries>; description: string } | null>(null);
   const previewConfirmed = useRef(false);
-  const gridRefs = useRef<(HTMLInputElement | null)[][]>([]);
 
   const [header, setHeader] = useState({
     supplierAccountId: '',
@@ -697,7 +695,6 @@ export function ServiceIpcPanel({
     theme === 'dark' ? 'bg-gray-900 border-gray-800' : 'bg-white border-gray-300',
   );
   const sectionTitleCls = 'text-xs font-bold uppercase tracking-wide text-gray-500';
-  const colCount = 8;
 
   const kindLabel = (k: string) => {
     if (k === 'labour') return t('service_kind_labour');
@@ -1025,13 +1022,14 @@ export function ServiceIpcPanel({
                       className={inputCls}
                       value={header.referenceNumber}
                       placeholder={t('service_ipc_ref_auto')}
-                      disabled={readOnly}
-                      onChange={(e) => setHeader((h) => ({ ...h, referenceNumber: e.target.value }))}
+                      readOnly
+                      disabled
+                      title={t('service_ipc_ref_auto')}
                     />
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
+                <div className="overflow-x-auto" data-excel-nav-scope>
                   <table className="w-full text-sm min-w-[56rem]">
                     <thead>
                       <tr className={theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}>
@@ -1101,16 +1099,14 @@ export function ServiceIpcPanel({
                               <input className={inputCls} disabled={readOnly} value={line.unit} onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx ? { ...r, unit: e.target.value } : r))} />
                             </td>
                             <td className="p-1 w-24">
-                              <SpreadsheetCellInput
+                              <input
                                 type="number"
                                 step="0.01"
-                                row={idx}
-                                col={0}
-                                rowCount={lines.length}
-                                colCount={colCount}
-                                gridRefs={gridRefs}
-                                variant="rate"
-                                theme={theme}
+                                className={cn(
+                                  inputCls,
+                                  'text-center font-mono',
+                                  theme === 'dark' ? 'text-green-400' : 'text-green-700',
+                                )}
                                 disabled={readOnly}
                                 value={line.rate || ''}
                                 onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx ? { ...r, rate: Number(e.target.value) || 0 } : r))}
@@ -1118,16 +1114,10 @@ export function ServiceIpcPanel({
                             </td>
                             <td className="p-1 w-20 text-center tabular-nums">{roundMoney2(line.previousQty)}</td>
                             <td className="p-1 w-24">
-                              <SpreadsheetCellInput
+                              <input
                                 type="number"
                                 step="0.01"
-                                row={idx}
-                                col={1}
-                                rowCount={lines.length}
-                                colCount={colCount}
-                                gridRefs={gridRefs}
-                                variant="qty"
-                                theme={theme}
+                                className={cn(inputCls, 'text-center font-mono')}
                                 disabled={readOnly}
                                 value={line.currentQty || ''}
                                 onChange={(e) => setLines((rows) => rows.map((r, i) => i === idx ? { ...r, currentQty: Number(e.target.value) || 0 } : r))}

@@ -33,11 +33,15 @@ describe('serviceIpcNumber', () => {
     expect(formatServiceIpcNumber('محمد الشيخ', 1, 2026)).toBe('مستخلص محمد الشيخ-001-2026');
   });
 
-  it('sequences per supplier and year', () => {
+  it('sequences per supplier and year from approved peers only', () => {
     const peers = [
-      { referenceNumber: 'مستخلص محمد الشيخ-001-2026', supplierName: 'محمد الشيخ', date: '2026-03-01' },
-      { referenceNumber: 'مستخلص تامر يسري-001-2026', supplierName: 'تامر يسري', date: '2026-04-01' },
-      { referenceNumber: 'مستخلص محمد الشيخ-002-2025', supplierName: 'محمد الشيخ', date: '2025-12-01' },
+      { referenceNumber: 'مستخلص محمد الشيخ-001-2026', supplierName: 'محمد الشيخ', date: '2026-03-01', status: 'approved', transactionId: 't1' },
+      { referenceNumber: 'مستخلص تامر يسري-001-2026', supplierName: 'تامر يسري', date: '2026-04-01', status: 'approved', transactionId: 't2' },
+      { referenceNumber: 'مستخلص محمد الشيخ-002-2025', supplierName: 'محمد الشيخ', date: '2025-12-01', status: 'approved', transactionId: 't3' },
+      // Draft / submitted must not consume the next number
+      { referenceNumber: 'مستخلص محمد الشيخ-009-2026', supplierName: 'محمد الشيخ', date: '2026-08-01', status: 'submitted', transactionId: null },
+      { referenceNumber: 'مستخلص محمد الشيخ-008-2026', supplierName: 'محمد الشيخ', date: '2026-07-01', status: 'draft', transactionId: null },
+      { referenceNumber: 'مستخلص محمد الشيخ-007-2026', supplierName: 'محمد الشيخ', date: '2026-06-01', status: 'draft', isDeleted: true },
     ];
     expect(
       nextServiceIpcNumberFromExisting(peers, { supplierName: 'محمد الشيخ', date: '2026-08-30' }),
@@ -48,5 +52,15 @@ describe('serviceIpcNumber', () => {
     expect(
       nextServiceIpcNumberFromExisting([], { supplierName: 'محمد الشيخ', date: '2026-01-15' }),
     ).toBe('مستخلص محمد الشيخ-001-2026');
+  });
+
+  it('legacy peers without status still count (back-compat)', () => {
+    const peers = [
+      { referenceNumber: 'مستخلص محمد الشيخ-001-2026', supplierName: 'محمد الشيخ', date: '2026-03-01' },
+      { referenceNumber: 'مستخلص محمد الشيخ-002-2026', supplierName: 'محمد الشيخ', date: '2026-04-01' },
+    ];
+    expect(
+      nextServiceIpcNumberFromExisting(peers, { supplierName: 'محمد الشيخ', date: '2026-08-30' }),
+    ).toBe('مستخلص محمد الشيخ-003-2026');
   });
 });

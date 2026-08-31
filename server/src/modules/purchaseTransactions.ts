@@ -11,7 +11,7 @@ import { createTransaction } from '../accounting/journal.js';
 import { buildSubcontractorIpcEntries } from '../accounting/subcontractorIpcJournal.js';
 import { buildServiceIpcEntries } from '../accounting/serviceIpcJournal.js';
 import { isServiceIpcKind, SERVICE_IPC_TYPE, type ServiceIpcLine } from '../lib/serviceContractor.js';
-import { needsServiceIpcNumber, nextServiceIpcNumberFromExisting } from '../lib/serviceIpcNumber.js';
+import { nextServiceIpcNumberFromExisting } from '../lib/serviceIpcNumber.js';
 import { syncBoqActualCostsForIpc, type IpcBoqLineInput } from '../accounting/boqActualFromSources.js';
 import {
   notifyServiceIpcResolved,
@@ -192,12 +192,21 @@ const SERVICE_IPC_NUMBER_SELECT = {
   supplierAccountId: true,
   supplierId: true,
   date: true,
+  status: true,
+  transactionId: true,
+  isDeleted: true,
 } as const;
 
 function ipcNumberPeerType(type: unknown): typeof SERVICE_IPC_TYPE | 'ipc' {
   return String(type ?? '') === 'ipc' ? 'ipc' : SERVICE_IPC_TYPE;
 }
 
+function isNumberedIpcType(type: unknown): boolean {
+  const t = String(type ?? '');
+  return t === SERVICE_IPC_TYPE || t === 'ipc';
+}
+
+/** Next certificate number from **approved** peers only (draft/submitted do not reserve a seq). */
 async function nextServiceIpcNumber(
   target: {
     type?: unknown;
@@ -209,7 +218,14 @@ async function nextServiceIpcNumber(
   client: DbLike = prisma,
 ): Promise<string> {
   const rows = await client.purchaseTransaction.findMany({
-    where: { type: ipcNumberPeerType(target.type) },
+    where: {
+      type: ipcNumberPeerType(target.type),
+      isDeleted: false,
+      OR: [
+        { status: 'approved' },
+        { transactionId: { not: null } },
+      ],
+    },
     select: SERVICE_IPC_NUMBER_SELECT,
   });
   return nextServiceIpcNumberFromExisting(rows, {
@@ -293,49 +309,6 @@ purchaseTransactionsRouter.get(
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     });
-    const missing = rows.filter((r) => needsServiceIpcNumber(r.type, r.referenceNumber));
-    if (missing.length > 0) {
-      const peersByType: Record<string, Array<{
-        referenceNumber: string | null;
-        supplierName: string | null;
-        supplierAccountId: string | null;
-        supplierId: string | null;
-        date: string | null;
-      }>> = { [SERVICE_IPC_TYPE]: [], ipc: [] };
-      for (const r of rows) {
-        const bucket = peersByType[ipcNumberPeerType(r.type)];
-        if (!bucket) continue;
-        bucket.push({
-          referenceNumber: r.referenceNumber,
-          supplierName: r.supplierName,
-          supplierAccountId: r.supplierAccountId,
-          supplierId: r.supplierId,
-          date: r.date,
-        });
-      }
-      for (const row of missing) {
-        const typeKey = ipcNumberPeerType(row.type);
-        const peers = peersByType[typeKey] ?? [];
-        const assigned = nextServiceIpcNumberFromExisting(peers, {
-          supplierName: row.supplierName || 'مورد',
-          supplierAccountId: row.supplierAccountId,
-          supplierId: row.supplierId,
-          date: row.date,
-        });
-        await prisma.purchaseTransaction.update({
-          where: { id: row.id },
-          data: { referenceNumber: assigned },
-        });
-        row.referenceNumber = assigned;
-        peersByType[typeKey] = peers.concat([{
-          referenceNumber: assigned,
-          supplierName: row.supplierName,
-          supplierAccountId: row.supplierAccountId,
-          supplierId: row.supplierId,
-          date: row.date,
-        }]);
-      }
-    }
     res.json(rows.map(serializePurchaseRow));
   }),
 );
@@ -596,14 +569,9 @@ purchaseTransactionsRouter.post(
       'manpowerLevyPct',
     ]);
     data.id = String(body.id || randomUUID());
-    if (needsServiceIpcNumber(data.type ?? body.type, data.referenceNumber)) {
-      data.referenceNumber = await nextServiceIpcNumber({
-        type: data.type ?? body.type,
-        supplierName: data.supplierName != null ? String(data.supplierName) : '',
-        supplierAccountId: data.supplierAccountId != null ? String(data.supplierAccountId) : null,
-        supplierId: data.supplierId != null ? String(data.supplierId) : null,
-        date: data.date != null ? String(data.date) : '',
-      });
+    // Certificate number is assigned only on approve — drafts must not consume the sequence.
+    if (isNumberedIpcType(data.type ?? body.type)) {
+      data.referenceNumber = '';
     }
     const created = await prisma.purchaseTransaction.create({ data: data as never });
     await upsertLinePayload(String(created.id), body);
@@ -672,18 +640,17 @@ purchaseTransactionsRouter.put(
         supplierAccountId: true,
         supplierId: true,
         date: true,
+        status: true,
+        transactionId: true,
       },
     });
     const nextType = data.type ?? existing?.type;
-    const nextRef = data.referenceNumber !== undefined ? data.referenceNumber : existing?.referenceNumber;
-    if (needsServiceIpcNumber(nextType, nextRef)) {
-      data.referenceNumber = await nextServiceIpcNumber({
-        type: nextType,
-        supplierName: data.supplierName != null ? String(data.supplierName) : existing?.supplierName,
-        supplierAccountId: data.supplierAccountId != null ? String(data.supplierAccountId) : existing?.supplierAccountId,
-        supplierId: data.supplierId != null ? String(data.supplierId) : existing?.supplierId,
-        date: data.date != null ? String(data.date) : existing?.date,
-      });
+    const alreadyApproved =
+      String(existing?.status || '').toLowerCase() === 'approved'
+      || Boolean(String(existing?.transactionId || '').trim());
+    // Keep approved certificate numbers; clear any draft number so rejected/deleted drafts do not burn the sequence.
+    if (isNumberedIpcType(nextType) && !alreadyApproved) {
+      data.referenceNumber = '';
     }
     const updated = await prisma.purchaseTransaction.update({
       where: { id: req.params.id },
@@ -840,7 +807,7 @@ purchaseTransactionsRouter.post(
         tx,
       );
 
-      const referenceNumber = needsServiceIpcNumber(row.type, row.referenceNumber)
+      const referenceNumber = isNumberedIpcType(row.type)
         ? await nextServiceIpcNumber(row, tx)
         : undefined;
 

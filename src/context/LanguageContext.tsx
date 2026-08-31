@@ -585,7 +585,7 @@ const translations: Record<Language, Record<string, string>> = {
     service_ipc_need_cost_center: 'كل بند بكمية حالية يحتاج مركز تكلفة (عقد)',
     service_ipc_saved: 'تم حفظ مستخلص الخدمة',
     service_ipc_preview: 'معاينة قيد مستخلص الخدمة',
-    service_ipc_ref_auto: 'يُنشأ تلقائياً: مستخلص المورد-001-2026',
+    service_ipc_ref_auto: 'يُنشأ تلقائياً عند الاعتماد: مستخلص المورد-001-2026',
     service_ipc_prev_works: 'الأعمال السابقة',
     service_ipc_curr_works: 'الأعمال الحالية',
     service_ipc_total_works: 'إجمالي الأعمال',
@@ -1590,7 +1590,7 @@ const translations: Record<Language, Record<string, string>> = {
       'اختر حساب المقاول من 21102…، مركز التكلفة/العقد، والتاريخ.',
     manual_costs_ipc_subcontractor_step_3_title: 'البنود والخصومات',
     manual_costs_ipc_subcontractor_step_3_body:
-      'أدخل كميات الفترة والنسب. الملخص أسفل البنود: سابق + حالي = إجمالي الأعمال. الضريبة ومحتجز الضمان والتأمينات (وأي محتجز آخر) على الإجمالي. الصافي − دفعة مقدمة إن وُجدت − المسدد سابقاً = المستحق. قيد الاعتماد يرحّل زيادة الفترة فقط. الرقم لكل مقاول وسنة (مستخلص الاسم-001-2026).',
+      'أدخل كميات الفترة والنسب. الملخص أسفل البنود: سابق + حالي = إجمالي الأعمال. الضريبة ومحتجز الضمان والتأمينات (وأي محتجز آخر) على الإجمالي. الصافي − دفعة مقدمة إن وُجدت − المسدد سابقاً = المستحق. قيد الاعتماد يرحّل زيادة الفترة فقط. الرقم لكل مقاول وسنة يُمنح عند الاعتماد فقط (مستخلص الاسم-001-2026) حتى لا يختل التسلسل عند رفض/حذف المسودة.',
     manual_costs_ipc_subcontractor_step_4_title: 'معاينة القيد',
     manual_costs_ipc_subcontractor_step_4_body:
       'عند الحفظ الأول تظهر معاينة القيد — راجع توازن المدين/الدائن ثم أكّد الترحيل.',
@@ -3199,7 +3199,7 @@ const translations: Record<Language, Record<string, string>> = {
     service_ipc_need_cost_center: 'Each line with current quantity needs a contract cost center',
     service_ipc_saved: 'Service IPC saved',
     service_ipc_preview: 'Service IPC journal preview',
-    service_ipc_ref_auto: 'Assigned automatically: مستخلص المورد-001-2026',
+    service_ipc_ref_auto: 'Assigned on approval: مستخلص المورد-001-2026',
     service_ipc_prev_works: 'Previous works',
     service_ipc_curr_works: 'Current works',
     service_ipc_total_works: 'Total works',
@@ -4206,7 +4206,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Select subcontractor from 21102… leaves, cost center/contract, and date.',
     manual_costs_ipc_subcontractor_step_3_title: 'Lines and deductions',
     manual_costs_ipc_subcontractor_step_3_body:
-      'Enter period quantities and rates. Summary below the lines: previous + current = total works. VAT and retentions apply on the total. Net − advance (if any) − previous payments = amount due. The approve journal posts the period increment only. Number is per subcontractor and year (مستخلص name-001-2026).',
+      'Enter period quantities and rates. Summary below the lines: previous + current = total works. VAT and retentions apply on the total. Net − advance (if any) − previous payments = amount due. The approve journal posts the period increment only. Certificate number is assigned on approval only (مستخلص name-001-2026) so rejected/deleted drafts do not burn the sequence.',
     manual_costs_ipc_subcontractor_step_4_title: 'Journal preview',
     manual_costs_ipc_subcontractor_step_4_body:
       'First save opens journal preview — verify Dr/Cr balance, then confirm posting.',
