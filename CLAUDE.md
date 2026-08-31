@@ -612,6 +612,8 @@ Shared helpers at top of file: `INVENTORY127_AGG_CODE` (= `PROJECT_WAREHOUSE_PAR
 
 ### Trial balance (ميزان المراجعة)
 
+- **Local (`VITE_DATA_BACKEND=local`):** **`GET /api/reports/trial-balance?periodStart=&projectId=&contractId=`** — full-history SQL aggregate (`server/src/lib/glReportBalances.ts`). Includes **`fiscal_pl_close` / `YE-PL-*`**; excludes **`fiscal_opening` / `OPEN-*`**. Do **not** build TB from capped `glApi.transactions(…, 5000)`.
+- **Cloud:** still client-side from capped Firestore listener.
 - **`periodStart`** splits opening vs in-period movements; closing = opening + movements.
 - All **`127…`** leaf accounts are **rolled into one row** (code **`127`**, label *مخزون المشاريع*). Individual `12701001`, etc. do not appear.
 - **Closing balances** on that row: **net only** — `closingNet = Σ closingDebit − Σ closingCredit`, then one side (Dr or Cr) via `splitNetToDebitCredit`. Opening/movements still show separate Dr/Cr column totals.
@@ -620,12 +622,15 @@ Shared helpers at top of file: `INVENTORY127_AGG_CODE` (= `PROJECT_WAREHOUSE_PAR
 
 ### Balance sheet (الميزانية العمومية)
 
+- **Local:** **`GET /api/reports/balance-sheet`** — full-history nets + summary (same exclude/include rules as TB). `Reports.tsx` uses `byCode` for leaf rows and `summary` for totals.
+- **Cloud:** capped client GL (legacy).
 - **Presentation order** follows IFRS/Arabic: non-current assets → current assets; non-current liabilities → current liabilities → equity.
 - **Charts** (`showCharts`) default `false`; **analytical** (`showAnalytical`) toggles leaf rows inside `BSGroup` prefixes — **not** for `127` (always one summary line).
 - **Project inventory (`127`)**: single line under current assets (after `126`): net Dr/Cr from `netDebit('127')` — not per-project warehouse leaves.
 - **Equity** = **prefix `3` only** (`311`–`314` groups incl. **`314`** partners' current / جاري الشركاء). **`totalEquity` does not include unclosed `4`/`5`** — period result stays on the **income statement** tab until closing to retained earnings (`313…`).
 - **Balance check**: `totalAssets` vs `totalLiab + totalEquity`. If out of balance, a **footer note** (below working capital) shows the gap; when `|balanceGap − unclosedPeriodPl| < 1`, explains that the gap matches open revenue/expense accounts (not a loss in equity).
 - Do **not** re-add `netProfitForBS` into equity totals to “force” balance — that misstates partner capital vs unclosed P&L.
+- After a successful income close, class `4`/`5` should be ~0 on this tab and `313…` should absorb the period result — if the UI still showed a large gap before this fix, the cause was the **5000-tx client cap**, not a failed YE-PL post.
 
 ### Print (طباعة) — نظام المستندات الموحّد (2026-07-31)
 
@@ -992,6 +997,26 @@ Golden path: open any **`?`** → preview → «فتح الشرح الكامل»
 **Sidebar / TopNav footer (all authenticated users):** General settings · **Electron: new desktop window** (`requestOpenNewWindow`, Ctrl+N) · calculator · manual · language · logout. New OS window shares **`persist:webcost`**; single-module policy still applies **per OS window**.
 
 Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-loads **`GeneralSettingsLazy`** for both `display` and `general`. Excluded from **`STARTUP_MODULES`**.
+
+---
+
+## 🔴 HANDOFF — ميزان المراجعة / الميزانية من تجميع خادمي كامل ✅ (2026-09-01)
+
+> **جلسة 2026-09-01:** بعد إقفال قائمة الدخل (`YE-PL`) واعتماد الميزانية كانت التقارير تبدو غير متأثرة / غير متزنة لأن التبويبات كانت تبني الأرصدة من أحدث **5000** قيد فقط.
+
+| المجال | ملخص |
+|--------|------|
+| **API** | `GET /api/reports/trial-balance?periodStart=` · `GET /api/reports/balance-sheet` — SQL كامل؛ يشمل `fiscal_pl_close`؛ يستبعد `fiscal_opening` / `OPEN-*` |
+| **منطق** | `server/src/lib/glReportBalances.ts` |
+| **UI** | `Reports.tsx` تبويبا trial/balance في local → API؛ لا `glApi.transactions` المحدود لهذين التبويبين |
+| **قائمة الدخل** | ما زالت تستبعد قيد الإقفال عمداً (أرقام تشغيلية ظاهرة) |
+
+```powershell
+npm run test -- server/src/lib/glReportBalances.test.ts
+# أعد تشغيل API → تقارير → ميزان المراجعة / الميزانية العمومية
+```
+
+**لا تراجع:** لا تُرجع TB/BS المحلي إلى تجميع من قائمة قيود محدودة العدد.
 
 ---
 

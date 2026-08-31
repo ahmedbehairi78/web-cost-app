@@ -349,6 +349,7 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 ### 6.1 المحاسبة والمال
 
 - **قائمة الدخل (تقارير):** هيكل يعكس قيد الإقفال — إيرادات `4` − تكاليف عقود `51` = مجمل ربح − عمومية/إدارية `52` (− تمويلية `53`) = ربح قبل الضريبة. استبعاد `fiscal_pl_close` / `YE-PL-*` من التجميع فقط (تبقى في الميزانية/ميزان المراجعة). وضع تحليلي عبر `showAnalytical`. أرصدة الأوراق عبر **`buildIncomeStatementTotals`** / **`buildIncomeStatementLeafBalances`** — كل أسطر القيد لنفس الكود. لا تستخدم `.find()` على `entries`.
+- **ميزان المراجعة + الميزانية (local, 2026-09-01):** **`GET /api/reports/trial-balance`** و **`GET /api/reports/balance-sheet`** — تجميع SQL لكل القيود (`glReportBalances.ts`). يشمل إقفال الدخل؛ يستبعد القيد الافتتاحي. **لا** تبنِ هذين التبويبين من `glApi.transactions` بحد 5000.
 - **ميزانية مقابل فعلي (local):** الفعلي (مشروع/عقد/بند) من **`GET /api/reports/boq-cost-breakdown`** فقط — لا تخلط مع `projectStats.costs` (GL) لأن إقفال الدخل وOHA يفسدان المقارنة.
 - **لوحة التحكم «غير موزّع»:** مصروف بلا مركز عقد − ائتمان OHA داخل فلتر التاريخ. إقفال الدخل/قفل الفترة لا يصفّر الصف. تاريخ قيد OHA = يوم الإغلاق داخل الربع (`resolveOverheadCloseJournalDate`) — إن أُغلق ربع مبكراً سابقاً بتاريخ `periodEnd` المستقبلي: `npm run local:fix-oha-dates`.
 - **تاريخ إثبات القيد اليدوي:** `stampBusinessToday` → تقويم الأعمال `Africa/Cairo` من الخادم (`GET /api/gl/business-today` / `BUSINESS_TIMEZONE`) — لا تاريخ الجهاز. ترتيب دفتر اليومية حسب **`createdAt`**.

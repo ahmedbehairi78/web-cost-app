@@ -334,7 +334,25 @@ export const glApi = {
 
 export const reportsApi = {
   dashboard: () => apiClient.get('/reports/dashboard'),
-  trialBalance: () => apiClient.get('/reports/trial-balance'),
+  trialBalance: (params: {
+    periodStart?: string;
+    projectId?: string;
+    contractId?: string;
+  } = {}) =>
+    apiClient.get<ReportsTrialBalanceResponse>(
+      `/reports/trial-balance${buildQuery({
+        periodStart: params.periodStart,
+        projectId: params.projectId && params.projectId !== 'all' ? params.projectId : undefined,
+        contractId: params.contractId && params.contractId !== 'all' ? params.contractId : undefined,
+      })}`,
+    ),
+  balanceSheet: (params: { projectId?: string; contractId?: string } = {}) =>
+    apiClient.get<ReportsBalanceSheetResponse>(
+      `/reports/balance-sheet${buildQuery({
+        projectId: params.projectId && params.projectId !== 'all' ? params.projectId : undefined,
+        contractId: params.contractId && params.contractId !== 'all' ? params.contractId : undefined,
+      })}`,
+    ),
   boqCostBreakdown: (params: {
     projectId?: string;
     contractId?: string;
@@ -349,6 +367,53 @@ export const reportsApi = {
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
     })}`),
+};
+
+export type ReportsTrialBalanceRow = {
+  accountCode: string;
+  openingNet: number;
+  openingDebit: number;
+  openingCredit: number;
+  debitMovements: number;
+  creditMovements: number;
+  closingNet: number;
+  closingDebit: number;
+  closingCredit: number;
+};
+
+export type ReportsTrialBalanceResponse = {
+  periodStart: string;
+  projectId: string;
+  contractId: string;
+  source: string;
+  rows: ReportsTrialBalanceRow[];
+};
+
+export type ReportsBalanceSheetSummary = {
+  currentAssets: number;
+  nonCurrentAssets: number;
+  totalAssets: number;
+  currentLiab: number;
+  nonCurrentLiab: number;
+  totalLiab: number;
+  equityAccounts: number;
+  allRevenue: number;
+  allCosts: number;
+  unclosedPeriodPl: number;
+  totalEquity: number;
+  totalLE: number;
+  balanceGap: number;
+  inventory127Net: number;
+  isBalanced: boolean;
+};
+
+export type ReportsBalanceSheetResponse = {
+  projectId: string;
+  contractId: string;
+  source: string;
+  byCode: Record<string, number>;
+  summary: ReportsBalanceSheetSummary;
+  rowCount?: number;
 };
 
 export type BoqCostLevel = 'project' | 'contract' | 'boq_item';

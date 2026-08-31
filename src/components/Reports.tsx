@@ -24,7 +24,21 @@ import {
   transactionMatchesProjectFilter,
 } from '../lib/incomeStatementGl';
 import { resolveEntryCostCenterId, transactionMatchesCostCenterFilter } from '../lib/costCenterAttribution';
-import { inventoryApi, glApi, projectsApi, contractsApi, boqApi, billingApi, chartOfAccountsApi, costCentersApi, reportsApi, settingsApi, type BoqCostLevel } from '../services/local/modulesApi';
+import {
+  inventoryApi,
+  glApi,
+  projectsApi,
+  contractsApi,
+  boqApi,
+  billingApi,
+  chartOfAccountsApi,
+  costCentersApi,
+  reportsApi,
+  settingsApi,
+  type BoqCostLevel,
+  type ReportsBalanceSheetResponse,
+  type ReportsTrialBalanceResponse,
+} from '../services/local/modulesApi';
 import { buildCostCenterTypeMap, computeDirectIndirectCostSplit } from '../lib/costCenterCostSplit';
 import { SearchableSelect } from './ui/SearchableSelect';
 import { 
@@ -421,7 +435,14 @@ export function Reports() {
 
   // Conditional flags for live listeners (liquidity tab loads billing/GL when charts are on)
   const needBillings  = activeReport === 'income' || activeReport === 'budget' || activeReport === 'time' || (activeReport === 'liquidity' && showCharts);
-  const needTx        = activeReport !== 'time' && activeReport !== 'costs' && (activeReport !== 'liquidity' || showCharts);
+  /** Local TB/BS use full-history server aggregates — skip capped GL list for those tabs. */
+  const needServerGlBalances =
+    isLocalBackend && (activeReport === 'trial' || activeReport === 'balance');
+  const needTx =
+    !needServerGlBalances &&
+    activeReport !== 'time' &&
+    activeReport !== 'costs' &&
+    (activeReport !== 'liquidity' || showCharts);
 
   const { data: fsProjects, loading: fsProjectsLoading } = useFirestoreQuery<Project>(
     () => (!isLocalBackend ? query(collection(db, 'projects'), where('isDeleted', '==', false)) : null),
@@ -558,9 +579,6 @@ export function Reports() {
     if (apiTxError) apiLoadErrorToast(apiTxError, language, language === 'ar' ? 'قيود اليومية' : 'journal entries');
   }, [apiTxError, language]);
 
-  const loading = isLocalBackend
-    ? apiProjectsLoading || apiContractsLoading || apiAccountsLoading || apiBoqLoading
-    : fsProjectsLoading || fsContractsLoading || fsAccountsLoading || fsBoqLoading;
   const [periodStart, setPeriodStart] = useState(() => `${new Date().getFullYear()}-01-01`);
   const printAreaRef = useRef<HTMLDivElement>(null);
   const allowedContractSet = useMemo(() => new Set(assignedContractIds), [assignedContractIds]);
@@ -605,6 +623,60 @@ export function Reports() {
     },
     [isProjectAccountant, transactions, allowedContractSet]
   );
+
+  const needServerTrial = isLocalBackend && activeReport === 'trial';
+  const needServerBalance = isLocalBackend && activeReport === 'balance';
+  const { data: serverTrialWrap, loading: serverTrialLoading, error: serverTrialError } =
+    useApiQuery<ReportsTrialBalanceResponse>(
+      () =>
+        reportsApi
+          .trialBalance({
+            periodStart,
+            projectId: selectedProjectId,
+            contractId: selectedContractId,
+          })
+          .then((response) => [response]),
+      [needServerTrial, periodStart, selectedProjectId, selectedContractId],
+      { enabled: needServerTrial },
+    );
+  const serverTrial = serverTrialWrap[0] ?? null;
+
+  const { data: serverBalanceWrap, loading: serverBalanceLoading, error: serverBalanceError } =
+    useApiQuery<ReportsBalanceSheetResponse>(
+      () => reportsApi.balanceSheet({}).then((response) => [response]),
+      [needServerBalance],
+      { enabled: needServerBalance },
+    );
+  const serverBalance = serverBalanceWrap[0] ?? null;
+
+  useEffect(() => {
+    if (serverTrialError) {
+      toast.error(
+        language === 'ar'
+          ? 'تعذر تحميل ميزان المراجعة من الخادم'
+          : 'Failed to load trial balance from server',
+      );
+    }
+  }, [serverTrialError, language]);
+
+  useEffect(() => {
+    if (serverBalanceError) {
+      toast.error(
+        language === 'ar'
+          ? 'تعذر تحميل الميزانية من الخادم'
+          : 'Failed to load balance sheet from server',
+      );
+    }
+  }, [serverBalanceError, language]);
+
+  const loading = isLocalBackend
+    ? apiProjectsLoading ||
+      apiContractsLoading ||
+      apiAccountsLoading ||
+      apiBoqLoading ||
+      (needServerTrial && serverTrialLoading) ||
+      (needServerBalance && serverBalanceLoading)
+    : fsProjectsLoading || fsContractsLoading || fsAccountsLoading || fsBoqLoading;
 
   const latestIpcByContract = useMemo(() => {
     const map = new Map<string, Billing>();
@@ -886,8 +958,31 @@ export function Reports() {
     boqMaterialByContract,
   ]);
 
-  // Analytical Trial Balance Calculation
+  // Analytical Trial Balance — local: full-history server aggregate; cloud: capped client GL
   const trialBalance = React.useMemo(() => {
+    const resolveName = (code: string) => {
+      const coaAcc = accounts.find((a) => String(a.accountCode || a.code).trim() === code);
+      return coaAcc
+        ? (language === 'ar'
+            ? (coaAcc.accountName || coaAcc.nameAr || code)
+            : (coaAcc.accountNameEn || coaAcc.accountName || coaAcc.nameEn || code))
+        : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
+    };
+
+    if (isLocalBackend && serverTrial) {
+      const list: TrialBalanceRow[] = serverTrial.rows.map((r) => ({
+        code: r.accountCode,
+        name: resolveName(r.accountCode),
+        openingDebit: Number(r.openingDebit) || 0,
+        openingCredit: Number(r.openingCredit) || 0,
+        debitMovements: Number(r.debitMovements) || 0,
+        creditMovements: Number(r.creditMovements) || 0,
+        closingDebit: Number(r.closingDebit) || 0,
+        closingCredit: Number(r.closingCredit) || 0,
+      }));
+      return aggregateTrialBalanceInventory127(list, language);
+    }
+
     // 1. Get all unique account codes from COA and Transactions
     const coaCodes = accounts.map(a => a.accountCode || a.code).filter(Boolean);
     const allTx = scopedTransactions.filter(t =>
@@ -910,12 +1005,7 @@ export function Reports() {
 
     // 3. Map data for each code
     const list: TrialBalanceRow[] = allUniqueCodes.map((code) => {
-      const coaAcc = accounts.find((a) => String(a.accountCode || a.code).trim() === code);
-      const name = coaAcc
-        ? (language === 'ar'
-            ? (coaAcc.accountName || coaAcc.nameAr || code)
-            : (coaAcc.accountNameEn || coaAcc.accountName || coaAcc.nameEn || code))
-        : (language === 'ar' ? `حساب غير معرف (${code})` : `Undefined Account (${code})`);
+      const name = resolveName(code);
 
       const matchCode = (e: JournalEntry) => String(e.accountCode ?? '').trim() === code;
       const entryInScope = (t: typeof allTx[0], e: JournalEntry) => {
@@ -943,7 +1033,16 @@ export function Reports() {
     .filter(item => item.openingDebit !== 0 || item.openingCredit !== 0 || item.debitMovements !== 0 || item.creditMovements !== 0);
 
     return aggregateTrialBalanceInventory127(list, language);
-  }, [accounts, scopedTransactions, language, selectedProjectId, selectedContractId, periodStart]);
+  }, [
+    accounts,
+    scopedTransactions,
+    language,
+    selectedProjectId,
+    selectedContractId,
+    periodStart,
+    isLocalBackend,
+    serverTrial,
+  ]);
 
   const trialBalanceTotals = React.useMemo(() => {
     return trialBalance.reduce((acc, item) => ({
@@ -1035,18 +1134,26 @@ export function Reports() {
   ]);
 
   // Balance sheet — company-wide; equity = prefix 3 only (P&L 4/5 → income statement tab)
+  // Local: full-history server nets (includes YE-PL close); cloud: capped client GL
   const balanceSheet = React.useMemo(() => {
-    const allTx = scopedTransactions.filter(t => !t.isDeleted);
-
-    // Single source of truth: code → net (debit - credit) across all transactions
     const codeBalMap = new Map<string, number>();
-    allTx.forEach(t => {
-      (t.entries || []).forEach((e: JournalEntry) => {
-        const code = String(e.accountCode ?? '').trim();
-        if (!code) return;
-        codeBalMap.set(code, (codeBalMap.get(code) ?? 0) + (Number(e.debit) || 0) - (Number(e.credit) || 0));
+
+    if (isLocalBackend && serverBalance?.byCode) {
+      for (const [code, net] of Object.entries(serverBalance.byCode)) {
+        const key = String(code || '').trim();
+        if (!key) continue;
+        codeBalMap.set(key, Number(net) || 0);
+      }
+    } else {
+      const allTx = scopedTransactions.filter(t => !t.isDeleted);
+      allTx.forEach(t => {
+        (t.entries || []).forEach((e: JournalEntry) => {
+          const code = String(e.accountCode ?? '').trim();
+          if (!code) return;
+          codeBalMap.set(code, (codeBalMap.get(code) ?? 0) + (Number(e.debit) || 0) - (Number(e.credit) || 0));
+        });
       });
-    });
+    }
 
     // Sum all codes whose accountCode starts with prefix
     const netDebit = (prefix: string) => {
@@ -1067,24 +1174,27 @@ export function Reports() {
         .filter(a => !a.isGroup && (a.accountCode || '').startsWith(prefix) && a.status !== 'disabled')
         .reduce((sum, acc) => sum + accBal(acc.accountCode || '', nature), 0);
 
-    // ── Totals via direct prefix sums — mathematically guaranteed to balance ──
-    const nonCurrentAssets = netDebit('11');
-    const currentAssets    = netDebit('12');
-    const totalAssets      = currentAssets + nonCurrentAssets;
+    const summary = serverBalance?.summary && isLocalBackend
+      ? serverBalance.summary
+      : null;
 
-    const currentLiab      = -netDebit('21');
-    const nonCurrentLiab   = -netDebit('22');
-    const totalLiab        = currentLiab + nonCurrentLiab;
+    const nonCurrentAssets = summary?.nonCurrentAssets ?? netDebit('11');
+    const currentAssets    = summary?.currentAssets ?? netDebit('12');
+    const totalAssets      = summary?.totalAssets ?? (currentAssets + nonCurrentAssets);
+
+    const currentLiab      = summary?.currentLiab ?? -netDebit('21');
+    const nonCurrentLiab   = summary?.nonCurrentLiab ?? -netDebit('22');
+    const totalLiab        = summary?.totalLiab ?? (currentLiab + nonCurrentLiab);
 
     // حقوق الملكية: حسابات فرع 3 فقط — لا تُدمج إيرادات/مصروفات (4/5)؛ تُقفل في قائمة الدخل ثم تُرحّل للأرباح المحتجزة.
-    const equityAccounts   = -netDebit('3');
-    const allRevenue       = -netDebit('4');
-    const allCosts         =  netDebit('5');
-    const unclosedPeriodPl = allRevenue - allCosts;
-    const totalEquity      = equityAccounts;
-    const totalLE          = totalLiab + totalEquity;
-    const balanceGap       = totalAssets - totalLE;
-    const inventory127Net  = netDebit(INVENTORY127_AGG_CODE);
+    const equityAccounts   = summary?.equityAccounts ?? -netDebit('3');
+    const allRevenue       = summary?.allRevenue ?? -netDebit('4');
+    const allCosts         = summary?.allCosts ?? netDebit('5');
+    const unclosedPeriodPl = summary?.unclosedPeriodPl ?? (allRevenue - allCosts);
+    const totalEquity      = summary?.totalEquity ?? equityAccounts;
+    const totalLE          = summary?.totalLE ?? (totalLiab + totalEquity);
+    const balanceGap       = summary?.balanceGap ?? (totalAssets - totalLE);
+    const inventory127Net  = summary?.inventory127Net ?? netDebit(INVENTORY127_AGG_CODE);
     const inventory127     = splitNetToDebitCredit(inventory127Net);
 
     return {
@@ -1093,10 +1203,11 @@ export function Reports() {
       currentLiab, nonCurrentLiab, totalLiab,
       equityAccounts, unclosedPeriodPl, totalEquity, totalLE, balanceGap,
       inventory127,
-      isBalanced: Math.abs(balanceGap) <= 1,
+      isBalanced: summary?.isBalanced ?? Math.abs(balanceGap) <= 1,
       accBal, sectionBal,
+      source: isLocalBackend && serverBalance ? 'server_full' : 'client',
     };
-  }, [scopedTransactions, accounts]);
+  }, [scopedTransactions, accounts, isLocalBackend, serverBalance]);
 
   const exportToExcel = async () => {
     let data: Record<string, unknown>[] = [];

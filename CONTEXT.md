@@ -216,6 +216,7 @@ web-cost-app/
 | طباعة الشركة | `company_info` | **`PrintSettingsPanel`**: بيانات الشركة فقط — **حفظ التصميم** يخزّن شريط الصفحة + الشريط العائم (`selectionPatches` للخلايا **وحقول `.kv-item`** وأجزاء الهيدر/الفوتر) |
 | **مستندات التقارير (جديد)** | `src/lib/reportDocument/` | موديول التقارير: معاينة/طباعة/PDF من بيانات منظمة — لا clone للشاشة؛ دخل/ميزانية تحليلية · جدول زمني BOQ · سيولة عبر API · تكاليف BOQ كاملة + totals؛ **تخطيط الصفحة:** هيدر مضغوط + بيانات تملأ الوسط + فوتر 3 أسطر ثابتة أسفل الصفحة (`12mm`)؛ PDF بدون CDN خط ضخم |
 | **ميزانية مقابل فعلي (local)** | `Reports` tab `budget` | الفعلي لكل المستويات من `boq-cost-breakdown` (= `boq_actual_costs`) — نفس مصدر تبويب تكاليف BOQ؛ ليس GL كامل |
+| **ميزان المراجعة / الميزانية (local)** | `Reports` tabs `trial` / `balance` | تجميع خادمي كامل `GET /api/reports/trial-balance` · `balance-sheet` — يشمل `YE-PL`؛ لا حد 5000 قيد |
 | **لوحة التحكم «غير موزّع»** | `dashboardMetrics` | مصروف بلا مركز عقد − OHA داخل الفلتر؛ إقفال الفترة لا يصفّره · تاريخ OHA = يوم الإغلاق داخل الربع |
 | **تاريخ إثبات القيد** | `businessCalendar` · `stampBusinessToday` | تقويم `Africa/Cairo` من الخادم · ترتيب دفتر اليومية بـ `createdAt` |
 
