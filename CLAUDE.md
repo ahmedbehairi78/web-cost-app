@@ -995,6 +995,26 @@ Replaces the former Display section in **`Settings.tsx`**. `WindowManager` lazy-
 
 ---
 
+## 🔴 HANDOFF — المسدد من API يومية (مدين المقاول نقداً) ✅ (2026-08-31)
+
+> **جلسة 2026-08-31 مساءً:** بدل مسح 3000 قيد على العميل — `GET /api/gl/contractor-cash-payments?accountCode=&costCenterIds=`.
+
+| المجال | ملخص |
+|--------|------|
+| **القاعدة** | المسدد = Σ **مدين** سطور حساب المقاول التي مركز تكلفتها (سطر أو رأس القيد) = مركز المستخلص، ونفس القيد **دائن** `121…` (بنك/تحويل/صندوق/عهدة) أو `21601…` (شيك صادر ISS) |
+| **لا** | لا تقدّر من الأعمال السابقة · لا تجمع كل مدين القيد إن انطبق مركز على سطر آخر فقط |
+| **API** | `queryContractorCashPayments` · `glApi.contractorCashPayments` · صلاحية قراءة GL/تكاليف |
+| **UI** | `ServiceIpcPanel` + مستخلص مقاول في `ActualCosts` |
+
+```powershell
+npm run test -- src/lib/serviceContractor.test.ts server/src/lib/contractorCashPayments.test.ts
+# أعد تشغيل API إن ظهر 404 على /api/gl/contractor-cash-payments
+```
+
+**لا تراجع:** لا تُرجع لـ `transactionsQuery` + حد 3000 لحساب المسدد في الواجهة.
+
+---
+
 ## 🔴 HANDOFF — إقلاع التطبيق بعد ربط المسدد بمركز التكلفة ✅ (2026-08-31)
 
 > **جلسة 2026-08-31:** بعد استيراد `transactionMatchesCostCenterFilter` داخل `serviceContractor.ts` فشل الإقلاع بعد الدخول (الموديول الافتراضي = دفتر اليومية).

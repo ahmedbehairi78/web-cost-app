@@ -18,6 +18,7 @@ import { env } from '../env.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
 import { assertTransactionPeriodUnlocked } from '../accounting/periodLock.js';
+import { queryContractorCashPayments } from '../lib/contractorCashPayments.js';
 
 /** Ledger module OR operational modules that post journals (Actual Costs, Purchases, Billing, Banks). */
 const glReadPerm = requireReferenceRead('ledger', 'costs', 'billing', 'reports', 'inventory', 'subcontractor', 'banks');
@@ -35,6 +36,31 @@ glRouter.get(
   asyncHandler(async (_req, res) => {
     const timeZone = resolveBusinessTimeZone(env.businessTimezone);
     res.json({ date: businessTodayYmd(timeZone), timeZone });
+  }),
+);
+
+/**
+ * المسدد for service / subcontractor IPC:
+ * cash Dr on contractor leaf (bank transfer, cheque ISS, cash/custody 121…) for given cost centers.
+ */
+glRouter.get(
+  '/contractor-cash-payments',
+  glReadPerm,
+  asyncHandler(async (req, res) => {
+    const accountCode = String(req.query.accountCode ?? '').trim();
+    const costCenterIds = String(req.query.costCenterIds ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!accountCode) {
+      res.status(400).json({ error: 'accountCode is required' });
+      return;
+    }
+    if (costCenterIds.length === 0) {
+      res.status(400).json({ error: 'costCenterIds is required' });
+      return;
+    }
+    res.json(await queryContractorCashPayments(accountCode, costCenterIds));
   }),
 );
 

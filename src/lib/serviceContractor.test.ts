@@ -122,7 +122,7 @@ describe('serviceContractor', () => {
     expect(computeServiceIpcCertificateSummary(lines, pcts, 0, 250).previousPayments).toBe(250);
   });
 
-  it('sums contractor cash Dr from bank, custody, and issued cheque; uses journal header cost center', () => {
+  it('sums contractor cash Dr per debit line cost center (bank, custody, cheque)', () => {
     const txs = [
       {
         costCenterId: 'c1',
@@ -155,17 +155,17 @@ describe('serviceContractor', () => {
         ],
       },
       {
-        // other contract
-        costCenterId: 'c2',
+        // split journal — only c1 line counts for c1
         entries: [
+          { accountCode: '21102005', debit: 50, credit: 0, costCenterId: 'c1' },
           { accountCode: '21102005', debit: 80, credit: 0, costCenterId: 'c2' },
-          { accountCode: '12101001', debit: 0, credit: 80 },
+          { accountCode: '12101001', debit: 0, credit: 130 },
         ],
       },
     ];
-    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1'])).toBe(750);
-    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1', 'c2'])).toBe(830);
-    expect(sumContractorCashPaymentsFromGl({ data: txs }, '21102005', ['c1'])).toBe(750);
+    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1'])).toBe(800);
+    expect(sumContractorCashPaymentsFromGl(txs, '21102005', ['c1', 'c2'])).toBe(880);
+    expect(sumContractorCashPaymentsFromGl({ data: txs }, '21102005', ['c1'])).toBe(800);
   });
 
   it('resolves contractor leaf code from COA id or supplierId', () => {

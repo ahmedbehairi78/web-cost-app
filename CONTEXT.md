@@ -1,5 +1,5 @@
 # سياق مشروع web-cost-app
-**آخر تحديث:** 2026-08-31 (إصلاح إقلاع التطبيق — لا تستورد costCenterAttribution من serviceContractor)
+**آخر تحديث:** 2026-08-31 (المسدد عبر GET /api/gl/contractor-cash-payments — مدين المقاول نقداً لمركز التكلفة)
 
 > **قبل أي إصلاح أو تحسين:** راجع **`CLAUDE.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`** — ثم **حدّث هذه الملفات** بعد نجاح التنفيذ.
 >

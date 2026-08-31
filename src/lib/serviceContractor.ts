@@ -1,28 +1,5 @@
 import { roundMoney } from './money';
 
-/**
- * Local copy of cost-center matching (header or any journal line).
- * Do **not** import `costCenterAttribution` from this file: print/GL chunks already
- * load that module, and a second edge (`serviceContractor` → attribution) created a
- * Vite circular chunk that crashed app boot after login (default module = ledger).
- */
-function journalMatchesCostCenter(
-  transaction: {
-    costCenterId?: string | null;
-    entries?: Array<{ costCenterId?: string | null }>;
-  },
-  contractOrCenterId: string,
-): boolean {
-  const target = String(contractOrCenterId).trim();
-  if (!target) return true;
-  if (String(transaction.costCenterId ?? '').trim() === target) return true;
-  return (transaction.entries ?? []).some((e) => {
-    const line = String(e.costCenterId ?? '').trim();
-    if (line) return line === target;
-    return String(transaction.costCenterId ?? '').trim() === target;
-  });
-}
-
 /** Subcontractor service classification (still COA 21102). */
 
 export const SERVICE_KINDS = ['works', 'labour', 'equipment', 'vehicles', 'housing'] as const;
@@ -261,7 +238,10 @@ export type ContractorCashGlTx = {
   }>;
 };
 
-/** Bank/cash 121… or issued-cheque clearing 21601… — cash-like payment to a contractor. */
+/**
+ * Cash-like payment sources posted against a contractor:
+ * bank / transfer / cash fund / custody (121…) or issued-cheque ISS (21601…).
+ */
 export function isContractorCashPaymentSourceCode(code: string): boolean {
   const c = String(code || '').trim();
   if (c.startsWith('121')) return true;
@@ -293,10 +273,23 @@ export function asGlTransactionList(raw: unknown): ContractorCashGlTx[] {
   return [];
 }
 
+/** Line cost center, else journal header — matches statement attribution. */
+function resolveContractorDebitCostCenter(
+  entry: { costCenterId?: string | null },
+  transactionCostCenterId?: string | null,
+): string {
+  const line = String(entry.costCenterId ?? '').trim();
+  if (line) return line;
+  return String(transactionCostCenterId ?? '').trim();
+}
+
 /**
- * المسدد from the contractor's GL account (same reading as the account statement):
- * Dr on the contractor leaf, in journals that match the IPC cost center (header or any line),
- * whose credit is bank/cash (121…) or issued cheques (21601…) or custody (12102…).
+ * المسدد = Σ debit lines on the contractor leaf for the IPC cost center(s),
+ * only when the same journal credits a cash source (121… or 21601…).
+ *
+ * Per-line cost center (not “any line in the journal”) so a split payment
+ * across two contracts does not bleed into the wrong IPC.
+ * Prefer `glApi.contractorCashPayments` in the UI (server aggregates full history).
  */
 export function sumContractorCashPaymentsFromGl(
   txs: unknown,
@@ -304,8 +297,8 @@ export function sumContractorCashPaymentsFromGl(
   costCenterIds: string[],
 ): number {
   const code = String(supplierAccountCode || '').trim();
-  const centers = [...new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean))];
-  if (!code || centers.length === 0) return 0;
+  const centers = new Set(costCenterIds.map((id) => String(id).trim()).filter(Boolean));
+  if (!code || centers.size === 0) return 0;
   let total = 0;
   for (const tx of asGlTransactionList(txs)) {
     if (tx.isDeleted) continue;
@@ -314,10 +307,13 @@ export function sumContractorCashPaymentsFromGl(
       (e) => glMoney(e.credit) > 0 && isContractorCashPaymentSourceCode(String(e.accountCode || '')),
     );
     if (!hasCashSource) continue;
-    if (!centers.some((id) => journalMatchesCostCenter(tx, id))) continue;
     for (const e of entries) {
       if (String(e.accountCode || '').trim() !== code) continue;
-      total += glMoney(e.debit);
+      const debit = glMoney(e.debit);
+      if (debit <= 0) continue;
+      const cc = resolveContractorDebitCostCenter(e, tx.costCenterId);
+      if (!cc || !centers.has(cc)) continue;
+      total += debit;
     }
   }
   return roundMoney(total);

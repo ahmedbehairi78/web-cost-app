@@ -286,11 +286,27 @@ function buildGlTransactionsQuery(params: GlTransactionsQuery): string {
   return q.toString();
 }
 
+export type ContractorCashPaymentsResult = {
+  paid: number;
+  byCostCenter: Record<string, number>;
+  accountCode: string;
+};
+
 export const glApi = {
   transactions: (year?: number, limit = 500) =>
     apiClient.get<Transaction[]>(`/gl/transactions?${buildGlTransactionsQuery({ year, limit })}`),
   transactionsQuery: (params: GlTransactionsQuery) =>
     apiClient.get<Transaction[]>(`/gl/transactions?${buildGlTransactionsQuery(params)}`),
+  /**
+   * المسدد — server aggregates cash Dr on contractor leaf for cost centers
+   * (bank / transfer / cheque ISS / cash / custody). Prefer over client-side GL scan.
+   */
+  contractorCashPayments: (accountCode: string, costCenterIds: string[]) => {
+    const q = new URLSearchParams();
+    q.set('accountCode', accountCode);
+    q.set('costCenterIds', costCenterIds.filter(Boolean).join(','));
+    return apiClient.get<ContractorCashPaymentsResult>(`/gl/contractor-cash-payments?${q.toString()}`);
+  },
   getTransaction: (id: string) => apiClient.get<Transaction>(`/gl/transactions/${id}`),
   transactionByReference: (reference: string) =>
     apiClient.get<Transaction>(`/gl/transactions/by-reference?reference=${encodeURIComponent(reference)}`),

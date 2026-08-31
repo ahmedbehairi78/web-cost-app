@@ -69,7 +69,7 @@ import {
   mapToIpcPrintItems,
   type CompanyPrintInfo,
 } from '../lib/ipcPrintData';
-import { computeServiceIpcCertificateSummary, displayServiceIpcNumber, resolveContractorAccountCode, sumContractorCashPaymentsFromGl } from '../lib/serviceContractor';
+import { computeServiceIpcCertificateSummary, displayServiceIpcNumber, resolveContractorAccountCode, isServiceContractor } from '../lib/serviceContractor';
 import { DEFAULT_HEADER_LOGO } from '../lib/concordPlusBrand';
 import type { StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
 import {
@@ -100,7 +100,6 @@ import {
   consumePendingShellView,
   peekPendingShellView,
 } from '../lib/shellNavigation';
-import { isServiceContractor } from '../lib/serviceContractor';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -762,7 +761,7 @@ export function ActualCosts() {
     isOpen: boolean; title: string; message: string; onConfirm: () => void;
   }>({ isOpen: false, title: '', message: '', onConfirm: () => {} });
 
-  // المسدد = Dr نقدي على حساب المقاول مصدره بنك 12101 أو صندوق/عهدة 12102 لنفس مركز التكلفة
+  // المسدد = مدين حساب المقاول من بنك/تحويل/شيك/صندوق/عهدة لنفس مركز التكلفة (خادم)
   const [ipcPaidToDate, setIpcPaidToDate] = useState(0);
   useEffect(() => {
     if (!isLocalBackend || activeTab !== 'ipc' || !formData.supplierId || !formData.contractId) {
@@ -772,10 +771,10 @@ export function ActualCosts() {
     const code = resolveContractorAccountCode(accounts, formData.supplierId);
     if (!code) { setIpcPaidToDate(0); return; }
     let cancelled = false;
-    glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 })
-      .then((txs) => {
+    glApi.contractorCashPayments(code, [formData.contractId])
+      .then((res) => {
         if (cancelled) return;
-        setIpcPaidToDate(sumContractorCashPaymentsFromGl(txs, code, [formData.contractId]));
+        setIpcPaidToDate(Number(res.paid) || 0);
       })
       .catch(() => { if (!cancelled) setIpcPaidToDate(0); });
     return () => { cancelled = true; };
@@ -1710,8 +1709,8 @@ export function ActualCosts() {
       let paid = 0;
       if (isLocalBackend && code && contractId) {
         try {
-          const txs = await glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 });
-          paid = sumContractorCashPaymentsFromGl(txs, code, [contractId]);
+          const res = await glApi.contractorCashPayments(code, [contractId]);
+          paid = Number(res.paid) || 0;
         } catch {
           paid = 0;
         }

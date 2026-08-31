@@ -36,7 +36,6 @@ import {
   previousQtyFromApproved,
   resolveContractorAccountCode,
   serviceIpcPrintTitle,
-  sumContractorCashPaymentsFromGl,
   uniqueBoqChapters,
   type ServiceIpcKind,
   type ServiceIpcLine,
@@ -361,7 +360,7 @@ export function ServiceIpcPanel({
     [lines],
   );
 
-  // المسدد = Dr نقدي على حساب المقاول مصدره بنك 12101 أو صندوق/عهدة 12102 لنفس مراكز التكلفة
+  // المسدد = Σ مدين حساب المقاول من حركات نقدية (بنك/تحويل/شيك/صندوق/عهدة) لنفس مراكز التكلفة
   const [paidToDate, setPaidToDate] = useState(0);
   useEffect(() => {
     if (!isLocalBackend || !header.supplierAccountId) { setPaidToDate(0); return; }
@@ -369,10 +368,10 @@ export function ServiceIpcPanel({
     const contractIds = lineContractIdsKey.split(',').filter(Boolean);
     if (!code || contractIds.length === 0) { setPaidToDate(0); return; }
     let cancelled = false;
-    glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 })
-      .then((txs) => {
+    glApi.contractorCashPayments(code, contractIds)
+      .then((res) => {
         if (cancelled) return;
-        setPaidToDate(sumContractorCashPaymentsFromGl(txs, code, contractIds));
+        setPaidToDate(Number(res.paid) || 0);
       })
       .catch(() => { if (!cancelled) setPaidToDate(0); });
     return () => { cancelled = true; };
@@ -796,8 +795,8 @@ export function ServiceIpcPanel({
         const ccIds = [...new Set((tx.items ?? []).map((l) => String(l.contractId || '').trim()).filter(Boolean))];
         if (code && ccIds.length > 0) {
           try {
-            const txs = await glApi.transactionsQuery({ accountFrom: code, accountTo: code, limit: 3000 });
-            paid = sumContractorCashPaymentsFromGl(txs, code, ccIds);
+            const res = await glApi.contractorCashPayments(code, ccIds);
+            paid = Number(res.paid) || 0;
           } catch {
             paid = 0;
           }
