@@ -27,10 +27,37 @@ type PreviewKind = 'income' | 'income_residual' | 'opening' | null;
 
 type PlStatus = {
   openPlAccountCount: number;
+  openPlAccountCountAtPeriodEnd: number;
+  openPlAccountCountAsOfToday: number;
+  openPlAfterPeriodEnd: boolean;
+  residualAsOf: string;
   openPlFirstDate: string | null;
   openPlLastDate: string | null;
   netProfit: number;
 };
+
+function plStatusFromPreview(p: {
+  openPlAccountCount: number;
+  openPlAccountCountAtPeriodEnd?: number;
+  openPlAccountCountAsOfToday?: number;
+  openPlAfterPeriodEnd?: boolean;
+  residualAsOf?: string;
+  openPlFirstDate: string | null;
+  openPlLastDate: string | null;
+  netProfit: number;
+  periodEnd: string;
+}): PlStatus {
+  return {
+    openPlAccountCount: p.openPlAccountCount,
+    openPlAccountCountAtPeriodEnd: p.openPlAccountCountAtPeriodEnd ?? p.openPlAccountCount,
+    openPlAccountCountAsOfToday: p.openPlAccountCountAsOfToday ?? p.openPlAccountCount,
+    openPlAfterPeriodEnd: Boolean(p.openPlAfterPeriodEnd),
+    residualAsOf: p.residualAsOf || p.periodEnd,
+    openPlFirstDate: p.openPlFirstDate,
+    openPlLastDate: p.openPlLastDate,
+    netProfit: p.netProfit,
+  };
+}
 
 export function IncomeStatementClosingPanel({
   periodStart,
@@ -107,12 +134,7 @@ export function IncomeStatementClosingPanel({
       .previewIncomeClose(selected.periodStart, selected.periodEnd)
       .then((p) => {
         if (cancelled) return;
-        setPlStatus({
-          openPlAccountCount: p.openPlAccountCount,
-          openPlFirstDate: p.openPlFirstDate,
-          openPlLastDate: p.openPlLastDate,
-          netProfit: p.netProfit,
-        });
+        setPlStatus(plStatusFromPreview(p));
       })
       .catch(() => {
         if (!cancelled) setPlStatus(null);
@@ -180,12 +202,7 @@ export function IncomeStatementClosingPanel({
     setBusy(true);
     try {
       const p = await fiscalClosingsApi.previewIncomeClose(selected.periodStart, selected.periodEnd);
-      setPlStatus({
-        openPlAccountCount: p.openPlAccountCount,
-        openPlFirstDate: p.openPlFirstDate,
-        openPlLastDate: p.openPlLastDate,
-        netProfit: p.netProfit,
-      });
+      setPlStatus(plStatusFromPreview(p));
       if (residual && p.openPlAccountCount === 0) {
         toast.error(t('gl_periods_income_residual_none'));
         return;
@@ -431,6 +448,16 @@ export function IncomeStatementClosingPanel({
                     {t('gl_periods_income_open_pl_last')}:{' '}
                     <span className="font-mono">{plStatus.openPlLastDate || '—'}</span>
                   </p>
+                  {hasOpenPl && (
+                    <p className="font-mono text-[10px] opacity-80">
+                      {t('gl_periods_income_residual_asof')}: {plStatus.residualAsOf}
+                    </p>
+                  )}
+                  {plStatus.openPlAfterPeriodEnd && (
+                    <p className="text-amber-800 dark:text-amber-300">
+                      {t('gl_periods_income_open_pl_after_period')}
+                    </p>
+                  )}
                 </div>
               )}
 
@@ -471,7 +498,7 @@ export function IncomeStatementClosingPanel({
                       <Lock size={12} /> {t('gl_periods_income_prepare')}
                     </button>
                   )}
-                  {(selected.status === 'pl_closed' || selected.status === 'bs_approved') && hasOpenPl && (
+                  {selected.status !== 'draft' && hasOpenPl && (
                     <button
                       type="button"
                       className={cn(btnSm, 'bg-amber-600 text-white border-amber-600')}
@@ -480,6 +507,11 @@ export function IncomeStatementClosingPanel({
                     >
                       <Lock size={12} /> {t('gl_periods_income_close_residual')}
                     </button>
+                  )}
+                  {selected.status === 'opening_posted' && hasOpenPl && (
+                    <p className="w-full text-[10px] text-amber-700 dark:text-amber-300">
+                      {t('gl_periods_income_residual_revokes_opening')}
+                    </p>
                   )}
                   {selected.status === 'pl_closed' && (
                     <button

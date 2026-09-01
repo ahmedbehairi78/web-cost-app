@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
+import { businessTodayYmd } from '../lib/businessCalendar.js';
 import { journalDateKey, journalDateQueryUpperBound } from '../lib/journalDate.js';
 import { MONEY_TOLERANCE, roundMoney } from '../lib/money.js';
 import { serialize } from '../prisma/serialize.js';
@@ -164,22 +165,68 @@ export async function openPlActivityDateRange(
   return minMaxIsoDates(dates);
 }
 
+/**
+ * Prefer open P&L as of periodEnd; if already zero there but still open through today
+ * (post-close activity), close as of business today.
+ */
+async function resolveOpenPlForResidual(
+  client: TxClient,
+  periodEnd: string,
+): Promise<{ asOf: string; open: AccountNetBalance[]; afterPeriodEnd: boolean }> {
+  const end = periodEnd.trim().slice(0, 10);
+  const today = businessTodayYmd();
+  const netsEnd = await computeAccountNetsAsOf(client, end);
+  const openEnd = openPlBalances(netsEnd);
+  if (openEnd.length > 0) {
+    return { asOf: end, open: openEnd, afterPeriodEnd: false };
+  }
+  if (today > end) {
+    const netsToday = await computeAccountNetsAsOf(client, today);
+    const openToday = openPlBalances(netsToday);
+    if (openToday.length > 0) {
+      return { asOf: today, open: openToday, afterPeriodEnd: true };
+    }
+  }
+  return { asOf: end, open: [], afterPeriodEnd: false };
+}
+
 export async function previewIncomeClose(periodStart: string, periodEnd: string) {
-  const nets = await computeAccountNetsAsOf(prisma, periodEnd);
-  const pl = filterLeafBalances(nets, isPlAccount);
-  const open = openPlBalances(nets);
-  const { entries, netProfit } = buildIncomeClosingEntries(pl);
+  const end = periodEnd.trim().slice(0, 10);
+  const today = businessTodayYmd();
+  const netsEnd = await computeAccountNetsAsOf(prisma, end);
+  const plEnd = filterLeafBalances(netsEnd, isPlAccount);
+  const openEnd = openPlBalances(netsEnd);
+
+  let openToday: AccountNetBalance[] = [];
+  if (today > end) {
+    const netsToday = await computeAccountNetsAsOf(prisma, today);
+    openToday = openPlBalances(netsToday);
+  }
+
+  const residual = openEnd.length > 0
+    ? { asOf: end, open: openEnd, afterPeriodEnd: false }
+    : openToday.length > 0
+      ? { asOf: today, open: openToday, afterPeriodEnd: true }
+      : { asOf: end, open: [] as AccountNetBalance[], afterPeriodEnd: false };
+
+  const closeSource = residual.open.length > 0 ? residual.open : plEnd;
+  const { entries, netProfit } = buildIncomeClosingEntries(closeSource);
   const { firstDate, lastDate } = await openPlActivityDateRange(
     prisma,
-    periodEnd,
-    open.map((r) => r.accountCode),
+    residual.asOf,
+    residual.open.map((r) => r.accountCode),
   );
+
   return {
     periodStart,
-    periodEnd,
-    plBalances: pl,
-    openPlBalances: open,
-    openPlAccountCount: open.length,
+    periodEnd: end,
+    plBalances: plEnd,
+    openPlBalances: residual.open,
+    openPlAccountCount: residual.open.length,
+    openPlAccountCountAtPeriodEnd: openEnd.length,
+    openPlAccountCountAsOfToday: today > end ? openToday.length : openEnd.length,
+    openPlAfterPeriodEnd: residual.afterPeriodEnd,
+    residualAsOf: residual.asOf,
     openPlFirstDate: firstDate,
     openPlLastDate: lastDate,
     entries,
@@ -304,9 +351,9 @@ export async function closeIncomeStatement(closingId: string, userId?: string) {
 }
 
 /**
- * Supplemental P&L close for residual class 4/5 balances as of periodEnd
- * (e.g. journals posted after the first YE-PL, or accounts missed in the first close).
- * Allowed after the initial close while the cycle is not reopened.
+ * Supplemental P&L close for residual class 4/5 balances
+ * (journals posted after the first YE-PL, missed accounts, or activity after periodEnd).
+ * Works after pl_closed / bs_approved / opening_posted (revokes opening if needed).
  */
 export async function closeIncomeStatementResidual(closingId: string, userId?: string) {
   return prisma.$transaction(async (tx) => {
@@ -315,14 +362,26 @@ export async function closeIncomeStatementResidual(closingId: string, userId?: s
     if (row.status === 'draft' || !row.plCloseTransactionId) {
       throw new Error('Close income statement first before residual close');
     }
-    if (row.status === 'opening_posted') {
-      throw new Error('Reopen the cycle before residual P&L close (opening already posted)');
+
+    // Opening carry-forward must be cleared before posting more YE-PL into the books.
+    if (row.openingTransactionId) {
+      await tx.transaction.update({
+        where: { id: row.openingTransactionId },
+        data: { isDeleted: true },
+      });
+    }
+    if (row.periodLockId) {
+      await tx.accountingPeriodLock.updateMany({
+        where: { id: row.periodLockId },
+        data: { status: 'open' },
+      });
     }
 
-    const nets = await computeAccountNetsAsOf(tx, row.periodEnd);
-    const open = openPlBalances(nets);
+    const { asOf, open, afterPeriodEnd } = await resolveOpenPlForResidual(tx, row.periodEnd);
     if (open.length === 0) {
-      throw new Error('No residual revenue/expense balances to close');
+      throw new Error(
+        'No residual revenue/expense balances to close (as of period end and today)',
+      );
     }
 
     const { entries, netProfit: residualNet } = buildIncomeClosingEntries(open);
@@ -330,25 +389,25 @@ export async function closeIncomeStatementResidual(closingId: string, userId?: s
       throw new Error('No residual revenue/expense balances to close');
     }
 
+    const baseRef = `YE-PL-${row.label}`.replace(/\s+/g, '-');
     const priorCount = await tx.transaction.count({
       where: {
         isDeleted: false,
-        journalKind: 'fiscal_pl_close',
-        date: row.periodEnd,
         OR: [
-          { reference: { startsWith: `YE-PL-${row.label}`.replace(/\s+/g, '-') } },
+          { journalKind: 'fiscal_pl_close', reference: { startsWith: baseRef } },
+          { reference: { startsWith: baseRef } },
           { id: row.plCloseTransactionId },
         ],
       },
     });
-    const suffix = priorCount + 1;
-    const baseRef = `YE-PL-${row.label}`.replace(/\s+/g, '-');
-    const reference = `${baseRef}-R${suffix}`;
+    const reference = `${baseRef}-R${priorCount + 1}`;
 
     await createTransaction(
       {
-        date: row.periodEnd,
-        description: `إقفال متبقي قائمة الدخل — ${row.label} (${open.length} حساب)`,
+        date: asOf,
+        description: afterPeriodEnd
+          ? `إقفال متبقي قائمة الدخل (بعد نهاية الفترة) — ${row.label} (${open.length} حساب حتى ${asOf})`
+          : `إقفال متبقي قائمة الدخل — ${row.label} (${open.length} حساب)`,
         reference,
         entries,
         journalKind: 'fiscal_pl_close',
@@ -358,19 +417,22 @@ export async function closeIncomeStatementResidual(closingId: string, userId?: s
       tx,
     );
 
-    // Residual changes RE / BS — revoke BS approval so it must be re-checked.
-    const rewindBs = row.status === 'bs_approved';
     const updated = await tx.fiscalPeriodClosing.update({
       where: { id: closingId },
       data: {
-        status: rewindBs ? 'pl_closed' : row.status,
+        // Always return to pl_closed so BS must be re-approved after residual.
+        status: 'pl_closed',
         netProfit: roundMoney(Number(row.netProfit || 0) + residualNet),
-        balanceGap: rewindBs ? null : row.balanceGap,
-        bsApprovedAt: rewindBs ? null : row.bsApprovedAt,
-        bsApprovedBy: rewindBs ? null : row.bsApprovedBy,
+        balanceGap: null,
+        bsApprovedAt: null,
+        bsApprovedBy: null,
+        openingTransactionId: null,
+        openingPostedAt: null,
+        openingPostedBy: null,
+        periodLockId: row.periodLockId,
         notes: row.notes
-          ? `${row.notes}\n[residual P&L close ${reference} by ${userId ?? 'admin'}]`
-          : `residual P&L close ${reference} by ${userId ?? 'admin'}`,
+          ? `${row.notes}\n[residual P&L close ${reference} asOf=${asOf} by ${userId ?? 'admin'}]`
+          : `residual P&L close ${reference} asOf=${asOf} by ${userId ?? 'admin'}`,
       },
     });
     return serializeClosing(updated as unknown as Record<string, unknown>);
@@ -384,8 +446,11 @@ export async function approveBalanceSheet(closingId: string, userId?: string) {
     throw new Error('Approve balance sheet only after P&L close');
   }
 
-  // Must zero class 4/5 as of periodEnd — BS 1/2/3-only check previously allowed residual P&L.
-  await assertNoOpenPlBalancesForPeriodLock(row.periodEnd);
+  // Zero class 4/5 as of periodEnd — and through today if later activity reopened P&L.
+  const { open } = await resolveOpenPlForResidual(prisma, row.periodEnd);
+  if (open.length > 0) {
+    throw new IncomeCloseRequiredError(row.periodEnd, open);
+  }
 
   const bs = await previewBalanceSheet(row.periodEnd);
   if (!bs.isBalanced) {

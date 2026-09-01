@@ -1123,6 +1123,11 @@ const translations: Record<Language, Record<string, string>> = {
     gl_periods_income_pl_fully_closed: 'كل حسابات الإيرادات والمصروفات (4…/5…) مقفلة',
     gl_periods_income_open_pl_first: 'تاريخ أول قيد غير مقفل',
     gl_periods_income_open_pl_last: 'تاريخ آخر قيد غير مقفل',
+    gl_periods_income_residual_asof: 'تاريخ إقفال المتبقي',
+    gl_periods_income_open_pl_after_period:
+      'يوجد نشاط على حسابات الدخل بعد نهاية فترة الإقفال — إقفال المتبقي سيصفّر الأرصدة حتى اليوم ويُلغي الاعتماد/الافتتاحي إن وُجدا.',
+    gl_periods_income_residual_revokes_opening:
+      'تنبيه: إقفال المتبقي سيلغي القيد الافتتاحي وقفل الفترة مؤقتاً — أعد اعتماد الميزانية ثم الافتتاحي بعد التصفير.',
     costs_menu_invoice: 'فاتورة مشتريات',
     costs_menu_ipc: 'مستخلص مقاول',
     costs_menu_custody: 'تسوية عهدة',
@@ -3746,6 +3751,11 @@ const translations: Record<Language, Record<string, string>> = {
     gl_periods_income_pl_fully_closed: 'All revenue/expense accounts (4…/5…) are closed',
     gl_periods_income_open_pl_first: 'First unclosed entry date',
     gl_periods_income_open_pl_last: 'Last unclosed entry date',
+    gl_periods_income_residual_asof: 'Residual close as-of',
+    gl_periods_income_open_pl_after_period:
+      'P&L activity exists after the close period end — residual close will zero balances through today and revoke BS approval/opening if present.',
+    gl_periods_income_residual_revokes_opening:
+      'Note: residual close will soft-delete the opening entry and unlock the period — re-approve the balance sheet, then re-post opening.',
     costs_menu_invoice: 'Purchase invoice',
     costs_menu_ipc: 'Subcontractor IPC',
     costs_menu_custody: 'Custody settlement',

@@ -1081,6 +1081,10 @@ export const fiscalClosingsApi = {
       plBalances: Array<{ accountCode: string; accountName: string; netDebit: number }>;
       openPlBalances: Array<{ accountCode: string; accountName: string; netDebit: number }>;
       openPlAccountCount: number;
+      openPlAccountCountAtPeriodEnd: number;
+      openPlAccountCountAsOfToday: number;
+      openPlAfterPeriodEnd: boolean;
+      residualAsOf: string;
       openPlFirstDate: string | null;
       openPlLastDate: string | null;
       entries: FiscalJournalPreviewEntry[];
