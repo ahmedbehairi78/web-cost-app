@@ -1079,6 +1079,10 @@ export const fiscalClosingsApi = {
       periodStart: string;
       periodEnd: string;
       plBalances: Array<{ accountCode: string; accountName: string; netDebit: number }>;
+      openPlBalances: Array<{ accountCode: string; accountName: string; netDebit: number }>;
+      openPlAccountCount: number;
+      openPlFirstDate: string | null;
+      openPlLastDate: string | null;
       entries: FiscalJournalPreviewEntry[];
       netProfit: number;
       entryCount: number;
@@ -1108,6 +1112,11 @@ export const fiscalClosingsApi = {
     ),
   closeIncome: (id: string) =>
     apiClient.post<FiscalPeriodClosingRow>(`/fiscal-closings/${encodeURIComponent(id)}/close-income`, {}),
+  closeIncomeResidual: (id: string) =>
+    apiClient.post<FiscalPeriodClosingRow>(
+      `/fiscal-closings/${encodeURIComponent(id)}/close-income-residual`,
+      {},
+    ),
   approveBalanceSheet: (id: string) =>
     apiClient.post<FiscalPeriodClosingRow>(
       `/fiscal-closings/${encodeURIComponent(id)}/approve-balance-sheet`,

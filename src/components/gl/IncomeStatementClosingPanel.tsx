@@ -23,7 +23,14 @@ type Props = {
   compact?: boolean;
 };
 
-type PreviewKind = 'income' | 'opening' | null;
+type PreviewKind = 'income' | 'income_residual' | 'opening' | null;
+
+type PlStatus = {
+  openPlAccountCount: number;
+  openPlFirstDate: string | null;
+  openPlLastDate: string | null;
+  netProfit: number;
+};
 
 export function IncomeStatementClosingPanel({
   periodStart,
@@ -46,6 +53,7 @@ export function IncomeStatementClosingPanel({
     totalAssets: number;
     totalLiabEquity: number;
   } | null>(null);
+  const [plStatus, setPlStatus] = useState<PlStatus | null>(null);
   const [journalPreview, setJournalPreview] = useState<{
     kind: PreviewKind;
     entries: FiscalJournalPreviewEntry[];
@@ -65,6 +73,7 @@ export function IncomeStatementClosingPanel({
   }[cadence];
 
   const selected = rows.find((r) => r.id === selectedId) ?? null;
+  const hasOpenPl = (plStatus?.openPlAccountCount ?? 0) > 0;
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -88,11 +97,34 @@ export function IncomeStatementClosingPanel({
   }, [refresh]);
 
   useEffect(() => {
-    if (!selected || selected.status === 'draft') {
+    if (!selected) {
       setBsPreview(null);
+      setPlStatus(null);
       return;
     }
     let cancelled = false;
+    void fiscalClosingsApi
+      .previewIncomeClose(selected.periodStart, selected.periodEnd)
+      .then((p) => {
+        if (cancelled) return;
+        setPlStatus({
+          openPlAccountCount: p.openPlAccountCount,
+          openPlFirstDate: p.openPlFirstDate,
+          openPlLastDate: p.openPlLastDate,
+          netProfit: p.netProfit,
+        });
+      })
+      .catch(() => {
+        if (!cancelled) setPlStatus(null);
+      });
+
+    if (selected.status === 'draft') {
+      setBsPreview(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     void fiscalClosingsApi
       .previewBalanceSheet(selected.periodEnd)
       .then((p) => {
@@ -143,15 +175,27 @@ export function IncomeStatementClosingPanel({
     }
   };
 
-  const openIncomePreview = async () => {
+  const openIncomePreview = async (residual: boolean) => {
     if (!selected) return;
     setBusy(true);
     try {
       const p = await fiscalClosingsApi.previewIncomeClose(selected.periodStart, selected.periodEnd);
+      setPlStatus({
+        openPlAccountCount: p.openPlAccountCount,
+        openPlFirstDate: p.openPlFirstDate,
+        openPlLastDate: p.openPlLastDate,
+        netProfit: p.netProfit,
+      });
+      if (residual && p.openPlAccountCount === 0) {
+        toast.error(t('gl_periods_income_residual_none'));
+        return;
+      }
       setJournalPreview({
-        kind: 'income',
+        kind: residual ? 'income_residual' : 'income',
         entries: p.entries,
-        title: t('gl_periods_income_preview_pl_title'),
+        title: residual
+          ? t('gl_periods_income_preview_residual_title')
+          : t('gl_periods_income_preview_pl_title'),
       });
     } catch (e) {
       toast.error(e instanceof ApiError ? e.message : t('gl_periods_income_preview_failed'));
@@ -184,6 +228,9 @@ export function IncomeStatementClosingPanel({
       if (journalPreview.kind === 'income') {
         await fiscalClosingsApi.closeIncome(selected.id);
         toast.success(t('gl_periods_income_pl_closed'));
+      } else if (journalPreview.kind === 'income_residual') {
+        await fiscalClosingsApi.closeIncomeResidual(selected.id);
+        toast.success(t('gl_periods_income_residual_closed'));
       } else {
         await fiscalClosingsApi.postOpening(selected.id);
         toast.success(t('gl_periods_income_opening_posted'));
@@ -230,6 +277,13 @@ export function IncomeStatementClosingPanel({
     'inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold disabled:opacity-50',
     theme === 'dark' ? 'border border-gray-700' : 'border border-gray-200',
   );
+
+  const confirmLabel =
+    journalPreview?.kind === 'income'
+      ? t('gl_periods_income_confirm_pl')
+      : journalPreview?.kind === 'income_residual'
+        ? t('gl_periods_income_confirm_residual')
+        : t('gl_periods_income_post_opening');
 
   return (
     <div className={cardCls} dir={dir}>
@@ -348,6 +402,38 @@ export function IncomeStatementClosingPanel({
                 )}
               </div>
 
+              {plStatus && (
+                <div
+                  className={cn(
+                    'rounded-md border px-2 py-1.5 text-[11px] space-y-0.5',
+                    hasOpenPl
+                      ? theme === 'dark'
+                        ? 'border-amber-800 bg-amber-950/30'
+                        : 'border-amber-200 bg-amber-50'
+                      : theme === 'dark'
+                        ? 'border-emerald-800 bg-emerald-950/30'
+                        : 'border-emerald-200 bg-emerald-50',
+                  )}
+                >
+                  <p className="flex items-center gap-1 font-bold">
+                    {hasOpenPl ? <AlertTriangle size={12} /> : <CheckCircle2 size={12} />}
+                    {hasOpenPl
+                      ? t('gl_periods_income_open_pl_count').replace(
+                          '{n}',
+                          String(plStatus.openPlAccountCount),
+                        )
+                      : t('gl_periods_income_pl_fully_closed')}
+                  </p>
+                  <p>
+                    {t('gl_periods_income_open_pl_first')}:{' '}
+                    <span className="font-mono">{plStatus.openPlFirstDate || '—'}</span>
+                    {' · '}
+                    {t('gl_periods_income_open_pl_last')}:{' '}
+                    <span className="font-mono">{plStatus.openPlLastDate || '—'}</span>
+                  </p>
+                </div>
+              )}
+
               {bsPreview && selected.status !== 'draft' && (
                 <div
                   className={cn(
@@ -380,16 +466,26 @@ export function IncomeStatementClosingPanel({
                       type="button"
                       className={cn(btnSm, 'bg-emerald-600 text-white border-emerald-600')}
                       disabled={busy}
-                      onClick={() => void openIncomePreview()}
+                      onClick={() => void openIncomePreview(false)}
                     >
                       <Lock size={12} /> {t('gl_periods_income_prepare')}
+                    </button>
+                  )}
+                  {(selected.status === 'pl_closed' || selected.status === 'bs_approved') && hasOpenPl && (
+                    <button
+                      type="button"
+                      className={cn(btnSm, 'bg-amber-600 text-white border-amber-600')}
+                      disabled={busy}
+                      onClick={() => void openIncomePreview(true)}
+                    >
+                      <Lock size={12} /> {t('gl_periods_income_close_residual')}
                     </button>
                   )}
                   {selected.status === 'pl_closed' && (
                     <button
                       type="button"
                       className={cn(btnSm, 'bg-blue-600 text-white border-blue-600')}
-                      disabled={busy || (bsPreview != null && !bsPreview.isBalanced)}
+                      disabled={busy || hasOpenPl || (bsPreview != null && !bsPreview.isBalanced)}
                       onClick={() => void handleApproveBs()}
                     >
                       <CheckCircle2 size={12} /> {t('gl_periods_income_approve_bs')}
@@ -398,7 +494,7 @@ export function IncomeStatementClosingPanel({
                 </div>
               )}
 
-              {selected.status === 'bs_approved' && (
+              {selected.status === 'bs_approved' && !hasOpenPl && (
                 <p className={cn('text-[11px]', theme === 'dark' ? 'text-emerald-400' : 'text-emerald-700')}>
                   {t('gl_periods_income_close_complete_hint')}
                 </p>
@@ -407,7 +503,7 @@ export function IncomeStatementClosingPanel({
           )}
 
           {/* Opening balances — separate optional step; only on explicit button */}
-          {selected && (selected.status === 'bs_approved' || selected.status === 'opening_posted') && (
+          {selected && (selected.status === 'bs_approved' || selected.status === 'opening_posted') && !hasOpenPl && (
             <div
               className={cn(
                 'rounded-lg border p-3 space-y-2',
@@ -451,11 +547,7 @@ export function IncomeStatementClosingPanel({
           open
           title={journalPreview.title}
           entries={journalPreview.entries}
-          confirmLabel={
-            journalPreview.kind === 'income'
-              ? t('gl_periods_income_confirm_pl')
-              : t('gl_periods_income_post_opening')
-          }
+          confirmLabel={confirmLabel}
           onConfirm={() => void confirmPreview()}
           onClose={() => setJournalPreview(null)}
           busy={busy}

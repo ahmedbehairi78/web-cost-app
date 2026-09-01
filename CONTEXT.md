@@ -442,7 +442,8 @@ npm run dev                     # terminal 2 — :3000 أو التالي
 - **لا** رسملة أعمال تحت التنفيذ (`126…`) — ملغاة بقرار المنتج.
 - جدول **`fiscal_period_closings`**: `draft` → `pl_closed` → `bs_approved` → `opening_posted`.
 - إقفال الدخل: قيد `YE-PL-…` يصفّر `4/5` إلى **`31301001`** (`journal_kind=fiscal_pl_close`).
-- اعتماد الميزانية **مرفوض** إن `|A−(L+E)| > 1` جنيه (409)؛ الفرق ≤ 1 يُعتبر تقريبًا (`BS_BALANCE_TOLERANCE`).
+- **إقفال المتبقي (2026-09-01):** `POST …/close-income-residual` إن بقيت أرصدة `4/5` بعد الإقفال الأول؛ المعاينة تعرض **تاريخ أول/آخر قيد تشغيلي** على الحسابات المفتوحة.
+- اعتماد الميزانية **مرفوض** إن بقيت أرصدة `4/5` مفتوحة **أو** إن `|A−(L+E)| > 1` جنيه (409)؛ الفرق ≤ 1 يُعتبر تقريبًا (`BS_BALANCE_TOLERANCE`).
 - قيد افتتاحي `OPEN-…` بتاريخ اليوم التالي لنهاية الفترة (`journal_kind=fiscal_opening`) — **يُستبعد** من تجميع تقارير الميزانية/الدخل حتى لا تُضاعف الأرصدة؛ يُقفل نطاق الفترة عبر `accounting_period_locks`.
 - واجهة: موديول الفترات → **إعداد قائمة الدخل** (`IncomeStatementClosingPanel`).
 - API: `/api/fiscal-closings` · اختبارات: `server/src/accounting/fiscalPeriodClosing.test.ts`.
