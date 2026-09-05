@@ -216,6 +216,7 @@ web-cost-app/
 | طباعة الشركة | `company_info` | **`PrintSettingsPanel`**: بيانات الشركة فقط — **حفظ التصميم** يخزّن شريط الصفحة + الشريط العائم (`selectionPatches` للخلايا **وحقول `.kv-item`** وأجزاء الهيدر/الفوتر) |
 | **مستندات التقارير (جديد)** | `src/lib/reportDocument/` | موديول التقارير: معاينة/طباعة/PDF من بيانات منظمة — لا clone للشاشة؛ دخل/ميزانية تحليلية · جدول زمني BOQ · سيولة عبر API · تكاليف BOQ كاملة + totals؛ **تخطيط الصفحة:** هيدر مضغوط + بيانات تملأ الوسط + فوتر 3 أسطر ثابتة أسفل الصفحة (`12mm`)؛ PDF بدون CDN خط ضخم |
 | **ميزانية مقابل فعلي (local)** | `Reports` tab `budget` | الفعلي لكل المستويات من `boq-cost-breakdown` (= `boq_actual_costs`) — نفس مصدر تبويب تكاليف BOQ؛ ليس GL كامل |
+| **ميزان المراجعة / الميزانية (local)** | `Reports` tabs `trial` / `balance` | تجميع خادمي كامل `GET /api/reports/trial-balance` · `balance-sheet` — يشمل `YE-PL`؛ لا حد 5000 قيد |
 | **لوحة التحكم «غير موزّع»** | `dashboardMetrics` | مصروف بلا مركز عقد − OHA داخل الفلتر؛ إقفال الفترة لا يصفّره · تاريخ OHA = يوم الإغلاق داخل الربع |
 | **تاريخ إثبات القيد** | `businessCalendar` · `stampBusinessToday` | تقويم `Africa/Cairo` من الخادم · ترتيب دفتر اليومية بـ `createdAt` |
 
@@ -441,7 +442,8 @@ npm run dev                     # terminal 2 — :3000 أو التالي
 - **لا** رسملة أعمال تحت التنفيذ (`126…`) — ملغاة بقرار المنتج.
 - جدول **`fiscal_period_closings`**: `draft` → `pl_closed` → `bs_approved` → `opening_posted`.
 - إقفال الدخل: قيد `YE-PL-…` يصفّر `4/5` إلى **`31301001`** (`journal_kind=fiscal_pl_close`).
-- اعتماد الميزانية **مرفوض** إن `|A−(L+E)| > 1` جنيه (409)؛ الفرق ≤ 1 يُعتبر تقريبًا (`BS_BALANCE_TOLERANCE`).
+- **إقفال المتبقي (2026-09-01):** `POST …/close-income-residual` إن بقيت أرصدة `4/5` بعد الإقفال الأول؛ المعاينة تعرض **تاريخ أول/آخر قيد تشغيلي** على الحسابات المفتوحة.
+- اعتماد الميزانية **مرفوض** إن بقيت أرصدة `4/5` مفتوحة **أو** إن `|A−(L+E)| > 1` جنيه (409)؛ الفرق ≤ 1 يُعتبر تقريبًا (`BS_BALANCE_TOLERANCE`).
 - قيد افتتاحي `OPEN-…` بتاريخ اليوم التالي لنهاية الفترة (`journal_kind=fiscal_opening`) — **يُستبعد** من تجميع تقارير الميزانية/الدخل حتى لا تُضاعف الأرصدة؛ يُقفل نطاق الفترة عبر `accounting_period_locks`.
 - واجهة: موديول الفترات → **إعداد قائمة الدخل** (`IncomeStatementClosingPanel`).
 - API: `/api/fiscal-closings` · اختبارات: `server/src/accounting/fiscalPeriodClosing.test.ts`.

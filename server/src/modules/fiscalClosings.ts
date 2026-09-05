@@ -4,7 +4,9 @@ import { asyncHandler } from '../middleware/asyncHandler.js';
 import {
   approveBalanceSheet,
   closeIncomeStatement,
+  closeIncomeStatementResidual,
   createFiscalClosing,
+  IncomeCloseRequiredError,
   listFiscalClosings,
   postOpeningEntry,
   previewBalanceSheet,
@@ -121,12 +123,35 @@ fiscalClosingsRouter.post(
 );
 
 fiscalClosingsRouter.post(
+  '/:id/close-income-residual',
+  adminOnly,
+  asyncHandler(async (req, res) => {
+    try {
+      res.json(await closeIncomeStatementResidual(String(req.params.id), req.user?.id));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      res.status(400).json({ error: msg });
+    }
+  }),
+);
+
+fiscalClosingsRouter.post(
   '/:id/approve-balance-sheet',
   adminOnly,
   asyncHandler(async (req, res) => {
     try {
       res.json(await approveBalanceSheet(String(req.params.id), req.user?.id));
     } catch (e) {
+      if (e instanceof IncomeCloseRequiredError) {
+        res.status(409).json({
+          error: e.message,
+          code: 'income_close_required',
+          periodEnd: e.periodEnd,
+          openAccountCount: e.openAccountCount,
+          sampleCodes: e.sampleCodes,
+        });
+        return;
+      }
       const err = e as Error & { code?: string; balanceGap?: number };
       if (err.code === 'balance_sheet_unbalanced') {
         res.status(409).json({

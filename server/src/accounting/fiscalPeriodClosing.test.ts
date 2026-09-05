@@ -6,6 +6,7 @@ import {
   buildOpeningBalanceEntries,
   dayAfterIsoDate,
   isBalanceSheetBalanced,
+  minMaxIsoDates,
   openPlBalances,
 } from './fiscalPeriodClosing.js';
 import { roundMoney } from '../lib/money.js';
@@ -19,6 +20,19 @@ describe('openPlBalances', () => {
       { accountCode: '41101002', accountName: 'صفر', netDebit: 0 },
     ]);
     expect(open.map((r) => r.accountCode).sort()).toEqual(['41101001', '51101001']);
+  });
+});
+
+describe('minMaxIsoDates', () => {
+  it('returns first and last unclosed activity dates', () => {
+    expect(minMaxIsoDates(['2026-03-15', '2026-01-02', '2026-06-30'])).toEqual({
+      firstDate: '2026-01-02',
+      lastDate: '2026-06-30',
+    });
+  });
+
+  it('returns nulls for empty list', () => {
+    expect(minMaxIsoDates([])).toEqual({ firstDate: null, lastDate: null });
   });
 });
 

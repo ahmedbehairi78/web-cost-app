@@ -7,6 +7,13 @@ import {
   sumBoqCostBreakdown,
   type BoqCostLevel,
 } from '../lib/boqCostBreakdown.js';
+import {
+  computeBalanceSheetSummary,
+  netsToCodeBalMap,
+  queryBalanceSheetNets,
+  queryTrialBalanceAggregates,
+  splitNetToDebitCredit,
+} from '../lib/glReportBalances.js';
 import { getAssignedContractIds } from '../modules/inventoryHelpers.js';
 import { prisma } from '../db.js';
 import { serialize } from '../prisma/serialize.js';
@@ -14,6 +21,11 @@ import { serialize } from '../prisma/serialize.js';
 export const reportsRouter = Router();
 
 reportsRouter.use(requireAuth, requirePermission('reports'));
+
+function normalizeScopeId(raw: unknown): string {
+  const v = String(raw ?? '').trim();
+  return v || 'all';
+}
 
 reportsRouter.get(
   '/dashboard',
@@ -70,29 +82,124 @@ reportsRouter.get(
   }),
 );
 
+/**
+ * Full-history analytical trial balance (opening / movements / closing).
+ * Includes fiscal_pl_close so YE-PL zeros class 4/5; excludes fiscal_opening / OPEN-*.
+ * Query: periodStart (required YYYY-MM-DD) · optional projectId · contractId
+ */
 reportsRouter.get(
   '/trial-balance',
-  asyncHandler(async (_req, res) => {
-    const rows = await prisma.journalEntry.groupBy({
-      by: ['accountCode'],
-      where: { transaction: { isDeleted: false } },
-      _sum: { debit: true, credit: true },
-      orderBy: { accountCode: 'asc' },
+  asyncHandler(async (req, res) => {
+    const year = new Date().getFullYear();
+    const periodStart =
+      String(req.query.periodStart ?? '').trim().slice(0, 10) || `${year}-01-01`;
+    const asOf = String(req.query.asOf ?? req.query.dateTo ?? '').trim().slice(0, 10) || '';
+    const projectId = normalizeScopeId(req.query.projectId);
+    const contractId = normalizeScopeId(req.query.contractId);
+    const assignedIds = getAssignedContractIds(req.user);
+
+    if (assignedIds !== null && assignedIds.length === 0) {
+      res.json(
+        serialize({
+          periodStart,
+          asOf: asOf || null,
+          projectId,
+          contractId,
+          rows: [],
+          source: 'server_full',
+        }),
+      );
+      return;
+    }
+    if (contractId !== 'all' && assignedIds !== null && !assignedIds.includes(contractId)) {
+      res.status(403).json({ error: 'Access denied to this contract' });
+      return;
+    }
+
+    const aggs = await queryTrialBalanceAggregates({
+      periodStart,
+      asOf: asOf || null,
+      projectId,
+      contractId,
+      allowedContractIds: assignedIds,
     });
 
     res.json(
-      serialize(
-        rows.map((r) => {
-          const debit = Number(r._sum.debit || 0);
-          const credit = Number(r._sum.credit || 0);
+      serialize({
+        periodStart,
+        asOf: asOf || null,
+        projectId,
+        contractId,
+        source: 'server_full',
+        rows: aggs.map((r) => {
+          const opening = splitNetToDebitCredit(r.openingNet);
+          const closing = splitNetToDebitCredit(r.closingNet);
           return {
             accountCode: r.accountCode,
-            debit,
-            credit,
-            balance: debit - credit,
+            openingNet: r.openingNet,
+            openingDebit: opening.debit,
+            openingCredit: opening.credit,
+            debitMovements: r.debitMovements,
+            creditMovements: r.creditMovements,
+            closingNet: r.closingNet,
+            closingDebit: closing.debit,
+            closingCredit: closing.credit,
           };
         }),
-      ),
+      }),
+    );
+  }),
+);
+
+/**
+ * Full-history rolling balance sheet nets + summary (company-wide unless scoped).
+ * Includes fiscal_pl_close; excludes fiscal_opening / OPEN-*.
+ */
+reportsRouter.get(
+  '/balance-sheet',
+  asyncHandler(async (req, res) => {
+    const projectId = normalizeScopeId(req.query.projectId);
+    const contractId = normalizeScopeId(req.query.contractId);
+    const asOf = String(req.query.asOf ?? req.query.dateTo ?? '').trim().slice(0, 10) || '';
+    const assignedIds = getAssignedContractIds(req.user);
+
+    if (assignedIds !== null && assignedIds.length === 0) {
+      res.json(
+        serialize({
+          projectId,
+          contractId,
+          asOf: asOf || null,
+          source: 'server_full',
+          byCode: {},
+          summary: computeBalanceSheetSummary({}),
+        }),
+      );
+      return;
+    }
+    if (contractId !== 'all' && assignedIds !== null && !assignedIds.includes(contractId)) {
+      res.status(403).json({ error: 'Access denied to this contract' });
+      return;
+    }
+
+    const nets = await queryBalanceSheetNets({
+      projectId,
+      contractId,
+      asOf: asOf || null,
+      allowedContractIds: assignedIds,
+    });
+    const byCode = netsToCodeBalMap(nets);
+    const summary = computeBalanceSheetSummary(byCode);
+
+    res.json(
+      serialize({
+        projectId,
+        contractId,
+        asOf: asOf || null,
+        source: 'server_full',
+        byCode,
+        summary,
+        rowCount: nets.length,
+      }),
     );
   }),
 );

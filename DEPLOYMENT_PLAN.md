@@ -176,6 +176,7 @@
 - [x] `Billing.tsx` — `billingApi` CRUD + journal عبر الخادم (`billing.ts`, `billingHelpers.ts`)
 - [x] `Dashboard.tsx` — KPIs + مرجعيات عبر API
 - [x] `Reports.tsx` + `LiquidityReport.tsx` — تقارير + سيولة من Postgres
+- [x] **ميزان المراجعة / الميزانية (2026-09-01)** — `GET /api/reports/trial-balance` · `balance-sheet` تجميع كامل (يشمل YE-PL؛ ليس حد 5000 قيد)
 - [x] **`Inventory.tsx`** — projects/contracts/COA عبر API؛ `ConsumptionOrderModal` · `ReturnOrderModal`
 - [x] `Settings.tsx` — users (`authApi.userDirectory`) · `company_info` (`/api/settings`) في local
 - [x] `Banks.tsx` — Prisma `bank_*` + `banksApi` + `bankPersistence.ts`؛ كل التبويبات عبر API في local؛ **تلميح رصيد GL** في نماذج الشيكات/الحركات (2026-06-28)

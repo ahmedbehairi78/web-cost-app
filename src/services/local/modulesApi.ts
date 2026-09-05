@@ -334,7 +334,28 @@ export const glApi = {
 
 export const reportsApi = {
   dashboard: () => apiClient.get('/reports/dashboard'),
-  trialBalance: () => apiClient.get('/reports/trial-balance'),
+  trialBalance: (params: {
+    periodStart?: string;
+    asOf?: string;
+    projectId?: string;
+    contractId?: string;
+  } = {}) =>
+    apiClient.get<ReportsTrialBalanceResponse>(
+      `/reports/trial-balance${buildQuery({
+        periodStart: params.periodStart,
+        asOf: params.asOf,
+        projectId: params.projectId && params.projectId !== 'all' ? params.projectId : undefined,
+        contractId: params.contractId && params.contractId !== 'all' ? params.contractId : undefined,
+      })}`,
+    ),
+  balanceSheet: (params: { projectId?: string; contractId?: string; asOf?: string } = {}) =>
+    apiClient.get<ReportsBalanceSheetResponse>(
+      `/reports/balance-sheet${buildQuery({
+        projectId: params.projectId && params.projectId !== 'all' ? params.projectId : undefined,
+        contractId: params.contractId && params.contractId !== 'all' ? params.contractId : undefined,
+        asOf: params.asOf,
+      })}`,
+    ),
   boqCostBreakdown: (params: {
     projectId?: string;
     contractId?: string;
@@ -349,6 +370,55 @@ export const reportsApi = {
       dateFrom: params.dateFrom,
       dateTo: params.dateTo,
     })}`),
+};
+
+export type ReportsTrialBalanceRow = {
+  accountCode: string;
+  openingNet: number;
+  openingDebit: number;
+  openingCredit: number;
+  debitMovements: number;
+  creditMovements: number;
+  closingNet: number;
+  closingDebit: number;
+  closingCredit: number;
+};
+
+export type ReportsTrialBalanceResponse = {
+  periodStart: string;
+  asOf?: string | null;
+  projectId: string;
+  contractId: string;
+  source: string;
+  rows: ReportsTrialBalanceRow[];
+};
+
+export type ReportsBalanceSheetSummary = {
+  currentAssets: number;
+  nonCurrentAssets: number;
+  totalAssets: number;
+  currentLiab: number;
+  nonCurrentLiab: number;
+  totalLiab: number;
+  equityAccounts: number;
+  allRevenue: number;
+  allCosts: number;
+  unclosedPeriodPl: number;
+  totalEquity: number;
+  totalLE: number;
+  balanceGap: number;
+  inventory127Net: number;
+  isBalanced: boolean;
+};
+
+export type ReportsBalanceSheetResponse = {
+  projectId: string;
+  contractId: string;
+  asOf?: string | null;
+  source: string;
+  byCode: Record<string, number>;
+  summary: ReportsBalanceSheetSummary;
+  rowCount?: number;
 };
 
 export type BoqCostLevel = 'project' | 'contract' | 'boq_item';
@@ -1009,6 +1079,14 @@ export const fiscalClosingsApi = {
       periodStart: string;
       periodEnd: string;
       plBalances: Array<{ accountCode: string; accountName: string; netDebit: number }>;
+      openPlBalances: Array<{ accountCode: string; accountName: string; netDebit: number }>;
+      openPlAccountCount: number;
+      openPlAccountCountAtPeriodEnd: number;
+      openPlAccountCountAsOfToday: number;
+      openPlAfterPeriodEnd: boolean;
+      residualAsOf: string;
+      openPlFirstDate: string | null;
+      openPlLastDate: string | null;
       entries: FiscalJournalPreviewEntry[];
       netProfit: number;
       entryCount: number;
@@ -1038,6 +1116,11 @@ export const fiscalClosingsApi = {
     ),
   closeIncome: (id: string) =>
     apiClient.post<FiscalPeriodClosingRow>(`/fiscal-closings/${encodeURIComponent(id)}/close-income`, {}),
+  closeIncomeResidual: (id: string) =>
+    apiClient.post<FiscalPeriodClosingRow>(
+      `/fiscal-closings/${encodeURIComponent(id)}/close-income-residual`,
+      {},
+    ),
   approveBalanceSheet: (id: string) =>
     apiClient.post<FiscalPeriodClosingRow>(
       `/fiscal-closings/${encodeURIComponent(id)}/approve-balance-sheet`,

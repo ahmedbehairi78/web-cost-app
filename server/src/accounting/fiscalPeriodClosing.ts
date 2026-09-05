@@ -183,4 +183,20 @@ export function openPlBalances(balances: AccountNetBalance[]): AccountNetBalance
   );
 }
 
+/** Pure helper for tests — min/max ISO YYYY-MM-DD from a date list. */
+export function minMaxIsoDates(dates: Iterable<string>): {
+  firstDate: string | null;
+  lastDate: string | null;
+} {
+  let first: string | null = null;
+  let last: string | null = null;
+  for (const raw of dates) {
+    const key = String(raw || '').trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(key)) continue;
+    if (!first || key < first) first = key;
+    if (!last || key > last) last = key;
+  }
+  return { firstDate: first, lastDate: last };
+}
+
 export { isPlAccount, isBalanceSheetAccount };
