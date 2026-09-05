@@ -36,6 +36,11 @@ import { AdminSensitiveVerifyModal } from './AdminSensitiveVerifyModal';
 import { isLocalBackend } from '../lib/dataBackend';
 import { ApiError } from '../lib/apiClient';
 import {
+  ipcLinePeriodValue,
+  ipcLineToDateValue,
+  normalizeCompletionPct,
+} from '../lib/ipcProgressValue';
+import {
   billingApi,
   boqApi,
   contractsApi,
@@ -127,7 +132,48 @@ interface BillingItem {
   previousQty: number;
   currentQty: number;
   totalQty: number;
+  /** Manual to-date completion % (0–100). */
+  completionPct: number;
+  /** Completion % at end of prior approved certificate. */
+  previousCompletionPct: number;
   amount: number;
+}
+
+function readCompletionPctFromRow(row: Record<string, unknown>, key: 'completionPct' | 'previousCompletionPct', fallback: number): number {
+  if (row[key] != null && Number.isFinite(Number(row[key]))) {
+    return normalizeCompletionPct(row[key], fallback);
+  }
+  const meta = row.metadata;
+  if (meta && typeof meta === 'object' && !Array.isArray(meta)) {
+    const m = meta as Record<string, unknown>;
+    if (m[key] != null && Number.isFinite(Number(m[key]))) {
+      return normalizeCompletionPct(m[key], fallback);
+    }
+  }
+  return fallback;
+}
+
+/** Last non-draft certificate's completion % for a BOQ line (chronological by date). */
+function lastApprovedCompletionPct(
+  billings: BillingIPC[],
+  boqItemId: string,
+  excludeId?: string,
+): number {
+  const id = String(boqItemId || '');
+  let bestPct = 0;
+  let bestDate = '';
+  for (const b of billings) {
+    if (b.status === 'draft') continue;
+    if (excludeId && b.id === excludeId) continue;
+    const item = b.items?.find((i) => i.boqItemId === id);
+    if (!item) continue;
+    const d = normalizeDate(b.date);
+    if (d >= bestDate) {
+      bestDate = d;
+      bestPct = normalizeCompletionPct(item.completionPct, 0);
+    }
+  }
+  return bestPct;
 }
 
 type FirestoreDate = string | Date | { seconds: number; toDate(): Date };
@@ -206,6 +252,24 @@ function apiLoadErrorToast(err: unknown, language: string, label: string) {
 }
 
 function normalizeBillingItem(row: Record<string, unknown>): BillingItem {
+  const previousQty = Number(row.previousQty ?? 0);
+  const currentQty = Number(row.currentQty ?? 0);
+  const rate = Number(row.rate ?? 0);
+  const totalQty = Number(row.totalQty ?? previousQty + currentQty);
+  const completionPct = readCompletionPctFromRow(row, 'completionPct', 100);
+  const previousCompletionPct = readCompletionPctFromRow(row, 'previousCompletionPct', 0);
+  const amountStored = Number(row.amount ?? 0);
+  const amount =
+    amountStored > 0
+      ? amountStored
+      : ipcLineToDateValue({
+          previousQty,
+          currentQty,
+          totalQty,
+          rate,
+          completionPct,
+          previousCompletionPct,
+        });
   return {
     boqItemId: String(row.boqItemId ?? ''),
     chapterCode: row.chapterCode ? String(row.chapterCode) : undefined,
@@ -216,12 +280,14 @@ function normalizeBillingItem(row: Record<string, unknown>): BillingItem {
     itemCode: String(row.itemCode ?? ''),
     description: String(row.description ?? ''),
     unit: String(row.unit ?? ''),
-    rate: Number(row.rate ?? 0),
+    rate,
     tenderQty: row.tenderQty != null ? Number(row.tenderQty) : undefined,
-    previousQty: Number(row.previousQty ?? 0),
-    currentQty: Number(row.currentQty ?? 0),
-    totalQty: Number(row.totalQty ?? 0),
-    amount: Number(row.amount ?? 0),
+    previousQty,
+    currentQty,
+    totalQty,
+    completionPct,
+    previousCompletionPct,
+    amount,
   };
 }
 
@@ -794,17 +860,17 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
       const rows = tx.items;
       if (!Array.isArray(rows)) continue;
       for (const row of rows) {
+        if (row?.clientBoqItemId) s.add(String(row.clientBoqItemId));
         if (row?.boqItemId) s.add(String(row.boqItemId));
       }
     }
     return s;
   }, [purchaseTransactions, selectedContractId]);
 
-  /** Period works (current qty × rate) — VAT-inclusive rates. */
   const worksValueExVat = useMemo(
     () =>
       formData.items.reduce(
-        (sum, item) => sum + roundMoney2(Number(item.currentQty || 0) * Number(item.rate || 0)),
+        (sum, item) => sum + ipcLinePeriodValue(item),
         0,
       ),
     [formData.items],
@@ -946,7 +1012,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
           item.previousQty,
           item.currentQty,
           item.totalQty,
-          (item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0).toFixed(2) + '%',
+          Number(item.completionPct ?? 0).toFixed(2) + '%',
           item.amount
         ]);
       });
@@ -1018,20 +1084,31 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
       data.forEach(row => {
         const itemCode = row[language === 'ar' ? 'كود البند' : 'Item Code'] as string | undefined;
         const currQty = Number(row[language === 'ar' ? 'الكمية الحالية' : 'Curr Qty']);
-        
-        if (itemCode !== undefined && !isNaN(currQty)) {
-          const idx = updatedItems.findIndex(item => item.itemCode === String(itemCode));
-          if (idx !== -1) {
-            const item = updatedItems[idx];
-            const totalQty = item.previousQty + currQty;
-            updatedItems[idx] = {
-              ...item,
-              currentQty: currQty,
-              totalQty: totalQty,
-              amount: roundMoney2(totalQty * item.rate),
-            };
-          }
-        }
+        const pctRaw = row[language === 'ar' ? 'نسبة التنفيذ' : 'Comp %'];
+        const pctNum =
+          pctRaw != null && String(pctRaw).trim() !== ''
+            ? normalizeCompletionPct(String(pctRaw).replace(/%/g, ''), NaN)
+            : NaN;
+
+        if (itemCode === undefined) return;
+        const idx = updatedItems.findIndex(item => item.itemCode === String(itemCode));
+        if (idx === -1) return;
+        const item = updatedItems[idx];
+        const currentQty = !Number.isNaN(currQty) ? currQty : item.currentQty;
+        const totalQty = item.previousQty + currentQty;
+        const completionPct = Number.isFinite(pctNum) ? pctNum : item.completionPct;
+        updatedItems[idx] = {
+          ...item,
+          currentQty,
+          totalQty,
+          completionPct,
+          amount: ipcLineToDateAmount({
+            ...item,
+            currentQty,
+            totalQty,
+            completionPct,
+          }),
+        };
       });
 
       setFormData({ ...formData, items: updatedItems });
@@ -1055,10 +1132,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     if (ipc) {
       setEditingIPC(ipc);
       const periodBase = (() => {
-        const period = ipc.items.reduce(
-          (s, i) => s + roundMoney2(Number(i.currentQty || 0) * Number(i.rate || 0)),
-          0,
-        );
+        const period = ipc.items.reduce((s, i) => s + ipcLinePeriodValue(i), 0);
         return period > 0 ? period : ipc.worksValueExVat;
       })();
       setFormData({
@@ -1070,11 +1144,22 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
           const previousQty = Number(item.previousQty || 0);
           const rate = Number(item.rate || 0);
           const totalQty = Number(item.totalQty || previousQty + currentQty);
+          const completionPct = normalizeCompletionPct(item.completionPct, 100);
+          const previousCompletionPct = normalizeCompletionPct(item.previousCompletionPct, 0);
           return {
             ...item,
             tenderQty: boq?.tenderQty ?? item.tenderQty,
             totalQty,
-            amount: ipcLineToDateAmount({ rate, previousQty, currentQty, totalQty }),
+            completionPct,
+            previousCompletionPct,
+            amount: ipcLineToDateAmount({
+              rate,
+              previousQty,
+              currentQty,
+              totalQty,
+              completionPct,
+              previousCompletionPct,
+            }),
           };
         }),
         vatPct: safePct(ipc.vatAmount, ipc.worksValueExVat || periodBase, BILLING_DEFAULTS.VAT_PCT),
@@ -1109,6 +1194,10 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
         }, 0);
         // طبقة إضافية: الكميات المعادلة من مستخلصات التشوين المعتمدة لهذا البند
         const previousQty = billedPreviousQty + (mosEquivalentMap[boq.id] ?? 0);
+        let previousCompletionPct = lastApprovedCompletionPct(billings, boq.id);
+        // Legacy certificates had no stored % — treat prior billed qty as 100% so period is not inflated
+        if (previousQty > 0 && previousCompletionPct <= 0) previousCompletionPct = 100;
+        const completionPct = previousCompletionPct > 0 ? previousCompletionPct : 100;
 
         return {
           boqItemId: boq.id,
@@ -1125,11 +1214,15 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
           previousQty,
           currentQty: 0,
           totalQty: previousQty,
+          completionPct,
+          previousCompletionPct,
           amount: ipcLineToDateAmount({
             rate: boq.unitRateTotal,
             previousQty,
             currentQty: 0,
             totalQty: previousQty,
+            completionPct,
+            previousCompletionPct,
           }),
         };
       });
@@ -1167,6 +1260,14 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
     const newItems = [...formData.items];
     const item = newItems[idx];
     item.rate = rate;
+    item.amount = ipcLineToDateAmount(item);
+    setFormData({ ...formData, items: newItems });
+  };
+
+  const handleItemCompletionPctChange = (idx: number, pct: number) => {
+    const newItems = [...formData.items];
+    const item = newItems[idx];
+    item.completionPct = normalizeCompletionPct(pct, 0);
     item.amount = ipcLineToDateAmount(item);
     setFormData({ ...formData, items: newItems });
   };
@@ -2017,7 +2118,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
                   return (
                     <Fragment key={chapterName}>
                       {items.map((item, rowIdx) => {
-                        const execPct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
+                        const execPct = Number(item.completionPct ?? 0);
                         const boqItemId = ipc.items.find((row) => row.itemCode === item.itemCode)?.boqItemId;
                         const costLinked = boqItemId ? boqItemIdsWithCost.has(boqItemId) : false;
                         const toDateAmount = ipcLineToDateAmount(item);
@@ -2408,6 +2509,7 @@ export function Billing({ embedded = false }: { embedded?: boolean }) {
           onSubmit={(status) => handleRequestSubmit(status)}
           onItemQtyChange={handleItemQtyChange}
           onItemRateChange={handleItemRateChange}
+          onItemCompletionPctChange={handleItemCompletionPctChange}
           theme={theme}
           language={language}
           dir={dir}

@@ -100,24 +100,24 @@ describe('buildIpcCoverWorksSplit', () => {
     expect(split.additional).toEqual({ previousValue: 0, currentValue: 0, toDateValue: 0 });
   });
 
-  it('uses currentQty × rate even when amount wrongly stores totalQty × rate', () => {
+  it('uses qty × rate × completion % for period and to-date', () => {
     const split = buildIpcCoverWorksSplit(
       [
         {
-          boqItemId: 'a',
-          rate: 10,
-          previousQty: 5,
-          currentQty: 3,
-          /** Bug remnant: previous+current */
-          amount: 80,
+          boqItemId: 'plaster',
+          rate: 50,
+          previousQty: 120,
+          currentQty: 0,
+          completionPct: 90,
+          previousCompletionPct: 70,
         },
       ],
       new Set(),
     );
-    expect(split.basic.currentValue).toBe(30);
-    expect(split.basic.previousValue).toBe(50);
-    expect(split.periodWorksTotal).toBe(30);
-    expect(split.toDateWorksTotal).toBe(80);
+    expect(split.basic.previousValue).toBe(4200);
+    expect(split.basic.currentValue).toBe(1200);
+    expect(split.basic.toDateValue).toBe(5400);
+    expect(split.periodWorksTotal).toBe(1200);
   });
 });
 

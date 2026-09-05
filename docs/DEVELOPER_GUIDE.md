@@ -404,7 +404,8 @@ npm run test -- src/lib/excelLikeInputs.test.ts src/lib/spreadsheetGridNav.test.
 | التبويب | الحالة | GL |
 |---------|--------|-----|
 | **فاتورة مشتريات** | حفظ → ترحيل فوري (أو read-only إن `transactionId`) · **آجلة/نقدية** (`paymentType`) | `recordPurchaseToProjectInventory` / `recordFixedAssetPurchase` — Cr مورد **21101…** أو عهدة **12102…** |
-| **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) · رقم لكل مقاول/سنة · طباعة: رقم+حالة + شعار الشركة + ملخص أسفل البنود (محتجزات على الإجمالي؛ القيد = زيادة الفترة) |
+| **مستخلص مقاول** | `draft` → `submitted` → `approved` | **`POST /api/purchase-transactions/:id/approve`** فقط (`costs_ipc.edit`) · بنود فرعية حرة مربوطة بـ `clientBoqItemId` · القيمة = كمية تراكمية × فئة × نسبة إنجاز يدوية · استيراد إكسل أول مرة · `boq_actual_costs` على بند العميل · رقم لكل مقاول/سنة عند الاعتماد · طباعة: رقم+حالة + ملخص |
+| **مستخلص عميل** | Billing | نفس معادلة `qty × rate × %` · نسبة يدوية في النموذج · الكفر Cover-JLL يستهلك مجاميع الأعمال المحسوبة دون تغيير معادلات الخصم |
 | **مستخلص خدمة** | نفس الدورة · `type=service_ipc` | رقم لكل مورد/سنة **عند الاعتماد فقط** `مستخلص الاسم-001-2026` (المسودات لا تستهلك التسلسل)؛ عنوان الطباعة = الرقم + الحالة؛ شعار + اسم الشركة معاً؛ ملخص أسفل البنود؛ تنقل أسهم/Tab في جدول البنود؛ **المسدد** = مدين المقاول + دائن 121…/21601… (مركز التكلفة **أو** تحويل بلا مركز) عبر `GET /api/gl/contractor-cash-payments`. اعتماد يرحّل مدين حسب `serviceKind`؛ **لا** توزيع على بنود BOQ. **لا** تستورد `costCenterAttribution` من `serviceContractor.ts` |
 | **تسوية عهدة** | `draft` → `submitted` → `approved` | **`POST /api/custody-settlements/:id/approve`** فقط (`ledger.create` أو `ledger.edit`) — زر الاعتماد في **تفاصيل** التسوية وليس النموذج فقط |
 

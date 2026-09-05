@@ -10,9 +10,18 @@ export const BOQ_COST_ELEMENT_SUBCONTRACTOR = 'subcontractor';
 export const BOQ_COST_ELEMENT_CUSTODY = 'custody';
 
 export type IpcBoqLineInput = {
+  /** Legacy / direct BOQ id — prefer clientBoqItemId when set. */
   boqItemId?: string | null;
+  /** Client BOQ item that receives the cost load (subcontractor breakdown lines). */
+  clientBoqItemId?: string | null;
+  previousQty?: number | null;
   currentQty?: number | null;
+  totalQty?: number | null;
   rate?: number | null;
+  completionPct?: number | null;
+  previousCompletionPct?: number | null;
+  /** Explicit period amount (preferred when provided). */
+  periodAmount?: number | null;
   amount?: number | null;
 };
 
@@ -24,12 +33,58 @@ function parseRecordedAt(dateStr: string | null | undefined): Date {
   return new Date();
 }
 
+function normalizePct(value: unknown, fallback: number): number {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  if (n < 0) return 0;
+  if (n > 100) return 100;
+  return n;
+}
+
+function lineTotalQty(line: IpcBoqLineInput): number {
+  if (line.totalQty != null && Number.isFinite(Number(line.totalQty))) {
+    return Number(line.totalQty);
+  }
+  return Number(line.previousQty || 0) + Number(line.currentQty || 0);
+}
+
+function lineToDateValue(line: IpcBoqLineInput): number {
+  const qty = lineTotalQty(line);
+  const rate = Number(line.rate || 0);
+  const hasPct = line.completionPct != null && Number.isFinite(Number(line.completionPct));
+  const pct = hasPct ? normalizePct(line.completionPct, 100) : 100;
+  return roundMoney(qty * rate * (pct / 100));
+}
+
+function linePriorToDateValue(line: IpcBoqLineInput): number {
+  const qty = Number(line.previousQty || 0);
+  const rate = Number(line.rate || 0);
+  const hasPrevPct =
+    line.previousCompletionPct != null && Number.isFinite(Number(line.previousCompletionPct));
+  const hasCurrPct =
+    line.completionPct != null && Number.isFinite(Number(line.completionPct));
+  if (!hasPrevPct && !hasCurrPct) {
+    return roundMoney(qty * rate);
+  }
+  const pct = hasPrevPct ? normalizePct(line.previousCompletionPct, 0) : 0;
+  return roundMoney(qty * rate * (pct / 100));
+}
+
 /**
- * Period cost for one IPC line: currentQty × rate (ex-VAT).
- * Falls back to `amount` only when currentQty is missing (legacy rows).
- * Never uses cumulative (previous+current)×rate — that would inflate reports across extracts.
+ * Period cost for one IPC line.
+ * Prefer explicit periodAmount; else qty×rate×% formula; else currentQty×rate; else amount.
  */
 export function ipcLinePeriodCost(line: IpcBoqLineInput): number {
+  const explicit = Number(line.periodAmount);
+  if (Number.isFinite(explicit) && explicit > 0) return roundMoney(explicit);
+
+  const hasPct =
+    (line.completionPct != null && Number.isFinite(Number(line.completionPct)))
+    || (line.previousCompletionPct != null && Number.isFinite(Number(line.previousCompletionPct)));
+  if (hasPct) {
+    return roundMoney(Math.max(0, lineToDateValue(line) - linePriorToDateValue(line)));
+  }
+
   const qty = Number(line.currentQty);
   const rate = Number(line.rate);
   if (Number.isFinite(qty) && qty > 0 && Number.isFinite(rate) && rate >= 0) {
@@ -38,6 +93,10 @@ export function ipcLinePeriodCost(line: IpcBoqLineInput): number {
   const amount = Number(line.amount);
   if (Number.isFinite(amount) && amount > 0) return roundMoney(amount);
   return 0;
+}
+
+function resolveCostBoqItemId(line: IpcBoqLineInput): string {
+  return String(line.clientBoqItemId || line.boqItemId || '').trim();
 }
 
 export function buildIpcBoqActualRows(params: {
@@ -58,21 +117,23 @@ export function buildIpcBoqActualRows(params: {
   const contractId = String(params.contractId || '').trim();
   if (!contractId) return [];
   const recordedAt = parseRecordedAt(params.date);
-  const out: ReturnType<typeof buildIpcBoqActualRows> = [];
+  /** Aggregate period cost per client BOQ item (multiple sub-lines may share one). */
+  const byBoq = new Map<string, number>();
   for (const line of params.items) {
-    const boqItemId = String(line.boqItemId ?? '').trim();
+    const boqItemId = resolveCostBoqItemId(line);
     if (!boqItemId) continue;
     const totalCost = ipcLinePeriodCost(line);
     if (totalCost <= 0) continue;
-    const qty = Number(line.currentQty);
-    const quantity = Number.isFinite(qty) && qty > 0 ? qty : 1;
-    const unitCost = quantity > 0 ? roundMoney(totalCost / quantity) : totalCost;
+    byBoq.set(boqItemId, roundMoney((byBoq.get(boqItemId) ?? 0) + totalCost));
+  }
+  const out: ReturnType<typeof buildIpcBoqActualRows> = [];
+  for (const [boqItemId, totalCost] of byBoq) {
     out.push({
       boqItemId,
       contractId,
       purchaseTransactionId: params.purchaseTransactionId,
-      quantity,
-      unitCost,
+      quantity: 1,
+      unitCost: totalCost,
       totalCost,
       costElement: BOQ_COST_ELEMENT_SUBCONTRACTOR,
       recordedAt,

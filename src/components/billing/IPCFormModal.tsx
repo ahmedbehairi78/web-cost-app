@@ -54,6 +54,8 @@ interface BillingItem {
   previousQty: number;
   currentQty: number;
   totalQty: number;
+  completionPct?: number;
+  previousCompletionPct?: number;
   amount: number;
 }
 
@@ -114,6 +116,7 @@ interface Props {
   onSubmit: (status: 'draft' | 'submitted') => void;
   onItemQtyChange: (idx: number, qty: number) => void;
   onItemRateChange: (idx: number, rate: number) => void;
+  onItemCompletionPctChange: (idx: number, pct: number) => void;
   theme: string;
   language: string;
   dir: string;
@@ -145,7 +148,7 @@ const EMPTY_VO_IDS: ReadonlySet<string> = new Set();
 export function IPCFormModal({
   isOpen, editingIPC, formData, setFormData, isSubmitting,
   contracts, selectedContractId, onClose, onSubmit,
-  onItemQtyChange, onItemRateChange, theme, language, dir,
+  onItemQtyChange, onItemRateChange, onItemCompletionPctChange, theme, language, dir,
   boqItemIdsWithCost,
   ipcKindReadOnly = false,
   onPrintPreview,
@@ -595,7 +598,7 @@ export function IPCFormModal({
                           <React.Fragment key={`ipc-ch-${chapterIdx}-${chapterName || '—'}`}>
                             {items.map((item, rowIdx) => {
                               const idx = formData.items.findIndex(fi => fi.boqItemId === item.boqItemId);
-                              const pct = item.tenderQty ? (item.totalQty / item.tenderQty) * 100 : 0;
+                              const pct = Number(item.completionPct ?? 0);
                               const rateNum = Number(item.rate);
                               const costLinked = boqItemIdsWithCost?.has(item.boqItemId);
                               const isVoAdditional = voIds.has(item.boqItemId);
@@ -663,10 +666,20 @@ export function IPCFormModal({
                                   </td>
                                   <td className="p-2 font-mono">{item.totalQty}</td>
                                   <td className="p-2">
-                                    <div className="flex items-center gap-1">
-                                      <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden"><div className={cn('h-full transition-all', pct > 100 ? 'bg-red-500' : 'bg-blue-500')} style={{ width: `${Math.min(pct, 100)}%` }} /></div>
-                                      <span className={cn('text-[8px] font-mono', pct > 100 ? 'text-red-500' : 'text-gray-400')}>{pct.toFixed(1)}%</span>
-                                    </div>
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      max="100"
+                                      inputMode="decimal"
+                                      className={cn(
+                                        'w-20 border rounded py-1.5 px-2 text-center outline-none focus:border-blue-500 transition-colors font-mono',
+                                        theme === 'dark' ? 'bg-gray-900 border-gray-800 text-amber-300' : 'bg-white border-gray-300 text-amber-800',
+                                      )}
+                                      value={Number.isFinite(pct) ? pct : ''}
+                                      onChange={(e) => onItemCompletionPctChange(idx, Number(e.target.value))}
+                                      aria-label={language === 'ar' ? 'نسبة الإنجاز' : 'Completion %'}
+                                    />
                                   </td>
                                   <td className="p-2 font-mono font-bold text-blue-400">{formatNumber(ipcLineToDateAmount(item))}</td>
                                 </tr>

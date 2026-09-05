@@ -1577,11 +1577,11 @@ const translations: Record<Language, Record<string, string>> = {
       'الحفظ ينشئ قيد GL على حساب الأصل. راجع موديول الأصول الثابتة للإهلاك الدوري.',
     manual_costs_ipc_subcontractor_title: 'مستخلص مقاول باطن',
     manual_costs_ipc_subcontractor_summary:
-      'تسجيل مستخلص مقاول باطن مع خصومات الضمان والضرائب — Dr تكلفة مقاول · Cr مقاول 21102….',
+      'تسجيل مستخلص مقاول باطن ببنود فرعية (تحليل أعمال) مربوطة ببند قائمة كميات العميل — القيمة = كمية × فئة × نسبة إنجاز يدوية. Dr تكلفة مقاول · Cr مقاول 21102….',
     manual_costs_ipc_subcontractor_before:
-      'حساب مقاول في COA (21102…)، عقد/مركز تكلفة، وصلاحية costs_ipc. في الوضع المحلي: مزامنة المشروع/العقد مع Postgres.',
+      'حساب مقاول في COA (21102…)، عقد/مركز تكلفة، وصلاحية costs_ipc. بنود العميل في BOQ للربط. في الوضع المحلي: مزامنة المشروع/العقد مع Postgres.',
     manual_costs_ipc_subcontractor_mistakes:
-      'اختيار مورد 21101 بدلاً من مقاول 21102 · الحفظ دون معاينة القيد · عدم ربط مركز التكلفة بالعقد.',
+      'اختيار مورد 21101 بدلاً من مقاول 21102 · بند بلا ربط ببند العميل · الحفظ دون معاينة القيد · عدم ربط مركز التكلفة بالعقد.',
     manual_costs_ipc_subcontractor_step_1_title: 'تبويب مستخلص مقاول → جديد',
     manual_costs_ipc_subcontractor_step_1_body:
       'التكاليف الفعلية → تبويب مستخلص مقاول → «مستخلص جديد».',
@@ -1590,7 +1590,7 @@ const translations: Record<Language, Record<string, string>> = {
       'اختر حساب المقاول من 21102…، مركز التكلفة/العقد، والتاريخ.',
     manual_costs_ipc_subcontractor_step_3_title: 'البنود والخصومات',
     manual_costs_ipc_subcontractor_step_3_body:
-      'أدخل كميات الفترة والنسب. الملخص أسفل البنود: سابق + حالي = إجمالي الأعمال. الضريبة ومحتجز الضمان والتأمينات (وأي محتجز آخر) على الإجمالي. الصافي − دفعة مقدمة إن وُجدت − المسدد سابقاً = المستحق. قيد الاعتماد يرحّل زيادة الفترة فقط. الرقم لكل مقاول وسنة يُمنح عند الاعتماد فقط (مستخلص الاسم-001-2026) حتى لا يختل التسلسل عند رفض/حذف المسودة.',
+      'أضف بنوداً فرعية أو استورد إكسل أول مرة، واربط كل سطر ببند عميل. أدخل الكمية الحالية ونسبة الإنجاز يدوياً (القيمة = الكمية التراكمية × الفئة × النسبة%). الملخص: سابق + حالي = إجمالي الأعمال بالمعادلة. الضريبة والمحتجزات على الإجمالي. قيد الاعتماد يرحّل زيادة الفترة فقط. الرقم عند الاعتماد فقط.',
     manual_costs_ipc_subcontractor_step_4_title: 'معاينة القيد',
     manual_costs_ipc_subcontractor_step_4_body:
       'عند الحفظ الأول تظهر معاينة القيد — راجع توازن المدين/الدائن ثم أكّد الترحيل.',
@@ -4193,11 +4193,11 @@ const translations: Record<Language, Record<string, string>> = {
       'Save posts GL to the asset account. Use Fixed Assets module for periodic depreciation.',
     manual_costs_ipc_subcontractor_title: 'Subcontractor IPC',
     manual_costs_ipc_subcontractor_summary:
-      'Record subcontractor payment certificate with retention and tax deductions — Dr subcontractor cost · Cr 21102….',
+      'Record a subcontractor works IPC with breakdown lines linked to a client BOQ item — value = qty × rate × manual completion %. Dr subcontractor cost · Cr 21102….',
     manual_costs_ipc_subcontractor_before:
-      'Subcontractor COA (21102…), contract/cost center, and costs_ipc permission. Local mode: sync project/contract to Postgres first.',
+      'Subcontractor COA (21102…), contract/cost center, costs_ipc permission, and client BOQ items for linking. Local mode: sync project/contract to Postgres first.',
     manual_costs_ipc_subcontractor_mistakes:
-      'Supplier 21101 instead of subcontractor 21102 · Saving without journal preview · Missing contract cost center.',
+      'Supplier 21101 instead of subcontractor 21102 · Line without client BOQ link · Saving without journal preview · Missing contract cost center.',
     manual_costs_ipc_subcontractor_step_1_title: 'Subcontractor IPC tab → New',
     manual_costs_ipc_subcontractor_step_1_body:
       'Actual Costs → Subcontractor IPC tab → New IPC.',
@@ -4206,7 +4206,7 @@ const translations: Record<Language, Record<string, string>> = {
       'Select subcontractor from 21102… leaves, cost center/contract, and date.',
     manual_costs_ipc_subcontractor_step_3_title: 'Lines and deductions',
     manual_costs_ipc_subcontractor_step_3_body:
-      'Enter period quantities and rates. Summary below the lines: previous + current = total works. VAT and retentions apply on the total. Net − advance (if any) − previous payments = amount due. The approve journal posts the period increment only. Certificate number is assigned on approval only (مستخلص name-001-2026) so rejected/deleted drafts do not burn the sequence.',
+      'Add breakdown lines or import Excel once, and link each row to a client BOQ item. Enter current qty and completion % manually (value = cumulative qty × rate × %). Summary uses the same formula. Approve posts the period increment only. Certificate number is assigned on approval only.',
     manual_costs_ipc_subcontractor_step_4_title: 'Journal preview',
     manual_costs_ipc_subcontractor_step_4_body:
       'First save opens journal preview — verify Dr/Cr balance, then confirm posting.',

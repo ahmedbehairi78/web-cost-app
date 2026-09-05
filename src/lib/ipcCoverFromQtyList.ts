@@ -2,9 +2,17 @@
  * IPC cover aggregates from a single quantities list (same rows as the IPC form).
  * Basic = original contract BOQ lines (primary scope); Optional = optional-scope lines;
  * Additional = VO-created BOQ lines.
+ *
+ * Works values come from the IPC progress formula (qty × rate × manual %).
+ * Cover-JLL does not re-derive deductions from raw qty alone.
  */
 import { roundMoney } from './money';
 import { type BoqScopeType, BOQ_SCOPE_OPTIONAL, normalizeBoqScopeType } from './boqScopeType';
+import {
+  ipcLinePeriodValue,
+  ipcLinePriorToDateValue,
+  ipcLineToDateValue,
+} from './ipcProgressValue';
 
 export type IpcQtyLineKind = 'basic' | 'optional' | 'additional';
 
@@ -13,7 +21,11 @@ export type IpcCoverQtyLine = {
   rate: number;
   previousQty: number;
   currentQty: number;
-  /** Period amount — optional; cover math never trusts this (uses qty×rate). */
+  /** Manual to-date completion % (0–100). */
+  completionPct?: number;
+  /** Completion % at end of prior approved certificate. */
+  previousCompletionPct?: number;
+  /** To-date amount — optional; cover prefers qty×rate×% via ipcProgressValue. */
   amount?: number;
 };
 
@@ -66,32 +78,27 @@ export function classifyIpcQtyLineKind(
 }
 
 function linePreviousValue(line: IpcCoverQtyLine): number {
-  return roundMoney(Number(line.previousQty || 0) * Number(line.rate || 0));
+  return ipcLinePriorToDateValue(line);
 }
 
-/**
- * Period value = current qty × rate only.
- * Never trust stored `amount` here — imports once used totalQty×rate and inflated works.
- */
+/** Period works for this line (to-date − prior), respecting manual completion %. */
 function lineCurrentValue(line: IpcCoverQtyLine): number {
-  return roundMoney(Number(line.currentQty || 0) * Number(line.rate || 0));
+  return ipcLinePeriodValue(line);
 }
 
 /**
  * To-date executed value for the qty list / print «القيمة» column:
- * totalQty × rate (previous + current). Prefer explicit totalQty when set.
+ * totalQty × rate × (completionPct/100). Without completionPct → legacy 100%.
  */
 export function ipcLineToDateAmount(line: {
   rate: number;
   previousQty?: number;
   currentQty?: number;
   totalQty?: number;
+  completionPct?: number;
+  previousCompletionPct?: number;
 }): number {
-  const total =
-    line.totalQty != null && Number.isFinite(Number(line.totalQty))
-      ? Number(line.totalQty)
-      : Number(line.previousQty || 0) + Number(line.currentQty || 0);
-  return roundMoney(total * Number(line.rate || 0));
+  return ipcLineToDateValue(line);
 }
 
 function emptyBucket(): IpcCoverWorkBucket {

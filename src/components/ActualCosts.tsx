@@ -40,6 +40,18 @@ import {
 } from './actualCosts/CostsPurchaseSidebar';
 import { InvoiceLinesEditor } from './actualCosts/InvoiceLinesEditor';
 import { IpcItemsGrid } from './actualCosts/IpcItemsGrid';
+import {
+  ipcLinePeriodValue,
+  ipcLinePriorToDateValue,
+  ipcLineToDateValue,
+  normalizeCompletionPct,
+  sumIpcPeriodValues,
+} from '../lib/ipcProgressValue';
+import {
+  buildSubcontractorIpcTemplateAoa,
+  parseSubcontractorIpcExcelBuffer,
+} from '../lib/subcontractorIpcExcel';
+import { computeServiceIpcCertificateSummary, displayServiceIpcNumber, resolveContractorAccountCode, isServiceContractor } from '../lib/serviceContractor';
 import { AddExpenseAccountModal, type NewExpenseAccountFields } from './actualCosts/AddExpenseAccountModal';
 import { AddSupplierModal, type NewSupplierFields } from './actualCosts/AddSupplierModal';
 import { ConfirmDeleteModal } from './actualCosts/ConfirmDeleteModal';
@@ -69,7 +81,6 @@ import {
   mapToIpcPrintItems,
   type CompanyPrintInfo,
 } from '../lib/ipcPrintData';
-import { computeServiceIpcCertificateSummary, displayServiceIpcNumber, resolveContractorAccountCode, isServiceContractor } from '../lib/serviceContractor';
 import { fetchContractorCashPaidAmount } from '../lib/contractorCashPaidFetch';
 import { DEFAULT_HEADER_LOGO } from '../lib/concordPlusBrand';
 import type { StoredReportPrintProfiles } from '../lib/reportPrintProfiles';
@@ -183,15 +194,94 @@ function resolveIpcPct(storedPct: number | undefined | null, part: number, whole
 }
 
 interface BillingItem {
-  boqItemId: string;
+  /** @deprecated Prefer clientBoqItemId — kept for legacy rows. */
+  boqItemId?: string;
+  clientBoqItemId?: string;
   itemCode: string;
   description: string;
   unit: string;
+  tenderQty?: number;
   rate: number;
   previousQty: number;
   currentQty: number;
   totalQty: number;
+  completionPct: number;
+  previousCompletionPct: number;
   amount: number;
+  periodAmount?: number;
+}
+
+function subcontractorLineKey(line: {
+  clientBoqItemId?: string;
+  description?: string;
+  unit?: string;
+  itemCode?: string;
+}): string {
+  return [
+    String(line.clientBoqItemId || '').trim(),
+    String(line.itemCode || '').trim().toLowerCase(),
+    String(line.description || '').trim().toLowerCase(),
+    String(line.unit || '').trim().toLowerCase(),
+  ].join('|');
+}
+
+function recomputeIpcLineAmounts(line: BillingItem): BillingItem {
+  const totalQty = Number(line.previousQty || 0) + Number(line.currentQty || 0);
+  const completionPct = normalizeCompletionPct(line.completionPct, 100);
+  const previousCompletionPct = normalizeCompletionPct(line.previousCompletionPct, 0);
+  const next = {
+    ...line,
+    totalQty,
+    completionPct,
+    previousCompletionPct,
+    clientBoqItemId: line.clientBoqItemId || line.boqItemId || '',
+    boqItemId: line.clientBoqItemId || line.boqItemId || '',
+  };
+  return {
+    ...next,
+    amount: ipcLineToDateValue(next),
+    periodAmount: ipcLinePeriodValue(next),
+  };
+}
+
+function normalizeStoredIpcLine(raw: unknown): BillingItem {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const previousQty = Number(o.previousQty ?? 0);
+  const currentQty = Number(o.currentQty ?? 0);
+  const clientBoqItemId = String(o.clientBoqItemId || o.boqItemId || '');
+  return recomputeIpcLineAmounts({
+    boqItemId: clientBoqItemId,
+    clientBoqItemId,
+    itemCode: String(o.itemCode ?? ''),
+    description: String(o.description ?? ''),
+    unit: String(o.unit ?? ''),
+    tenderQty: o.tenderQty != null ? Number(o.tenderQty) : undefined,
+    rate: Number(o.rate ?? 0),
+    previousQty,
+    currentQty,
+    totalQty: Number(o.totalQty ?? previousQty + currentQty),
+    completionPct: normalizeCompletionPct(o.completionPct, 100),
+    previousCompletionPct: normalizeCompletionPct(o.previousCompletionPct, 0),
+    amount: Number(o.amount ?? 0),
+  });
+}
+
+function emptyIpcLine(clientBoqItemId = ''): BillingItem {
+  return recomputeIpcLineAmounts({
+    boqItemId: clientBoqItemId,
+    clientBoqItemId,
+    itemCode: '',
+    description: '',
+    unit: '',
+    tenderQty: 0,
+    rate: 0,
+    previousQty: 0,
+    currentQty: 0,
+    totalQty: 0,
+    completionPct: 100,
+    previousCompletionPct: 0,
+    amount: 0,
+  });
 }
 
 interface InvoiceLineDraft {
@@ -368,14 +458,6 @@ function createInvoiceLineDraft(): InvoiceLineDraft {
     boqItemId: '',
     boqItemIds: [],
   };
-}
-
-function buildIpcBoqSyncKey(projectId: string, contractId: string, boqItems: BOQItem[]): string {
-  const contractBoq = boqItems.filter(
-    (b) => String(b.projectId) === String(projectId) && String(b.contractId) === String(contractId),
-  );
-  const boqFinger = [...contractBoq.map((b) => b.id)].sort().join('|');
-  return `${projectId}|${contractId}|${boqFinger}`;
 }
 
 function mapStoredInvoiceLines(raw: unknown): InvoiceLineDraft[] {
@@ -1077,54 +1159,63 @@ export function ActualCosts() {
       .catch(() => setBoqSpentByContract(new Map()));
   }, [isLocalBackend]);
 
-  // ── Auto-load BOQ items for IPC tab (avoid re-sync on every `transactions` tick — preserves row edits) ──
+  // ── Seed IPC lines from last approved certificate for same contract+supplier (not full BOQ) ──
   useEffect(() => {
-    if (activeTab !== 'ipc' || !formData.projectId || !formData.contractId) {
+    if (activeTab !== 'ipc' || !formData.projectId || !formData.contractId || !formData.supplierId) {
       if (activeTab !== 'ipc') ipcBoqSyncKeyRef.current = '';
       return;
     }
-    const nextKey = buildIpcBoqSyncKey(formData.projectId, formData.contractId, scopedBoqItems);
+    if (editingPurchaseId) return;
+    if (formData.items.length > 0) return;
+    const nextKey = `${formData.projectId}|${formData.contractId}|${formData.supplierId}|seed`;
     if (ipcBoqSyncKeyRef.current === nextKey) return;
-    if (
-      editingPurchaseId
-      && formData.items.some((i) => Number(i.currentQty) > 0 || Number(i.amount) > 0)
-    ) {
-      ipcBoqSyncKeyRef.current = nextKey;
-      return;
-    }
     ipcBoqSyncKeyRef.current = nextKey;
-    const contractBoq = scopedBoqItems.filter(
-      (b) => b.projectId === formData.projectId && b.contractId === formData.contractId,
+
+    const approved = transactionsRef.current.filter(
+      (tx) =>
+        tx.type === 'ipc'
+        && tx.contractId === formData.contractId
+        && (tx.supplierAccountId === formData.supplierId || tx.supplierId === formData.supplierId)
+        && isIpcJournalPosted(tx),
     );
-    const txs = transactionsRef.current;
-    const items = contractBoq.map(b => {
-      const previousQty = txs
-        .filter(
-          (tx) =>
-            tx.type === 'ipc'
-            && tx.contractId === formData.contractId
-            && isIpcJournalPosted(tx)
-            && tx.id !== editingPurchaseId,
-        )
-        .reduce((sum, tx) => {
-          const match = (tx as PurchaseTransaction).items?.find((i) => i.boqItemId === b.id);
-          return sum + (match?.currentQty || 0);
-        }, 0);
-      return {
-        boqItemId: b.id,
-        itemCode: b.itemCode,
-        description: b.description,
-        unit: b.unit,
-        tenderQty: b.tenderQty,
-        rate: roundMoney2(b.unitRateTotal),
-        previousQty,
+    if (approved.length === 0) return;
+    const last = approved[approved.length - 1];
+    const priorLines = Array.isArray(last.items) ? last.items.map(normalizeStoredIpcLine) : [];
+    if (priorLines.length === 0) return;
+
+    // Aggregate previous qty/% by line key across all approved
+    const priorByKey = new Map<string, { qty: number; pct: number; sample: BillingItem }>();
+    for (const tx of approved) {
+      for (const raw of tx.items ?? []) {
+        const line = normalizeStoredIpcLine(raw);
+        const key = subcontractorLineKey(line);
+        const prev = priorByKey.get(key);
+        const lineToDatePct = line.completionPct;
+        const addQty = Number(line.currentQty || 0);
+        if (!prev) {
+          priorByKey.set(key, { qty: addQty, pct: lineToDatePct, sample: line });
+        } else {
+          priorByKey.set(key, {
+            qty: prev.qty + addQty,
+            pct: lineToDatePct,
+            sample: line,
+          });
+        }
+      }
+    }
+
+    const items = [...priorByKey.values()].map(({ qty, pct, sample }) =>
+      recomputeIpcLineAmounts({
+        ...sample,
+        previousQty: qty,
         currentQty: 0,
-        totalQty: previousQty,
-        amount: 0,
-      };
-    });
-    setFormData(prev => ({ ...prev, items }));
-  }, [activeTab, formData.projectId, formData.contractId, scopedBoqItems, editingPurchaseId]);
+        totalQty: qty,
+        previousCompletionPct: pct,
+        completionPct: pct,
+      }),
+    );
+    setFormData((prev) => (prev.items.length > 0 ? prev : { ...prev, items }));
+  }, [activeTab, formData.projectId, formData.contractId, formData.supplierId, formData.items.length, editingPurchaseId]);
 
   const editingPurchase = useMemo(
     () => (editingPurchaseId ? transactions.find((t) => t.id === editingPurchaseId) ?? null : null),
@@ -1147,9 +1238,11 @@ export function ActualCosts() {
     const invoiceVatPct = resolveIpcPct(tx.vatPct, Number(tx.vatAmount ?? 0), base);
 
     if (tx.type === 'ipc') {
-      const lineItems = Array.isArray(tx.items) && tx.items.length > 0 ? tx.items : [];
+      const lineItems = Array.isArray(tx.items) && tx.items.length > 0
+        ? tx.items.map(normalizeStoredIpcLine)
+        : [];
       if (tx.projectId && tx.contractId) {
-        ipcBoqSyncKeyRef.current = buildIpcBoqSyncKey(tx.projectId, tx.contractId, scopedBoqItems);
+        ipcBoqSyncKeyRef.current = `${tx.projectId}|${tx.contractId}|${tx.supplierAccountId || tx.supplierId || ''}|edit`;
       } else {
         ipcBoqSyncKeyRef.current = '';
       }
@@ -1431,8 +1524,19 @@ export function ActualCosts() {
 
   const handleExportTemplate = () => {
     const isAr = language === 'ar';
-    const headers = [isAr ? 'كود البند' : 'Item Code', isAr ? 'البيان' : 'Description', isAr ? 'الوحدة' : 'Unit', isAr ? 'الفئة' : 'Rate', isAr ? 'الكمية السابقة' : 'Prev Qty', isAr ? 'الكمية الحالية' : 'Curr Qty'];
-    const aoa = [headers, ...formData.items.map(i => [i.itemCode, i.description, i.unit, i.rate, i.previousQty, 0])];
+    const aoa = buildSubcontractorIpcTemplateAoa(
+      isAr,
+      formData.items.map((i) => ({
+        itemCode: i.itemCode,
+        description: i.description,
+        unit: i.unit,
+        tenderQty: i.tenderQty ?? 0,
+        rate: i.rate,
+        previousQty: i.previousQty,
+        currentQty: i.currentQty,
+        completionPct: i.completionPct,
+      })),
+    );
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'IPC Template');
@@ -1442,50 +1546,126 @@ export function ActualCosts() {
   const handleImportExcel = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const input = e.target;
     const reader = new FileReader();
     reader.onload = (evt) => {
-      const wb = XLSX.read(evt.target?.result as string, { type: 'binary' });
-      const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]) as Record<string, unknown>[];
-      const updated = [...formData.items];
-      data.forEach(row => {
-        const itemCode = row[language === 'ar' ? 'كود البند' : 'Item Code'] as string | undefined;
-        const currQty = Number(row[language === 'ar' ? 'الكمية الحالية' : 'Curr Qty']);
-        if (itemCode !== undefined && !isNaN(currQty)) {
-          const idx = updated.findIndex(i => i.itemCode === String(itemCode));
-          if (idx !== -1) {
-            const item = updated[idx];
-            updated[idx] = { ...item, currentQty: currQty, totalQty: item.previousQty + currQty, amount: (item.previousQty + currQty) * item.rate };
-          }
+      try {
+        const parsed = parseSubcontractorIpcExcelBuffer(evt.target?.result as string);
+        if (parsed.length === 0) {
+          toast.error(language === 'ar' ? 'لم يُعثر على بنود في الملف' : 'No lines found in file');
+          return;
         }
-      });
-      setFormData(prev => ({ ...prev, items: updated }));
+        const defaultClientBoq =
+          formData.items.find((i) => i.clientBoqItemId)?.clientBoqItemId
+          || scopedBoqItems.find(
+            (b) => b.projectId === formData.projectId && b.contractId === formData.contractId,
+          )?.id
+          || '';
+
+        // Merge into existing by itemCode/description when updating; else replace as first-time structure
+        const existingByCode = new Map(
+          formData.items.map((i, idx) => [String(i.itemCode || '').toLowerCase(), idx]),
+        );
+        const hasStructure = formData.items.length > 0;
+
+        if (!hasStructure) {
+          const items = parsed.map((row) =>
+            recomputeIpcLineAmounts({
+              ...emptyIpcLine(defaultClientBoq),
+              itemCode: row.itemCode,
+              description: row.description,
+              unit: row.unit,
+              tenderQty: row.tenderQty,
+              rate: row.rate,
+              previousQty: row.previousQty,
+              currentQty: row.currentQty,
+              completionPct: row.completionPct,
+              previousCompletionPct: 0,
+              clientBoqItemId: defaultClientBoq,
+              boqItemId: defaultClientBoq,
+            }),
+          );
+          setFormData((prev) => ({ ...prev, items }));
+          toast.success(
+            language === 'ar'
+              ? `تم استيراد ${items.length} بنداً — راجع ربط بند العميل`
+              : `Imported ${items.length} lines — check client BOQ links`,
+          );
+        } else {
+          const updated = [...formData.items];
+          for (const row of parsed) {
+            const idx = existingByCode.get(String(row.itemCode || '').toLowerCase());
+            if (idx == null) continue;
+            const item = updated[idx];
+            updated[idx] = recomputeIpcLineAmounts({
+              ...item,
+              currentQty: row.currentQty,
+              completionPct: row.completionPct,
+              rate: row.rate > 0 ? row.rate : item.rate,
+            });
+          }
+          setFormData((prev) => ({ ...prev, items: updated }));
+          toast.success(language === 'ar' ? 'تم تحديث الكميات والنسب' : 'Quantities and % updated');
+        }
+      } catch {
+        toast.error(language === 'ar' ? 'فشل قراءة ملف الإكسل' : 'Failed to read Excel file');
+      }
+      input.value = '';
     };
     reader.readAsBinaryString(file);
   };
 
-  const handleItemQtyChange = useCallback((idx: number, qty: number) => {
+  const handleIpcFieldChange = useCallback((
+    idx: number,
+    field:
+      | 'description'
+      | 'unit'
+      | 'itemCode'
+      | 'tenderQty'
+      | 'rate'
+      | 'currentQty'
+      | 'completionPct'
+      | 'clientBoqItemId',
+    value: string | number,
+  ) => {
     setFormData((prev) => {
       const items = [...prev.items];
       const row = items[idx];
       if (!row) return prev;
-      items[idx] = {
-        ...row,
-        currentQty: qty,
-        totalQty: row.previousQty + qty,
-        amount: (row.previousQty + qty) * row.rate,
-      };
+      const next = { ...row, [field]: value } as BillingItem;
+      if (field === 'clientBoqItemId') {
+        next.clientBoqItemId = String(value);
+        next.boqItemId = String(value);
+      }
+      if (field === 'currentQty') {
+        next.currentQty = Number(value) || 0;
+      }
+      if (field === 'completionPct') {
+        next.completionPct = normalizeCompletionPct(value, 0);
+      }
+      if (field === 'rate') {
+        next.rate = Number(value) || 0;
+      }
+      if (field === 'tenderQty') {
+        next.tenderQty = Number(value) || 0;
+      }
+      items[idx] = recomputeIpcLineAmounts(next);
       return { ...prev, items };
     });
   }, []);
 
-  const handleItemRateChange = useCallback((idx: number, rate: number) => {
-    setFormData((prev) => {
-      const items = [...prev.items];
-      const row = items[idx];
-      if (!row) return prev;
-      items[idx] = { ...row, rate, amount: row.totalQty * rate };
-      return { ...prev, items };
-    });
+  const handleAddIpcLine = useCallback(() => {
+    setFormData((prev) => ({
+      ...prev,
+      items: [...prev.items, emptyIpcLine()],
+    }));
+  }, []);
+
+  const handleRemoveIpcLine = useCallback((idx: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      items: prev.items.filter((_, i) => i !== idx),
+    }));
   }, []);
 
   const setInvoiceLineField = useCallback((
@@ -1573,8 +1753,12 @@ export function ActualCosts() {
   }, []);
 
   const calculateIPCDeductions = () => {
+    const previousWorks = roundMoney(
+      formData.items.reduce((s, l) => s + ipcLinePriorToDateValue(l), 0),
+    );
+    const currentWorks = sumIpcPeriodValues(formData.items);
     const cert = computeServiceIpcCertificateSummary(
-      formData.items,
+      [{ previousQty: previousWorks, currentQty: currentWorks, rate: 1 }],
       {
         vatPct: formData.vatPct,
         execGuaranteePct: formData.execGuaranteePct,
@@ -1627,9 +1811,11 @@ export function ActualCosts() {
     const { cert } = calculateIPCDeductions();
     const printItems = mapToIpcPrintItems(
       formData.items.map((item) => {
-        const boq = scopedBoqItems.find((b) => b.id === item.boqItemId);
+        const clientId = item.clientBoqItemId || item.boqItemId;
+        const boq = scopedBoqItems.find((b) => b.id === clientId);
         return {
           ...item,
+          amount: ipcLineToDateValue(item),
           chapterName: boq?.chapterName,
           sectionName: boq?.sectionName,
           tenderQty: item.tenderQty ?? boq?.tenderQty,
@@ -1691,18 +1877,24 @@ export function ActualCosts() {
           : '');
       const project = scopedProjects.find((p) => p.id === tx.projectId);
       const contract = scopedContracts.find((c) => c.id === tx.contractId);
+      const normalizedLines = (tx.items ?? []).map(normalizeStoredIpcLine);
       const printItems = mapToIpcPrintItems(
-        (tx.items ?? []).map((item) => {
-          const boq = scopedBoqItems.find((b) => b.id === item.boqItemId);
+        normalizedLines.map((item) => {
+          const clientId = item.clientBoqItemId || item.boqItemId;
+          const boq = scopedBoqItems.find((b) => b.id === clientId);
           return {
             ...item,
+            amount: ipcLineToDateValue(item),
             chapterName: boq?.chapterName,
             sectionName: boq?.sectionName,
-            tenderQty: (item as BillingItem & { tenderQty?: number }).tenderQty ?? boq?.tenderQty,
+            tenderQty: item.tenderQty ?? boq?.tenderQty,
           };
         }),
       );
-      const periodWorks = roundMoney(Number(tx.amount) || 0);
+      const periodWorks = roundMoney(Number(tx.amount) || sumIpcPeriodValues(normalizedLines));
+      const previousWorks = roundMoney(
+        normalizedLines.reduce((s, l) => s + ipcLinePriorToDateValue(l), 0),
+      );
       const code = resolveContractorAccountCode(accounts, String(tx.supplierAccountId || tx.supplierId || ''));
       const contractId = String(tx.contractId || '').trim();
       let paid = 0;
@@ -1718,7 +1910,7 @@ export function ActualCosts() {
         }
       }
       const cert = computeServiceIpcCertificateSummary(
-        tx.items ?? [],
+        [{ previousQty: previousWorks, currentQty: periodWorks, rate: 1 }],
         {
           vatPct: resolveStoredPct(tx.vatPct, tx.vatAmount, periodWorks),
           execGuaranteePct: resolveStoredPct(tx.execGuaranteePct, tx.execGuaranteeAmount, periodWorks),
@@ -1937,6 +2129,23 @@ export function ActualCosts() {
       }
       if (isDirect && (!formData.projectId || !formData.contractId)) {
         toast.error(t('select_cost_center'));
+        setIsSubmitting(false);
+        return;
+      }
+      if (formData.items.length === 0) {
+        toast.error(language === 'ar' ? 'أضف بنود المستخلص أو استورد من إكسل' : 'Add IPC lines or import from Excel');
+        setIsSubmitting(false);
+        return;
+      }
+      const missingClientBoq = formData.items.some(
+        (i) => !String(i.clientBoqItemId || i.boqItemId || '').trim(),
+      );
+      if (missingClientBoq) {
+        toast.error(
+          language === 'ar'
+            ? 'كل بند مقاول يجب ربطه ببند قائمة كميات العميل'
+            : 'Each subcontractor line must link to a client BOQ item',
+        );
         setIsSubmitting(false);
         return;
       }
@@ -2371,7 +2580,7 @@ export function ActualCosts() {
         advancePaymentRecovery: advance,
         totalAmount: net,
         description: formData.description || '',
-        items: activeTab === 'ipc' ? formData.items : null,
+        items: activeTab === 'ipc' ? formData.items.map(recomputeIpcLineAmounts) : null,
         invoiceLines:
           activeTab === 'invoice' && !isSimpleAmountInvoice
             ? normalizedInvoiceLines.map(mapInvoiceLineForPersistence)
@@ -2412,7 +2621,7 @@ export function ActualCosts() {
           status: purchasePayload.status,
           transactionId: nullIfEmpty(purchasePayload.transactionId),
           isDeleted: purchasePayload.isDeleted,
-          items: activeTab === 'ipc' ? formData.items : null,
+          items: activeTab === 'ipc' ? formData.items.map(recomputeIpcLineAmounts) : null,
           invoiceLines:
             activeTab === 'invoice' && !isSimpleAmountInvoice
               ? normalizedInvoiceLines.map(mapInvoiceLineForPersistence)
@@ -2884,7 +3093,7 @@ export function ActualCosts() {
     activeTab === 'invoice'
       ? invoiceBaseAmount + invoiceBaseAmount * (formData.invoiceVatPct / 100)
       : (() => {
-          const w = formData.items.reduce((s, i) => s + i.amount, 0);
+          const w = sumIpcPeriodValues(formData.items);
           return w + w * (formData.vatPct / 100);
         })();
   const contractBudget = boqBudgetByContract.get(formData.contractId) || 0;
@@ -3559,10 +3768,21 @@ export function ActualCosts() {
                     language={language}
                     items={formData.items}
                     gridRefs={ipcGridRefs}
+                    readOnly={entryFormReadOnly}
+                    clientBoqOptions={scopedBoqItems
+                      .filter((b) => b.projectId === formData.projectId && b.contractId === formData.contractId)
+                      .map((b) => ({
+                        value: b.id,
+                        secondary: b.itemCode,
+                        label: language === 'ar'
+                          ? `${b.itemCode} — ${b.description}`
+                          : `${b.itemCode} — ${b.description}`,
+                      }))}
                     onExportTemplate={handleExportTemplate}
                     onImportExcel={handleImportExcel}
-                    onRateChange={handleItemRateChange}
-                    onQtyChange={handleItemQtyChange}
+                    onAddLine={handleAddIpcLine}
+                    onRemoveLine={handleRemoveIpcLine}
+                    onFieldChange={handleIpcFieldChange}
                   />
                 )}
 

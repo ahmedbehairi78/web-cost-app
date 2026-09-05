@@ -2,6 +2,26 @@
 
 > **Doc workflow:** Before fixes/improvements, read **`CLAUDE.md`** · **`CONTEXT.md`** · **`DEPLOYMENT_PLAN.md`** · **`docs/DEVELOPER_GUIDE.md`**. After successful implementation, update those files in the same session.
 
+## 🔴 HANDOFF — مستخلصات: كمية × فئة × نسبة إنجاز ✅ (2026-09-05)
+
+> **معادلة موحّدة (عميل + مقاول باطن):** قيمة حتى تاريخه = `(previousQty + currentQty) × rate × (completionPct / 100)`؛ قيمة الفترة = حتى تاريخه − سابق حتى تاريخه (`previousCompletionPct`). النسبة **يدوية**. الكفر Cover-JLL **لا يُعاد تصميمه** — يستهلك المجاميع بعد الحساب.
+
+| المجال | ملخص | ملفات |
+|--------|------|--------|
+| **مكتبة** | `ipcProgressValue.ts` | `src/lib/ipcProgressValue.ts` (+ test) |
+| **عميل** | عمود نسبة قابل للتحرير في `IPCFormModal`؛ تخزين في `billing_items.metadata` | `Billing.tsx` · `IPCFormModal.tsx` |
+| **مقاول** | بنود فرعية حرة + `clientBoqItemId` إلزامي؛ لا مزامنة كل BOQ تلقائياً | `ActualCosts.tsx` · `IpcItemsGrid.tsx` |
+| **تكلفة تقارير** | تجميع الفترة على بند العميل | `boqActualFromSources.ts` |
+| **إكسل** | استيراد أول مرة / تحديث كميات ونسب (نمط Book1) | `subcontractorIpcExcel.ts` |
+
+```powershell
+npm run test -- src/lib/ipcProgressValue.test.ts src/lib/ipcCoverFromQtyList.test.ts src/lib/subcontractorIpcExcel.test.ts server/src/accounting/boqActualFromSources.test.ts
+```
+
+**لا تراجع:** لا تُشتق نسبة العميل من `totalQty/tenderQty`؛ لا تغيّر معادلات خصم Cover-JLL؛ لا تُحمّل `boq_actual` على بنود مقاول وهمية بدون `clientBoqItemId`.
+
+---
+
 Construction cost management system built with React + TypeScript + Firebase (Firestore + Auth), with a hybrid local SQLite backend for financial core operations.
 
 ## Stack
